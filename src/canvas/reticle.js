@@ -363,12 +363,34 @@ export class ReticleRenderer {
       ctx.rect(targetX - pxW / 2, targetY - pxH / 2, pxW, pxH);
       ctx.fill();
       ctx.stroke();
-    } else {
-      // IPSC torso: 45 x 75 cm with a head box
+    } else if (shape === 'nato-e') {
+      // NATO E-type silhouette: body over the lower 80 %, half-width head over the top 20 %,
+      // with sloped shoulders between them (same geometry as the hit test in wez.js)
       const halfW = pxW / 2;
       const halfH = pxH / 2;
-      const headHalfW = halfW * 0.35;
-      const headBottomY = targetY - halfH * 0.45;
+      const headHalfW = halfW * 0.5;
+      const neckY = targetY - halfH * 0.6;
+      const shoulderY = targetY - halfH * 0.42;
+      const r = Math.min(headHalfW, halfH * 0.18);
+      ctx.beginPath();
+      ctx.moveTo(targetX - halfW, targetY + halfH);
+      ctx.lineTo(targetX + halfW, targetY + halfH);
+      ctx.lineTo(targetX + halfW, shoulderY);
+      ctx.lineTo(targetX + headHalfW, neckY);
+      ctx.lineTo(targetX + headHalfW, targetY - halfH + r);
+      ctx.arcTo(targetX + headHalfW, targetY - halfH, targetX, targetY - halfH, r);
+      ctx.arcTo(targetX - headHalfW, targetY - halfH, targetX - headHalfW, targetY - halfH + r, r);
+      ctx.lineTo(targetX - headHalfW, neckY);
+      ctx.lineTo(targetX - halfW, shoulderY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      // IPSC torso: body with a 15 cm head box over the top 20 % (same geometry as wez.js)
+      const halfW = pxW / 2;
+      const halfH = pxH / 2;
+      const headHalfW = halfW * (7.5 / ((this.options.targetWidthCm || 45) / 2));
+      const headBottomY = targetY - halfH * 0.6;
 
       ctx.beginPath();
       ctx.moveTo(targetX - halfW, targetY + halfH);

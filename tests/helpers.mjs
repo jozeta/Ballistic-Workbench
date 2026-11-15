@@ -53,4 +53,9 @@ check(Math.abs(w.wz) < 1e-9 && Math.abs(w.wx) < 1e-9, 'setting wind speed to 0 r
 const head = getWindAtDistance(300, { windSpeedMs: 5, windDirectionDeg: 0, windZones: [] });
 check(Math.abs(head.wz) < 1e-9 && Math.abs(Math.abs(head.wx) - 5) < 1e-9, 'a 0° (12 o\'clock) wind is a head/tail wind, not a crosswind');
 
+// --- target sizes follow the chosen target ---
+const { sanitizeTarget } = await import('../src/core/sanitize.js');
+const migrated = sanitizeTarget({ targetShape: 'nato-e', targetSizeWidthCm: 45, targetSizeHeightCm: 75, distanceM: 600 }, { distanceM: 600, targetSizeWidthCm: 45, targetSizeHeightCm: 75, targetShape: 'ipsc', targetSpeedKmh: 0, targetDirectionDeg: 90 });
+check(migrated.targetSizeWidthCm === 50 && migrated.targetSizeHeightCm === 100, 'a NATO E target stored with the old IPSC size gets 50 × 100 cm');
+
 if (failed) process.exit(1);

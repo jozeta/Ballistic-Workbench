@@ -14,6 +14,7 @@ import { WindRoseVisualizer } from '../canvas/windRose.js';
 import { RifleBuilderModal } from './rifleBuilderModal.js';
 import { esc } from '../core/escape.js';
 import { interpolateAt } from '../core/trajectory.js';
+import { TARGETS, targetOf } from '../core/targets.js';
 import { icon } from './icons.js';
 import { bindNumber, rangeError, setFieldError, parseNumber } from './fields.js';
 
@@ -628,15 +629,20 @@ export class WorkspaceView {
                 <input type="range" class="lg-slider" id="target-range-slider" aria-label="Target distance" min="50" max="${isImp ? 1600 : 1500}" step="25" value="${targetDistDisp}" />
                 <input type="number" id="target-range-input" class="lg-input range-number" min="10" max="${isImp ? 2200 : 2000}" step="1" value="${targetDistDisp}" />
               </div>
-              <div class="field-grid-1">
-                <div>
+              <div class="field-grid-2">
+                <div class="field-span-2">
                   <label class="field-label" for="target-shape-select">Target</label>
                   <select id="target-shape-select" class="lg-select">
-                    <option value="ipsc" ${target.targetShape === 'ipsc' ? 'selected' : ''}>IPSC torso</option>
-                    <option value="circle" ${target.targetShape === 'circle' ? 'selected' : ''}>Round plate</option>
-                    <option value="square" ${target.targetShape === 'square' ? 'selected' : ''}>Square plate</option>
-                    <option value="nato-e" ${target.targetShape === 'nato-e' ? 'selected' : ''}>NATO E silhouette</option>
+                    ${Object.entries(TARGETS).map(([k, t]) => `<option value="${k}" ${target.targetShape === k ? 'selected' : ''}>${t.label} (${isImp ? `${(t.w / 2.54).toFixed(0)}${k === 'circle' ? '' : ` × ${(t.h / 2.54).toFixed(0)}`} in` : `${t.w}${k === 'circle' ? '' : ` × ${t.h}`} cm`})</option>`).join('')}
                   </select>
+                </div>
+                <div>
+                  <label class="field-label" for="target-w-input">${target.targetShape === 'circle' ? 'Diameter' : 'Width'} (${isImp ? 'in' : 'cm'})</label>
+                  <input type="number" id="target-w-input" class="lg-input" min="${isImp ? 1 : 2}" max="${isImp ? 120 : 300}" step="${isImp ? 0.5 : 1}" value="${isImp ? (target.targetSizeWidthCm / 2.54).toFixed(1) : Math.round(target.targetSizeWidthCm)}" />
+                </div>
+                <div ${target.targetShape === 'circle' ? 'hidden' : ''}>
+                  <label class="field-label" for="target-h-input">Height (${isImp ? 'in' : 'cm'})</label>
+                  <input type="number" id="target-h-input" class="lg-input" min="${isImp ? 1 : 2}" max="${isImp ? 120 : 300}" step="${isImp ? 0.5 : 1}" value="${isImp ? (target.targetSizeHeightCm / 2.54).toFixed(1) : Math.round(target.targetSizeHeightCm)}" />
                 </div>
               </div>
             </div>
@@ -933,9 +939,20 @@ export class WorkspaceView {
 
     // Target Shape & Speed
     const shapeSel = this.container.querySelector('#target-shape-select');
+    // Choosing a target also sets its standard size (editable below it)
     shapeSel?.addEventListener('change', (e) => {
-      appState.updateTarget({ targetShape: e.target.value });
+      const t = targetOf(e.target.value);
+      appState.updateTarget({ targetShape: e.target.value, targetSizeWidthCm: t.w, targetSizeHeightCm: t.h });
+      this.render();
+      this.initVisualizers();
+      this.recompute();
     });
+    const toCm = (v) => (isImp ? v * 2.54 : v);
+    bindNumber(this.container.querySelector('#target-w-input'), (v) => {
+      const cm = toCm(v);
+      appState.updateTarget(appState.state.target.targetShape === 'circle' ? { targetSizeWidthCm: cm, targetSizeHeightCm: cm } : { targetSizeWidthCm: cm });
+    });
+    bindNumber(this.container.querySelector('#target-h-input'), (v) => appState.updateTarget({ targetSizeHeightCm: toCm(v) }));
     // Load and rifle (validated: out-of-range values show an inline message and are not applied)
     const q = (id) => this.container.querySelector(id);
     bindNumber(q('#mv-input'), (val) => {

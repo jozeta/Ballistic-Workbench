@@ -18,6 +18,7 @@
  */
 
 import { appState } from '../core/state.js';
+import { TARGETS } from '../core/targets.js';
 import { UnitConverter, CONVERSIONS } from '../core/units.js';
 import { esc } from '../core/escape.js';
 import { getAtmosphericConditions } from '../physics/atmosphere.js';
@@ -53,12 +54,8 @@ const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const MAX_SHOTS = 50;
 const SHOT_COUNTS = [500, 1000, 2000];
 
-const WEZ_TARGETS = {
-  ipsc: { label: 'IPSC target', w: 45, h: 75 },
-  circle: { label: 'Round plate', w: 30, h: 30 },
-  square: { label: 'Square plate', w: 30, h: 30 },
-  'nato-e': { label: 'NATO E-type', w: 50, h: 100 },
-};
+// One target catalogue for the whole app (src/core/targets.js)
+const WEZ_TARGETS = TARGETS;
 
 const RANGE_PRESETS = [
   { id: 'ipsc-w', label: 'IPSC target, width', cm: 45 },

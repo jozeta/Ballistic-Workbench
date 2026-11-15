@@ -8,6 +8,8 @@
  * instead of crashing the app or hanging the solver.
  */
 
+import { targetOf } from './targets.js';
+
 const ID_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
 const MAX_TEXT = 200;
 const MAX_ITEMS = 500;
@@ -178,6 +180,13 @@ export function sanitizeSolverConfig(value, defaults) {
 export function sanitizeTarget(value, defaults) {
   const clean = shapeLike(value, defaults);
   if (!SHAPES.includes(clean.targetShape)) clean.targetShape = defaults.targetShape;
+  // Older versions kept the IPSC size (45 × 75 cm) whatever target was chosen: give those the
+  // chosen target's standard size
+  if (clean.targetShape !== 'ipsc' && clean.targetSizeWidthCm === 45 && clean.targetSizeHeightCm === 75) {
+    const std = targetOf(clean.targetShape);
+    clean.targetSizeWidthCm = std.w;
+    clean.targetSizeHeightCm = std.h;
+  }
   return clean;
 }
 
