@@ -76,11 +76,13 @@ JavaScript modules served as static files.
 ```sh
 git clone https://github.com/jozeta/Ballistic-Workbench.git
 cd Ballistic-Workbench
-python3 -m http.server 8080
+npm start            # or: node scripts/serve.mjs [port]
 ```
 
-Then open <http://localhost:8080>. The app must be served over HTTP: JavaScript modules and the
-offline service worker don't load from `file://`.
+Then open <http://localhost:8080>. You need Node.js 18 or later; the server has no dependencies, so
+`npm install` isn't needed to run the app. The app must be served over HTTP (JavaScript modules and
+the offline service worker don't load from `file://`). Don't use `python3 -m http.server`: it drops
+connections when the browser loads the app's modules in parallel, and the app then fails to start.
 
 **Install as an app:** in Chrome or Edge, use *Install app* in the address bar; on iPhone or iPad,
 Safari's *Share → Add to Home Screen*. After the first visit the app works fully offline.

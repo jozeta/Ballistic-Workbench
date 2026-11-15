@@ -5,7 +5,7 @@
   "description": "Offline ballistics calculator for precision rifle shooters. The app itself has no dependencies; this file only holds the dev tooling (tests and lint).",
   "type": "module",
   "scripts": {
-    "start": "python3 -m http.server 8080 --bind 127.0.0.1",
+    "start": "node scripts/serve.mjs",
     "test": "node tests/verify.mjs && node tests/helpers.mjs && node tests/version.mjs && node tests/sw-assets.mjs",
     "test:browser": "node tests/browser_check.mjs",
     "lint": "eslint ."

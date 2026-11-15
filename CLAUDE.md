@@ -12,7 +12,7 @@ framework, no build step, no runtime dependencies. Public repo (MIT).
 ## Commands
 
 ```sh
-python3 -m http.server 8080    # serve at http://localhost:8080 (must be HTTP, not file://)
+npm start                      # node scripts/serve.mjs: serve at http://localhost:8080 (not python http.server: it resets parallel module loads)
 npm install                    # dev tooling only (ESLint)
 npm test                       # verify.mjs (physics + reference checks), helpers, version, sw-assets
 npm run test:browser           # headless Chrome E2E: every view, both themes, 390 px (CHROME_PATH to override)
