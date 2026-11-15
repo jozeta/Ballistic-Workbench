@@ -738,7 +738,7 @@ export class DopeStudioView {
       da: `${fmtInt(u.fromAltM(num(dope.atmos?.densityAltitudeM, NaN)))} ${u.alt}`,
       temp: `${fmtInt(u.fromC(num(env.temperatureC, NaN)))} ${u.temp}`,
       press: `${fmt(u.fromHpa(num(env.pressureHpa, NaN)), u.pressDec)} ${u.press}`,
-      optic: esc(p.optic?.model || ''),
+      optic: esc(p.optic?.model || '—'),
       click: esc(p.optic?.clickName || '0.1 MRAD'),
       twist: `1:${fmtTrim(num(p.twistRateIn, NaN), 1)} in${p.twistDirection ? `, ${esc(String(p.twistDirection).toLowerCase())}` : ''}`,
       envName: esc(env.name || ''),

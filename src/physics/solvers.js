@@ -129,7 +129,11 @@ function resolveDrag(bullet, algorithm) {
 function muzzleStability(bullet, profile, mv, airDensity) {
   const pressureEquivalentInHg = 29.92 * (airDensity / MILLER_STD_DENSITY);
   const stab = calculateStability(bullet.weightGr, bullet.diameterIn, bullet.lengthIn, profile.twistRateIn, mv * 3.28084, 59, pressureEquivalentInHg);
-  return stab.sg > 0 ? { sg: stab.sg, estimated: false } : { sg: 1.5, estimated: true };
+  // Litz's spin-drift and jump formulas are fitted for real bullets (Sg about 1 to 4). Keep Sg in a
+  // physical range so impossible inputs (e.g. a 0.1 in long, 1 in wide "bullet") can't blow up the
+  // corrections; the raw value is still reported as sgRaw.
+  if (!(stab.sg > 0) || !Number.isFinite(stab.sg)) return { sg: 1.5, estimated: true, sgRaw: stab.sg };
+  return { sg: Math.min(stab.sg, 10), estimated: stab.sg > 10, sgRaw: stab.sg };
 }
 
 /**
