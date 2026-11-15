@@ -1,134 +1,287 @@
 /**
- * Ballistic Workbench - DOPE Studio & Tactical Range Card Generator
- * Produces 5 print-ready tactical ballistic cards:
- * 1. Scope Cap Insert (Circular SVG with caliber & elevation dial ticks)
- * 2. Tactical Wrist Coach (Arm board for PRS / NRL competition)
- * 3. Stock Tape (Cheekpiece adhesive strip)
- * 4. Authentic Tactical Wrist Coach / Arm Board PRS Match Stage Card & Interactive Stage Builder
- * 5. Comprehensive A4 Master Precision Rifle Data Sheet
+ * Ballistic Workbench - DOPE cards view.
+ *
+ * Builds printable range cards from the active rifle and conditions: a scope cap insert, a 3 x 5 in
+ * wrist card, a stock tape, a turret tape, a match stage card (with a stage builder) and a full-page
+ * data sheet. Every card is laid out in physical units (mm, in, pt) so it prints at its exact size;
+ * on screen the preview is scaled to fit with CSS zoom (reset to 1 in styles/print.css).
+ *
+ * Layout: format tabs, then a settings column and a preview "desk" with the paper card on it. The
+ * stage card adds a target editor below. All events are delegated from the view container (it is
+ * shared with the other views, so destroy() removes them again).
  */
 
 import { appState } from '../core/state.js';
-import { esc } from '../core/escape.js';
+import { esc, num } from '../core/escape.js';
 import { shapeLike } from '../core/sanitize.js';
-import { UnitConverter } from '../core/units.js';
 import { getAtmosphericConditions } from '../physics/atmosphere.js';
 import { solveTrajectory, solveZeroAngle } from '../physics/solvers.js';
+import { icon } from './icons.js';
+import { toast } from './notify.js';
+import { bindNumber } from './fields.js';
 
 const PRS_STAGE_STORAGE_KEY = 'ballistic_workbench_prs_stage_v2';
+const SETTINGS_KEY = 'ballistic_workbench_dope_settings_v1';
 
-function formatDec(val, dec = 1) {
-  if (val === undefined || val === null || isNaN(val)) return (0).toFixed(dec);
-  const threshold = Math.pow(10, -dec) / 2;
-  if (Math.abs(val) < threshold) {
-    return (0).toFixed(dec);
-  }
-  return Number(val).toFixed(dec);
+const PX_PER_MM = 96 / 25.4;
+const RAD_TO_MOA = 10800 / Math.PI;
+const M_PER_YD = 0.9144;
+const MS_PER_MPH = 0.44704;
+
+const SHAPES = {
+  gong: 'Round gong',
+  ipsc: 'IPSC torso',
+  square: 'Square plate',
+  diamond: 'Diamond plate',
+  kyl: 'KYL rack (shrinking plates)',
+};
+
+const CARD_THEMES = [
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'green', label: 'Green' },
+];
+const LEGACY_THEMES = { 'tactical-night': 'dark', 'milspec-od': 'green', 'match-day': 'light' };
+
+const STAGE_SIZES = [
+  { id: 'portrait-3x5', label: '3 × 5 in portrait', short: '3 × 5 in', sub: 'portrait', widthMm: 76.2, maxZoom: 1.7 },
+  { id: 'landscape-5x3', label: '5 × 3 in landscape', short: '5 × 3 in', sub: 'landscape', widthMm: 127, maxZoom: 1.35 },
+  { id: 'full-page', label: 'Full page', short: 'Full page', sub: 'A4 or Letter', widthMm: 190, maxZoom: 1.05 },
+];
+
+const WIND_DIRECTIONS = [
+  { deg: 90, label: 'From right (3 o’clock, 90°)' },
+  { deg: 45, label: 'Quartering from right (1:30, 45°)' },
+  { deg: 135, label: 'Quartering from behind right (4:30, 135°)' },
+  { deg: 0, label: 'Headwind (12 o’clock, 0°)' },
+  { deg: 180, label: 'Tailwind (6 o’clock, 180°)' },
+  { deg: 315, label: 'Quartering from left (10:30, 315°)' },
+  { deg: 225, label: 'Quartering from behind left (7:30, 225°)' },
+  { deg: 270, label: 'From left (9 o’clock, 270°)' },
+];
+
+const SCOPE_CAP_PRESETS = [
+  { mm: 39.9, label: 'Butler Creek #13 (39.9 mm)' },
+  { mm: 42.2, label: 'Butler Creek #15 (42.2 mm)' },
+  { mm: 43.9, label: 'Butler Creek #19 (43.9 mm)' },
+  { mm: 45.7, label: 'Butler Creek #25 (45.7 mm)' },
+  { mm: 49.8, label: 'Butler Creek #30 (49.8 mm)' },
+  { mm: 50.7, label: 'Butler Creek #31 (50.7 mm)' },
+  { mm: 53.3, label: 'Butler Creek #34 (53.3 mm)' },
+  { mm: 58.7, label: 'Butler Creek #43 (58.7 mm)' },
+];
+
+const TURRET_PRESETS = [
+  { circ: 94.2, label: '30 mm turret (94.2 mm around)' },
+  { circ: 100.5, label: '32 mm turret (100.5 mm around)' },
+  { circ: 106.8, label: '34 mm turret (106.8 mm around)' },
+  { circ: 110.0, label: '35 mm turret (110.0 mm around)' },
+];
+
+/**
+ * The six formats. maxRanges limits how many distances a card shows so the text stays legible;
+ * widthMm / maxZoom size the on-screen preview.
+ */
+const FORMATS = [
+  {
+    id: 'scope-cap', label: 'Scope cap', hint: 'Round insert', icon: 'scope-cap', maxRanges: 12, maxZoom: 3.2,
+    title: 'Scope cap insert',
+    desc: 'A round card for the inside of a clear flip-up scope cap. Distance on the outer ring, elevation in the middle, clicks on the inner ring.',
+  },
+  {
+    id: 'wrist-coach', label: 'Wrist card', hint: '3 × 5 in', icon: 'watch', maxRanges: 20, widthMm: 76.2, maxZoom: 1.6,
+    title: 'Wrist card',
+    desc: 'A 3 × 5 in table for a wrist sleeve: elevation, clicks, wind holds for three wind speeds and bullet speed.',
+  },
+  {
+    id: 'stock-tape', label: 'Stock tape', hint: '180 × 32 mm', icon: 'tape', maxRanges: 11, widthMm: 180, maxZoom: 1.2,
+    title: 'Stock tape',
+    desc: 'A strip for the side of the stock: one column per distance with elevation, clicks and two wind holds.',
+  },
+  {
+    id: 'turret-tape', label: 'Turret tape', hint: 'Wraps the turret', icon: 'turret', maxRanges: 16, maxZoom: 2.2,
+    title: 'Turret tape',
+    desc: 'A strip that wraps around the elevation turret, with each distance marked at the click it needs.',
+  },
+  {
+    id: 'prs-stage', label: 'Stage card', hint: 'Match stage plan', icon: 'stage', maxRanges: 0,
+    title: 'Stage card',
+    desc: 'A plan for one match stage: targets in order, elevation and wind holds for lull, base and gust wind.',
+  },
+  {
+    id: 'a4-sheet', label: 'Full page', hint: 'A4 or Letter', icon: 'file', maxRanges: 50, widthMm: 190, maxZoom: 1.05,
+    title: 'Full page data sheet',
+    desc: 'The full table on one page with drop, elevation, wind holds, speed and energy, plus reticle holds and space for notes.',
+  },
+];
+const FORMAT_IDS = FORMATS.map((f) => f.id);
+
+// Scope cap text styles as SVG presentation attributes (the CSP blocks <style> elements), so a
+// saved SVG file looks the same as the preview
+const CAP_TEXT = {
+  'cap-dist': 'font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="900" fill="#111111"',
+  'cap-elev': 'font-family="ui-monospace, Menlo, monospace" font-size="22" font-weight="800" fill="#0b4f8a"',
+  'cap-clicks': 'font-family="ui-monospace, Menlo, monospace" font-size="15" font-weight="700" fill="#8a3b0b"',
+};
+const CAP_CENTER = 'font-family="system-ui, -apple-system, sans-serif" fill="#111111"';
+
+/** A number with fixed decimals, or "—" when it is not finite (never prints NaN or Infinity). */
+function fmt(val, dec = 1) {
+  const n = Number(val);
+  if (val === null || val === undefined || !Number.isFinite(n)) return '—';
+  if (Math.abs(n) < Math.pow(10, -dec) / 2) return (0).toFixed(dec);
+  return n.toFixed(dec);
+}
+const fmtInt = (val) => fmt(val, 0);
+/** Trims a number to at most `dec` decimals without trailing zeros (140 -> "140", 147.5 -> "147.5"). */
+const fmtTrim = (val, dec = 1) => (Number.isFinite(Number(val)) ? String(Number(Number(val).toFixed(dec))) : '—');
+
+/** Evenly spread subset of `list` (keeps the first and last item). */
+function pickSubset(list, max) {
+  if (!max || list.length <= max) return list.slice();
+  const out = [];
+  for (let i = 0; i < max; i++) out.push(list[Math.round((i * (list.length - 1)) / (max - 1))]);
+  return [...new Set(out)];
+}
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const deepClone = (o) => JSON.parse(JSON.stringify(o));
+
+/** Clock position for a wind direction in degrees (90 -> "3:00", 45 -> "1:30"). */
+function clockLabel(deg) {
+  const hours = (((Number(deg) || 0) % 360) + 360) % 360 / 30;
+  let h = Math.floor(hours);
+  let m = Math.round((hours - h) * 60);
+  if (m === 60) { h += 1; m = 0; }
+  if (h === 0) h = 12;
+  return `${h}:${String(m).padStart(2, '0')}`;
 }
 
 export class DopeStudioView {
   constructor(containerElement) {
     this.container = containerElement;
-    this.activeFormat = 'scope-cap'; // 'scope-cap' | 'wrist-coach' | 'stock-tape' | 'prs-stage' | 'a4-sheet'
-    this.scopeCapDiameterMm = 43.9; // Standard Butler Creek #19 size
-    this.printOrientation = 'portrait-3x5'; // 'portrait-3x5' | 'landscape-5x3' | 'full-page'
-    this.builderCollapsed = false;
-    this.cardTheme = 'tactical-night'; // 'tactical-night' | 'milspec-od' | 'match-day'
-    this.highlightedTargetIdx = null;
 
-    // Standard Match Stage Presets
+    const saved = this._loadSettings();
+    this.activeFormat = saved.format;
+    this.scopeCapDiameterMm = saved.capMm;
+    this.turretCircumferenceMm = saved.tapeCircMm;
+    this.turretTapeHeightMm = saved.tapeHeightMm;
+    this.turretClicksPerTurn = saved.clicksPerTurn;
+    this.printOrientation = saved.orientation;
+    this.cardTheme = saved.theme;
+    this._undo = null;
+
+    // Match stage presets (plain text; positions are listed in shooting order)
     this.presets = {
       'rooftop-barricade': {
         id: 'rooftop-barricade',
-        name: 'Stage 4: Rooftop & Barricade',
+        name: 'Stage 4: Rooftop and barricade',
         timeLimitSec: 90,
-        propsDescription: 'Pos 1: Tank Trap (2) ➔ Pos 2: Cable Spool (2) ➔ Pos 3: Barricade (3) ➔ Pos 4: Rooftop (3)',
+        propsDescription: 'Tank trap (2), then cable spool (2), then barricade (3), then rooftop (3)',
         windBaseMs: 4.0,
         windLullMs: 2.0,
         windGustMs: 6.0,
         windDirectionDeg: 90,
         targets: [
-          { id: 't1', name: 'T1 - Center Gong', shape: 'gong', distanceM: 380, widthCm: 30, heightCm: 30, rounds: 2, prop: 'Pos 1: Tank Trap', notes: 'Center hold', offsetM: 0 },
-          { id: 't2', name: 'T2 - IPSC Left', shape: 'ipsc', distanceM: 520, widthCm: 45, heightCm: 75, rounds: 2, prop: 'Pos 2: Spool', notes: 'Left edge if gusting', offsetM: -18 },
-          { id: 't3', name: 'T3 - Diamond Popper', shape: 'diamond', distanceM: 640, widthCm: 30, heightCm: 30, rounds: 3, prop: 'Pos 3: Barricade', notes: 'Small plate - steady bag', offsetM: 15 },
-          { id: 't4', name: 'T4 - Far Gong', shape: 'gong', distanceM: 780, widthCm: 40, heightCm: 40, rounds: 3, prop: 'Pos 4: Rooftop', notes: 'Watch mirage / splash', offsetM: 5 },
+          { id: 't1', name: 'Center gong', shape: 'gong', distanceM: 380, widthCm: 30, heightCm: 30, rounds: 2, prop: 'Tank trap', notes: 'Center hold', offsetM: 0 },
+          { id: 't2', name: 'IPSC left', shape: 'ipsc', distanceM: 520, widthCm: 45, heightCm: 75, rounds: 2, prop: 'Cable spool', notes: 'Left edge if gusting', offsetM: -18 },
+          { id: 't3', name: 'Diamond plate', shape: 'diamond', distanceM: 640, widthCm: 30, heightCm: 30, rounds: 3, prop: 'Barricade', notes: 'Small plate, steady bag', offsetM: 15 },
+          { id: 't4', name: 'Far gong', shape: 'gong', distanceM: 780, widthCm: 40, heightCm: 40, rounds: 3, prop: 'Rooftop', notes: 'Watch mirage and splash', offsetM: 5 },
         ],
       },
       'troop-line': {
         id: 'troop-line',
-        name: 'Stage 2: Troop Line',
+        name: 'Stage 2: Troop line',
         timeLimitSec: 90,
-        propsDescription: 'Prone from Mat: 2 rounds each near to far (10 rnds total)',
+        propsDescription: 'Prone from the mat: 2 shots on each target, near to far (10 shots)',
         windBaseMs: 4.0,
         windLullMs: 2.0,
         windGustMs: 6.0,
         windDirectionDeg: 90,
         targets: [
-          { id: 't1', name: 'T1 - 300m Gong', shape: 'gong', distanceM: 300, widthCm: 30, heightCm: 30, rounds: 2, prop: 'Prone Mat', notes: 'Fast cadence', offsetM: -12 },
-          { id: 't2', name: 'T2 - 400m Gong', shape: 'gong', distanceM: 400, widthCm: 35, heightCm: 35, rounds: 2, prop: 'Prone Mat', notes: 'Smooth trigger squeeze', offsetM: -6 },
-          { id: 't3', name: 'T3 - 500m Gong', shape: 'gong', distanceM: 500, widthCm: 40, heightCm: 40, rounds: 2, prop: 'Prone Mat', notes: 'Check wind flag', offsetM: 0 },
-          { id: 't4', name: 'T4 - 600m Gong', shape: 'gong', distanceM: 600, widthCm: 45, heightCm: 45, rounds: 2, prop: 'Prone Mat', notes: 'Steady follow-through', offsetM: 8 },
-          { id: 't5', name: 'T5 - 700m Gong', shape: 'gong', distanceM: 700, widthCm: 50, heightCm: 50, rounds: 2, prop: 'Prone Mat', notes: 'Watch bullet trace', offsetM: 16 },
+          { id: 't1', name: '300 m gong', shape: 'gong', distanceM: 300, widthCm: 30, heightCm: 30, rounds: 2, prop: 'Prone mat', notes: 'Fast cadence', offsetM: -12 },
+          { id: 't2', name: '400 m gong', shape: 'gong', distanceM: 400, widthCm: 35, heightCm: 35, rounds: 2, prop: 'Prone mat', notes: 'Smooth trigger press', offsetM: -6 },
+          { id: 't3', name: '500 m gong', shape: 'gong', distanceM: 500, widthCm: 40, heightCm: 40, rounds: 2, prop: 'Prone mat', notes: 'Check the wind flag', offsetM: 0 },
+          { id: 't4', name: '600 m gong', shape: 'gong', distanceM: 600, widthCm: 45, heightCm: 45, rounds: 2, prop: 'Prone mat', notes: 'Follow through', offsetM: 8 },
+          { id: 't5', name: '700 m gong', shape: 'gong', distanceM: 700, widthCm: 50, heightCm: 50, rounds: 2, prop: 'Prone mat', notes: 'Watch the trace', offsetM: 16 },
         ],
       },
       'kyl-rack': {
         id: 'kyl-rack',
-        name: 'Stage 5: KYL Rack (Know Your Limits)',
+        name: 'Stage 5: KYL rack',
         timeLimitSec: 90,
-        propsDescription: 'Pos 1: Modified Prone - 2 shots per circle, decreasing size, stop on miss',
+        propsDescription: 'Modified prone: 2 shots per plate, biggest to smallest, stop at the first miss',
         windBaseMs: 3.5,
         windLullMs: 1.5,
         windGustMs: 5.5,
         windDirectionDeg: 90,
         targets: [
-          { id: 't1', name: 'T1 - 30cm (12") KYL', shape: 'kyl', distanceM: 400, widthCm: 30, heightCm: 30, rounds: 2, prop: 'Mod Prone', notes: '10 pts - free hit', offsetM: -16 },
-          { id: 't2', name: 'T2 - 25cm (10") KYL', shape: 'kyl', distanceM: 400, widthCm: 25, heightCm: 25, rounds: 2, prop: 'Mod Prone', notes: '20 pts - center hold', offsetM: -8 },
-          { id: 't3', name: 'T3 - 20cm (8") KYL', shape: 'kyl', distanceM: 400, widthCm: 20, heightCm: 20, rounds: 2, prop: 'Mod Prone', notes: '30 pts - steady rear bag', offsetM: 0 },
-          { id: 't4', name: 'T4 - 15cm (6") KYL', shape: 'kyl', distanceM: 400, widthCm: 15, heightCm: 15, rounds: 2, prop: 'Mod Prone', notes: '40 pts - wait on lull', offsetM: 8 },
-          { id: 't5', name: 'T5 - 10cm (4") KYL', shape: 'kyl', distanceM: 400, widthCm: 10, heightCm: 10, rounds: 2, prop: 'Mod Prone', notes: '50 pts - risk/reward bank', offsetM: 16 },
+          { id: 't1', name: '30 cm plate', shape: 'kyl', distanceM: 400, widthCm: 30, heightCm: 30, rounds: 2, prop: 'Modified prone', notes: '10 points', offsetM: -16 },
+          { id: 't2', name: '25 cm plate', shape: 'kyl', distanceM: 400, widthCm: 25, heightCm: 25, rounds: 2, prop: 'Modified prone', notes: '20 points', offsetM: -8 },
+          { id: 't3', name: '20 cm plate', shape: 'kyl', distanceM: 400, widthCm: 20, heightCm: 20, rounds: 2, prop: 'Modified prone', notes: '30 points', offsetM: 0 },
+          { id: 't4', name: '15 cm plate', shape: 'kyl', distanceM: 400, widthCm: 15, heightCm: 15, rounds: 2, prop: 'Modified prone', notes: '40 points, wait for a lull', offsetM: 8 },
+          { id: 't5', name: '10 cm plate', shape: 'kyl', distanceM: 400, widthCm: 10, heightCm: 10, rounds: 2, prop: 'Modified prone', notes: '50 points', offsetM: 16 },
         ],
       },
       'far-to-near': {
         id: 'far-to-near',
-        name: 'Stage 3: Far-to-Near Barricade',
+        name: 'Stage 3: Far to near',
         timeLimitSec: 105,
-        propsDescription: 'Pos 1: Tank Trap (2) ➔ Pos 2: Spool (2) ➔ Pos 3: Barricade (3) ➔ Pos 4: Rooftop (3)',
+        propsDescription: 'Tank trap (2), then spool (2), then barricade (3), then rooftop (3)',
         windBaseMs: 4.5,
         windLullMs: 2.0,
         windGustMs: 7.0,
         windDirectionDeg: 90,
         targets: [
-          { id: 't1', name: 'T1 - Far IPSC Torso', shape: 'ipsc', distanceM: 750, widthCm: 45, heightCm: 75, rounds: 2, prop: 'Pos 1: Tank Trap', notes: 'Engage first before mirage kicks', offsetM: 14 },
-          { id: 't2', name: 'T2 - Mid Diamond', shape: 'diamond', distanceM: 620, widthCm: 35, heightCm: 35, rounds: 2, prop: 'Pos 2: Spool', notes: 'Lock support elbow', offsetM: -18 },
-          { id: 't3', name: 'T3 - Mid Square', shape: 'square', distanceM: 480, widthCm: 30, heightCm: 30, rounds: 3, prop: 'Pos 3: Barricade', notes: 'Quick dial, firm grip', offsetM: 8 },
-          { id: 't4', name: 'T4 - Near Gong', shape: 'gong', distanceM: 350, widthCm: 25, heightCm: 25, rounds: 3, prop: 'Pos 4: Rooftop', notes: 'Sprint finish, rapid splits', offsetM: -10 },
+          { id: 't1', name: 'Far IPSC', shape: 'ipsc', distanceM: 750, widthCm: 45, heightCm: 75, rounds: 2, prop: 'Tank trap', notes: 'Shoot first, before the mirage builds', offsetM: 14 },
+          { id: 't2', name: 'Middle diamond', shape: 'diamond', distanceM: 620, widthCm: 35, heightCm: 35, rounds: 2, prop: 'Spool', notes: 'Lock the support elbow', offsetM: -18 },
+          { id: 't3', name: 'Middle square', shape: 'square', distanceM: 480, widthCm: 30, heightCm: 30, rounds: 3, prop: 'Barricade', notes: 'Quick dial, firm grip', offsetM: 8 },
+          { id: 't4', name: 'Near gong', shape: 'gong', distanceM: 350, widthCm: 25, heightCm: 25, rounds: 3, prop: 'Rooftop', notes: 'Fast finish', offsetM: -10 },
         ],
       },
       'skills-stage': {
         id: 'skills-stage',
-        name: 'PRS Skills Stage 1',
+        name: 'Skills stage 1',
         timeLimitSec: 90,
-        propsDescription: '2 Steel Targets: Low Barricade (3) ➔ Mid Barricade (4) ➔ High Barricade (3)',
+        propsDescription: '2 steel targets: low barricade (3), then middle (4), then high (3)',
         windBaseMs: 4.0,
         windLullMs: 2.0,
         windGustMs: 6.0,
         windDirectionDeg: 90,
         targets: [
-          { id: 't1', name: 'T1 - Near Steel', shape: 'gong', distanceM: 380, widthCm: 30, heightCm: 30, rounds: 5, prop: 'Low/Mid/High Barricade', notes: 'Primary target (5 rnds)', offsetM: -12 },
-          { id: 't2', name: 'T2 - Far IPSC', shape: 'ipsc', distanceM: 580, widthCm: 45, heightCm: 75, rounds: 5, prop: 'Low/Mid/High Barricade', notes: 'Secondary target (5 rnds)', offsetM: 16 },
+          { id: 't1', name: 'Near steel', shape: 'gong', distanceM: 380, widthCm: 30, heightCm: 30, rounds: 5, prop: 'Low, middle, high barricade', notes: 'Main target (5 shots)', offsetM: -12 },
+          { id: 't2', name: 'Far IPSC', shape: 'ipsc', distanceM: 580, widthCm: 45, heightCm: 75, rounds: 5, prop: 'Low, middle, high barricade', notes: 'Second target (5 shots)', offsetM: 16 },
         ],
       },
     };
+    this.presetLabels = {
+      'troop-line': 'Troop line (300–700 m)',
+      'kyl-rack': 'KYL rack (400 m)',
+      'far-to-near': 'Far to near',
+      'skills-stage': 'Skills stage',
+      'rooftop-barricade': 'Rooftop and barricade',
+    };
 
-    // Load active stage state
     this.prsStage = this._loadStageState();
 
-    // Subscribe to central state updates (units, profile, atmosphere)
+    // Every change that affects the numbers on the cards re-renders the view
+    const keys = new Set(['units', 'displayUnits', 'profile', 'profiles', 'activeProfile', 'environment', 'activeEnvironment', 'target', 'solverConfig', 'import', 'projectiles', 'dopeRanges']);
     this.unsubscribe = appState.subscribe((state, changeKey) => {
-      if (changeKey === 'units' || changeKey === 'profile' || changeKey === 'environment' || changeKey === 'displayUnits') {
-        this.render();
-      }
+      if (keys.has(changeKey)) this.render();
     });
+
+    this._onClick = (e) => this._handleClick(e);
+    this._onChange = (e) => this._handleChange(e);
+    this._onKeydown = (e) => this._handleKeydown(e);
+    this._onPointerOver = (e) => this._handleHover(e, true);
+    this._onPointerOut = (e) => this._handleHover(e, false);
+    if (typeof this.container.addEventListener === 'function') {
+      this.container.addEventListener('click', this._onClick);
+      this.container.addEventListener('change', this._onChange);
+      this.container.addEventListener('keydown', this._onKeydown);
+      this.container.addEventListener('pointerover', this._onPointerOver);
+      this.container.addEventListener('pointerout', this._onPointerOut);
+    }
 
     this.render();
   }
@@ -141,9 +294,63 @@ export class DopeStudioView {
     if (this.prsStage) this.prsStage.targets = val;
   }
 
+  /** Full rebuild (used after a theme change). */
+  refresh() {
+    this.render();
+  }
+
   destroy() {
-    if (this.unsubscribe) {
-      this.unsubscribe();
+    if (this.unsubscribe) this.unsubscribe();
+    this.unsubscribe = null;
+    if (typeof this.container.removeEventListener === 'function') {
+      this.container.removeEventListener('click', this._onClick);
+      this.container.removeEventListener('change', this._onChange);
+      this.container.removeEventListener('keydown', this._onKeydown);
+      this.container.removeEventListener('pointerover', this._onPointerOver);
+      this.container.removeEventListener('pointerout', this._onPointerOut);
+    }
+    this._resizeObserver?.disconnect();
+    this._resizeObserver = null;
+    if (this._onWindowResize && typeof window !== 'undefined') window.removeEventListener('resize', this._onWindowResize);
+  }
+
+  // ---- persistence ------------------------------------------------------------------------------
+
+  _loadSettings() {
+    const defaults = { format: 'a4-sheet', capMm: 43.9, tapeCircMm: 94.2, tapeHeightMm: 14, clicksPerTurn: 100, orientation: 'portrait-3x5', theme: 'light' };
+    let parsed = null;
+    try {
+      parsed = typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null') : null;
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || typeof parsed !== 'object') return defaults;
+    const n = (v, lo, hi, d) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : d);
+    const theme = LEGACY_THEMES[parsed.theme] || parsed.theme;
+    return {
+      format: FORMAT_IDS.includes(parsed.format) ? parsed.format : defaults.format,
+      capMm: n(parsed.capMm, 25, 85, defaults.capMm),
+      tapeCircMm: n(parsed.tapeCircMm, 60, 180, defaults.tapeCircMm),
+      tapeHeightMm: n(parsed.tapeHeightMm, 8, 25, defaults.tapeHeightMm),
+      clicksPerTurn: Math.round(n(parsed.clicksPerTurn, 40, 200, defaults.clicksPerTurn)),
+      orientation: STAGE_SIZES.some((s) => s.id === parsed.orientation) ? parsed.orientation : defaults.orientation,
+      theme: CARD_THEMES.some((t) => t.id === theme) ? theme : defaults.theme,
+    };
+  }
+
+  _saveSettings() {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+        format: this.activeFormat,
+        capMm: this.scopeCapDiameterMm,
+        tapeCircMm: this.turretCircumferenceMm,
+        tapeHeightMm: this.turretTapeHeightMm,
+        clicksPerTurn: this.turretClicksPerTurn,
+        orientation: this.printOrientation,
+        theme: this.cardTheme,
+      }));
+    } catch {
+      // Storage blocked: the settings simply last for this visit
     }
   }
 
@@ -157,10 +364,17 @@ export class DopeStudioView {
             // Rebuild the stage from known fields only (numbers finite, text capped)
             const template = this.presets['rooftop-barricade'];
             const stage = shapeLike(parsed, { ...template, targets: [] });
+            stage.timeLimitSec = clamp(stage.timeLimitSec, 10, 600);
+            stage.windDirectionDeg = clamp(stage.windDirectionDeg, 0, 359);
+            for (const k of ['windBaseMs', 'windLullMs', 'windGustMs']) stage[k] = clamp(stage[k], 0, 40);
             stage.targets = parsed.targets.slice(0, 30).map((t, i) => {
               const clean = shapeLike(t, { ...template.targets[0], id: `t${i + 1}`, offsetM: (i % 2 === 0 ? -1 : 1) * 12 });
-              if (!['gong', 'ipsc', 'square', 'diamond', 'kyl'].includes(clean.shape)) clean.shape = 'gong';
+              if (!Object.hasOwn(SHAPES, clean.shape)) clean.shape = 'gong';
               clean.rounds = Math.max(1, Math.min(20, Math.round(clean.rounds)));
+              clean.distanceM = clamp(clean.distanceM, 10, 2500);
+              clean.widthCm = clamp(clean.widthCm, 1, 500);
+              clean.heightCm = clamp(clean.heightCm, 1, 500);
+              clean.offsetM = clamp(clean.offsetM, -100, 100);
               return clean;
             });
             return stage;
@@ -170,8 +384,7 @@ export class DopeStudioView {
         console.warn('Failed to parse saved PRS stage state:', e);
       }
     }
-    // Deep clone default preset
-    return JSON.parse(JSON.stringify(this.presets['rooftop-barricade']));
+    return deepClone(this.presets['rooftop-barricade']);
   }
 
   _saveStageState() {
@@ -185,34 +398,94 @@ export class DopeStudioView {
   }
 
   setFormat(format) {
+    if (!FORMAT_IDS.includes(format)) return;
     this.activeFormat = format;
+    this._saveSettings();
     this.render();
   }
 
   setPrintOrientation(orientation) {
+    if (!STAGE_SIZES.some((s) => s.id === orientation)) return;
     this.printOrientation = orientation;
+    this._saveSettings();
     this.render();
   }
 
   setTheme(theme) {
-    this.cardTheme = theme;
+    const id = LEGACY_THEMES[theme] || theme;
+    if (!CARD_THEMES.some((t) => t.id === id)) return;
+    this.cardTheme = id;
+    this._saveSettings();
     this.render();
   }
 
   loadPreset(presetKey) {
-    if (this.presets[presetKey]) {
-      this.prsStage = JSON.parse(JSON.stringify(this.presets[presetKey]));
-      this._saveStageState();
-      this.render();
-    }
+    if (!this.presets[presetKey]) return;
+    this._remember(`Loaded the “${this.presetLabels[presetKey] || presetKey}” preset.`);
+    this.prsStage = deepClone(this.presets[presetKey]);
+    this._saveStageState();
+    this.render();
   }
 
+  // ---- units ------------------------------------------------------------------------------------
+
+  /** Display units for this render, from Settings (system units + display units). */
+  _units() {
+    const s = appState.state;
+    const du = s.displayUnits || {};
+    const imp = s.systemUnits === 'imperial';
+    const yd = (du.distance || (imp ? 'yd' : 'm')) === 'yd';
+    const mph = (du.windSpeed || (imp ? 'mph' : 'm/s')) === 'mph';
+    const fps = (du.velocity || (imp ? 'fps' : 'm/s')) === 'fps';
+    const inch = (du.dropOffset || (imp ? 'in' : 'cm')) === 'in';
+    const ftlb = (du.energy || (imp ? 'ft-lb' : 'J')) === 'ft-lb';
+    const degF = (du.temperature || (imp ? 'F' : 'C')) === 'F';
+    const inHg = (du.pressure || (imp ? 'inHg' : 'hPa')) === 'inHg';
+    const elevMoa = (du.elevationAngle || 'MRAD') === 'MOA';
+    const windMoa = (du.windageAngle || du.elevationAngle || 'MRAD') === 'MOA';
+    return {
+      imp,
+      dist: yd ? 'yd' : 'm',
+      fromM: (m) => (yd ? m / M_PER_YD : m),
+      toM: (d) => (yd ? d * M_PER_YD : d),
+      size: inch ? 'in' : 'cm',
+      fromCm: (cm) => (inch ? cm / 2.54 : cm),
+      toCm: (v) => (inch ? v * 2.54 : v),
+      vel: fps ? 'fps' : 'm/s',
+      fromMs: (v) => (fps ? v / 0.3048 : v),
+      wind: mph ? 'mph' : 'm/s',
+      windFromMs: (v) => (mph ? v / MS_PER_MPH : v),
+      windToMs: (v) => (mph ? v * MS_PER_MPH : v),
+      windSpeeds: mph ? [5, 10, 15] : [2, 4, 6],
+      tapeSpeeds: mph ? [10, 20] : [4, 8],
+      energy: ftlb ? 'ft·lb' : 'J',
+      fromJ: (j) => (ftlb ? j / 1.3558179483314 : j),
+      alt: yd || imp ? 'ft' : 'm',
+      fromAltM: (m) => (yd || imp ? m / 0.3048 : m),
+      temp: degF ? '°F' : '°C',
+      fromC: (c) => (degF ? (c * 9) / 5 + 32 : c),
+      press: inHg ? 'inHg' : 'hPa',
+      fromHpa: (h) => (inHg ? h / 33.863886666667 : h),
+      pressDec: inHg ? 2 : 0,
+      elev: elevMoa ? 'MOA' : 'MRAD',
+      windAng: windMoa ? 'MOA' : 'MRAD',
+      elevFromRad: (r) => (elevMoa ? r * RAD_TO_MOA : r * 1000),
+      windFromRad: (r) => (windMoa ? r * RAD_TO_MOA : r * 1000),
+    };
+  }
+
+  // ---- ballistics -------------------------------------------------------------------------------
+
   /**
-   * High-accuracy trajectory solver with custom wind override
+   * Trajectory for the active rifle and environment. With windSpeedMs / windDirDeg the wind is
+   * replaced by one uniform wind (used for the stage card's lull, base and gust and for the wind
+   * hold columns); without them the active environment is used as it is.
    */
   computeDope(stepM = 10, maxRangeM = 1200, customWindSpeedMs = null, customWindDirDeg = null) {
     const profile = appState.getActiveProfile();
     const env = appState.getActiveEnvironment();
+    const config = appState.state.solverConfig || {};
+    const algorithm = config.activeAlgorithm || (profile.bullet?.dragModel === 'G1' ? 'G1' : 'G7');
     const atmos = getAtmosphericConditions({
       pressurePa: env.pressureHpa * 100,
       tempK: env.temperatureC + 273.15,
@@ -220,29 +493,33 @@ export class DopeStudioView {
       altitudeM: env.altitudeM,
     });
 
-    const zeroAngle = solveZeroAngle(profile, env, atmos.densityKgM3, atmos.speedOfSoundMs);
-    const testProfile = { ...profile, zeroAngleRad: zeroAngle };
+    const testEnv = customWindSpeedMs === null && customWindDirDeg === null
+      ? env
+      : {
+        ...env,
+        windSpeedMs: customWindSpeedMs ?? env.windSpeedMs ?? 0,
+        windDirectionDeg: customWindDirDeg ?? env.windDirectionDeg ?? 90,
+        windZones: [],
+      };
 
-    const effectiveWindSpeed = customWindSpeedMs !== null ? customWindSpeedMs : (env.windSpeedMs || 4.0);
-    const effectiveWindDir = customWindDirDeg !== null ? customWindDirDeg : (env.windDirectionDeg || 90.0);
-
-    const testEnv = {
-      ...env,
-      windSpeedMs: effectiveWindSpeed,
-      windDirectionDeg: effectiveWindDir,
-      windZones: [
-        { startM: 0, endM: 2500, speedMs: effectiveWindSpeed, directionDeg: effectiveWindDir },
-      ],
-    };
+    // One zero angle per rifle/atmosphere, shared by the lull/base/gust solves
+    const zeroKey = `${profile.id}|${profile.zeroDistanceM}|${profile.muzzleVelocityMs}|${profile.sightHeightM}|${atmos.densityKgM3}|${algorithm}|${profile.bullet?.bcG7}|${profile.bullet?.bcG1}|${profile.bullet?.weightGr}`;
+    if (this._zeroKey !== zeroKey) {
+      this._zeroKey = zeroKey;
+      this._zeroAngle = solveZeroAngle(profile, env, atmos.densityKgM3, atmos.speedOfSoundMs, algorithm);
+    }
 
     const sol = solveTrajectory({
-      profile: testProfile,
+      profile: { ...profile, zeroAngleRad: this._zeroAngle },
       environment: testEnv,
       airDensity: atmos.densityKgM3,
       speedOfSound: atmos.speedOfSoundMs,
-      algorithm: profile.bullet.dragModel === 'G1' ? 'G1' : 'G7',
+      algorithm,
       stepM,
       maxRangeM,
+      includeSpinDrift: config.includeSpinDrift ?? true,
+      includeCoriolis: config.includeCoriolis ?? true,
+      includeAerodynamicJump: config.includeAerodynamicJump ?? true,
     });
 
     return {
@@ -256,1982 +533,1243 @@ export class DopeStudioView {
   }
 
   /**
-   * Interpolate trajectory point at exact distance
+   * Trajectory values at an exact distance, interpolated linearly between the two nearest table
+   * rows. Returns null outside the computed trajectory (e.g. the bullet stopped short).
    */
   interpolateTrajectory(traj, distanceM) {
-    if (!traj || traj.length === 0) return null;
-    if (distanceM <= traj[0].distanceM) return traj[0];
-    if (distanceM >= traj[traj.length - 1].distanceM) return traj[traj.length - 1];
-
-    let p0 = traj[0];
-    let p1 = traj[traj.length - 1];
-
-    for (let i = 0; i < traj.length - 1; i++) {
-      if (traj[i].distanceM <= distanceM && traj[i + 1].distanceM >= distanceM) {
-        p0 = traj[i];
-        p1 = traj[i + 1];
-        break;
-      }
+    if (!Array.isArray(traj) || traj.length < 2 || !Number.isFinite(distanceM)) return null;
+    const last = traj[traj.length - 1];
+    if (distanceM < traj[0].distanceM || distanceM > last.distanceM + 1e-6) return null;
+    let i = 0;
+    while (i < traj.length - 2 && traj[i + 1].distanceM < distanceM) i++;
+    const p0 = traj[i];
+    const p1 = traj[i + 1];
+    const span = p1.distanceM - p0.distanceM;
+    const f = span > 0 ? clamp((distanceM - p0.distanceM) / span, 0, 1) : 0;
+    const out = { distanceM };
+    for (const key of Object.keys(p0)) {
+      if (key === 'distanceM') continue;
+      const a = p0[key];
+      const b = p1[key];
+      if (typeof a === 'number' && typeof b === 'number') out[key] = a + f * (b - a);
     }
+    // Descent angle (slope of the path against the line of sight), used for danger space
+    out.slope = span > 0 ? (p1.dropM - p0.dropM) / span : 0;
+    return out;
+  }
 
-    const span = Math.max(0.0001, p1.distanceM - p0.distanceM);
-    const frac = Math.max(0, Math.min(1, (distanceM - p0.distanceM) / span));
-
-    return {
-      distanceM,
-      dropM: p0.dropM + frac * (p1.dropM - p0.dropM),
-      elevationRad: p0.elevationRad + frac * (p1.elevationRad - p0.elevationRad),
-      elevationMrad: p0.elevationMrad + frac * (p1.elevationMrad - p0.elevationMrad),
-      elevationMoa: p0.elevationMoa + frac * (p1.elevationMoa - p0.elevationMoa),
-      elevationClicks: Math.round(p0.elevationClicks + frac * (p1.elevationClicks - p0.elevationClicks)),
-      driftM: p0.driftM + frac * (p1.driftM - p0.driftM),
-      windageRad: p0.windageRad + frac * (p1.windageRad - p0.windageRad),
-      windageMrad: p0.windageMrad + frac * (p1.windageMrad - p0.windageMrad),
-      windageMoa: p0.windageMoa + frac * (p1.windageMoa - p0.windageMoa),
-      windageClicks: Math.round(p0.windageClicks + frac * (p1.windageClicks - p0.windageClicks)),
-      velocityMs: p0.velocityMs + frac * (p1.velocityMs - p0.velocityMs),
-      mach: p0.mach + frac * (p1.mach - p0.mach),
-      energyJ: p0.energyJ + frac * (p1.energyJ - p0.energyJ),
-      tofS: p0.tofS + frac * (p1.tofS - p0.tofS),
-      dangerSpaceM: p0.dangerSpaceM + frac * (p1.dangerSpaceM - p0.dangerSpaceM),
-    };
+  /** Clicks for an angle, from the optic's click value (not the unit system). */
+  _clicks(angleRad, profile) {
+    const clickRad = num(profile.optic?.clickValueRad, 0.0001) || 0.0001;
+    return Math.round(angleRad / clickRad);
   }
 
   /**
-   * Compute comprehensive ballistics for each target across Base, Lull, and Gust winds
+   * Rows for the range-based cards. Wind holds are wind-only (a 90° crosswind solve minus a calm
+   * solve), so they scale cleanly to other wind speeds; drift with no wind is listed separately.
+   */
+  _rangeRows(distancesM) {
+    const u = this._units();
+    const maxNeeded = Math.max(300, ...distancesM, ...this._reticleDefaults(u)) + 20;
+    const maxRangeM = Math.min(3000, maxNeeded);
+    const refMs = 4;
+    const base = this.computeDope(10, maxRangeM);
+    const calm = this.computeDope(10, maxRangeM, 0, 90);
+    const ref = this.computeDope(10, maxRangeM, refMs, 90);
+    const profile = base.profile;
+
+    const rowAt = (d) => {
+      const p = this.interpolateTrajectory(base.trajectory, d);
+      const c = this.interpolateTrajectory(calm.trajectory, d);
+      const r = this.interpolateTrajectory(ref.trajectory, d);
+      if (!p || !c || !r) return null;
+      const windPerMsRad = Math.abs(r.windageRad - c.windageRad) / refMs;
+      const windHold = (speedDisp) => u.windFromRad(windPerMsRad * u.windToMs(speedDisp));
+      return {
+        distanceM: d,
+        dist: u.fromM(d),
+        dropM: p.dropM,
+        elevRad: p.elevationRad,
+        elev: u.elevFromRad(p.elevationRad),
+        clicks: this._clicks(p.elevationRad, profile),
+        windHold,
+        noWindDriftM: c.driftM,
+        velocityMs: p.velocityMs,
+        mach: p.mach,
+        energyJ: p.energyJ,
+        tofS: p.tofS,
+      };
+    };
+    const rows = distancesM.map(rowAt).filter(Boolean);
+    return { rows, rowAt, dope: base, skipped: distancesM.length - rows.length };
+  }
+
+  _reticleDefaults(u) {
+    // Distances for the reticle holds on the full page (every 100 m / yd, 200-1000)
+    return [200, 300, 400, 500, 600, 700, 800, 900, 1000].map((d) => u.toM(d));
+  }
+
+  /** Default distances (metres) for a format, in round numbers of the display unit. */
+  _defaultRanges(formatId, u) {
+    const grid = (from, to, step) => {
+      const out = [];
+      for (let d = from; d <= to + 1e-9; d += step) out.push(u.toM(d));
+      return out;
+    };
+    switch (formatId) {
+      case 'wrist-coach': return grid(100, 1000, 50);
+      case 'stock-tape': return grid(200, 1000, 100);
+      case 'turret-tape': return grid(100, 1500, 100);
+      case 'a4-sheet': return grid(50, u.dist === 'yd' ? 1300 : 1200, 50);
+      case 'scope-cap':
+      default: return grid(100, 1000, 100);
+    }
+  }
+
+  /** Which distances a format uses: the ones ticked in the Solver, or the defaults. */
+  _rangesFor(fmtDef, u) {
+    const raw = Array.isArray(appState.state.customDopeRanges) ? appState.state.customDopeRanges : [];
+    const custom = [...new Set(raw.filter((d) => Number.isFinite(d) && d > 0 && d <= 5000))].sort((a, b) => a - b);
+    const fromSolver = custom.length > 0;
+    const all = fromSolver ? custom : this._defaultRanges(fmtDef.id, u);
+    const shown = pickSubset(all, fmtDef.maxRanges);
+    return { fromSolver, all, shown };
+  }
+
+  /**
+   * Ballistics for each stage target across lull, base and gust wind.
    */
   computeStageBallistics(stage, baseDope, lullDope, gustDope, profile, isImperial) {
-    const opticClickValRad = profile.optic?.clickValueRad || (isImperial ? 0.000072722 : 0.0001);
-    const isOpticMoa = profile.optic?.clickName?.includes('MOA') || (isImperial && !profile.optic?.clickName?.includes('MRAD'));
+    const u = this._units();
+    if (typeof isImperial === 'boolean' && isImperial !== u.imp) {
+      // Callers may force a unit system (tests); keep distances and sizes consistent with it
+      Object.assign(u, isImperial
+        ? { dist: 'yd', fromM: (m) => m / M_PER_YD, size: 'in', fromCm: (cm) => cm / 2.54, vel: 'fps', fromMs: (v) => v / 0.3048, energy: 'ft·lb', fromJ: (j) => j / 1.3558179483314 }
+        : { dist: 'm', fromM: (m) => m, size: 'cm', fromCm: (cm) => cm, vel: 'm/s', fromMs: (v) => v, energy: 'J', fromJ: (j) => j });
+    }
 
     return stage.targets.map((t, idx) => {
       const pBase = this.interpolateTrajectory(baseDope.trajectory, t.distanceM);
       const pLull = this.interpolateTrajectory(lullDope.trajectory, t.distanceM);
       const pGust = this.interpolateTrajectory(gustDope.trajectory, t.distanceM);
 
-      // Clicks calculation
-      const dialClicks = Math.round(pBase.elevationRad / opticClickValRad);
+      const widthCm = num(t.widthCm, 30);
+      const heightCm = num(t.heightCm, widthCm);
+      const distM = Math.max(1, num(t.distanceM, 100));
 
-      // Danger Space calculation based on exact target vertical height
-      // Danger Space = TargetHeight / flightAngle. Larger target height -> larger danger space window.
-      const targetHeightM = Math.max(0.05, (t.heightCm || t.widthCm || 30) / 100);
-      const flightAngle = Math.max(0.0015, Math.abs(pBase.dropM) / Math.max(1, t.distanceM));
-      const dangerSpaceM = Math.min(250, targetHeightM / flightAngle);
-      const dangerSpaceDisplay = isImperial ? Math.round(UnitConverter.convert(dangerSpaceM, 'm', 'yd')) : Math.round(dangerSpaceM);
+      // Danger space: how far the range estimate can be off and still hit, aiming at the centre.
+      // Total depth = target height / descent angle (slope of the path at the target).
+      const targetHeightM = Math.max(0.02, heightCm / 100);
+      const slope = pBase ? Math.abs(pBase.slope) : NaN;
+      const dangerSpaceM = Number.isFinite(slope) ? Math.min(1000, targetHeightM / Math.max(slope, 1e-4)) : NaN;
 
-      // 3-Way Wind holds (MRAD and MOA)
-      const lullHold = isOpticMoa ? Math.abs(pLull.windageMoa) : Math.abs(pLull.windageMrad);
-      const baseHold = isOpticMoa ? Math.abs(pBase.windageMoa) : Math.abs(pBase.windageMrad);
-      const gustHold = isOpticMoa ? Math.abs(pGust.windageMoa) : Math.abs(pGust.windageMrad);
+      const hold = (p) => (p ? Math.abs(u.windFromRad(p.windageRad)) : NaN);
+      const isHoldRight = pBase ? pBase.windageRad >= 0 : true;
 
-      // Hold direction indicator (L / R)
-      // If wind is from 90° (from right), bullet drifts left, so hold into wind is RIGHT (R / ▶)
-      const isHoldRight = pBase.windageRad >= 0;
-      const holdDirLabel = isHoldRight ? 'R' : 'L';
-      const holdArrow = isHoldRight ? '▶' : '◀';
-
-      // Dial value formatted
-      const dialFormatted = isOpticMoa ? formatDec(pBase.elevationMoa, 1) : formatDec(pBase.elevationMrad, 1);
-      const dialUnit = isOpticMoa ? 'MOA' : 'MRAD';
-
-      // Display distance
-      const displayDistance = isImperial ? Math.round(UnitConverter.convert(t.distanceM, 'm', 'yd')) : Math.round(t.distanceM);
-      const displayDistUnit = isImperial ? 'yd' : 'm';
-
-      // Display target size
-      const displayWidth = isImperial ? Math.round(t.widthCm / 2.54) : t.widthCm;
-      const displayHeight = isImperial ? Math.round(t.heightCm / 2.54) : t.heightCm;
-      const displaySizeUnit = isImperial ? '"' : 'cm';
-
-      // Angular Target Size in MIL and MOA
-      const widthM = (t.widthCm || 30) / 100;
-      const heightM = (t.heightCm || 30) / 100;
-      const distM = Math.max(1, t.distanceM);
-      const mradW = (widthM / distM) * 1000;
-      const mradH = (heightM / distM) * 1000;
-      const angularSizeDisplay = isOpticMoa
-        ? `${(mradW * 3.43775).toFixed(1)}×${(mradH * 3.43775).toFixed(1)} MOA`
-        : `${mradW.toFixed(1)}×${mradH.toFixed(1)} MIL`;
-
-      // Display velocity and energy
-      const displayVel = isImperial ? Math.round(UnitConverter.convert(pBase.velocityMs, 'm/s', 'fps')) : Math.round(pBase.velocityMs);
-      const displayVelUnit = isImperial ? 'fps' : 'm/s';
-      const displayEnergy = isImperial ? Math.round(UnitConverter.convert(pBase.energyJ, 'J', 'ft-lb')) : Math.round(pBase.energyJ);
-      const displayEnergyUnit = isImperial ? 'ft-lb' : 'J';
+      const mradW = (widthCm / 100 / distM) * 1000;
+      const mradH = (heightCm / 100 / distM) * 1000;
+      const ang = (mrad) => (u.windAng === 'MOA' ? mrad * (RAD_TO_MOA / 1000) : mrad);
 
       return {
         ...t,
         index: idx + 1,
-        displayDistance,
-        displayDistUnit,
-        displayWidth,
-        displayHeight,
-        displaySizeUnit,
-        angularSizeDisplay,
-        elevationRad: pBase.elevationRad,
-        dialValue: dialFormatted,
-        dialUnit,
-        clicks: dialClicks,
-        dangerSpaceDisplay,
+        displayDistance: Math.round(u.fromM(distM)),
+        displayDistUnit: u.dist,
+        displayWidth: fmtTrim(u.fromCm(widthCm), 1),
+        displayHeight: fmtTrim(u.fromCm(heightCm), 1),
+        displaySizeUnit: u.size,
+        angularSizeDisplay: `${fmt(ang(mradW), 1)} × ${fmt(ang(mradH), 1)} ${u.windAng}`,
+        elevationRad: pBase ? pBase.elevationRad : NaN,
+        dialValue: pBase ? fmt(u.elevFromRad(pBase.elevationRad), 1) : '—',
+        dialUnit: u.elev,
+        clicks: pBase ? this._clicks(pBase.elevationRad, profile) : NaN,
+        dangerSpaceDisplay: Math.round(u.fromM(dangerSpaceM)),
         dangerSpaceM,
-        lullHold: lullHold.toFixed(1),
-        baseHold: baseHold.toFixed(1),
-        gustHold: gustHold.toFixed(1),
-        holdDirLabel,
-        holdArrow,
-        tofS: pBase.tofS.toFixed(3),
-        velocity: displayVel,
-        velocityUnit: displayVelUnit,
-        energy: displayEnergy,
-        energyUnit: displayEnergyUnit,
+        lullHold: fmt(hold(pLull), 1),
+        baseHold: fmt(hold(pBase), 1),
+        gustHold: fmt(hold(pGust), 1),
+        holdDirLabel: isHoldRight ? 'R' : 'L',
+        tofS: pBase ? fmt(pBase.tofS, 2) : '—',
+        velocity: pBase ? fmtInt(u.fromMs(pBase.velocityMs)) : '—',
+        velocityUnit: u.vel,
+        energy: pBase ? fmtInt(u.fromJ(pBase.energyJ)) : '—',
+        energyUnit: u.energy,
       };
     });
   }
 
-  /**
-   * Render vector SVG silhouette for target shapes
-   */
+  // ---- shared pieces ----------------------------------------------------------------------------
+
+  /** Rifle and conditions summary, formatted and escaped. */
+  _rifleInfo(dope, u) {
+    const p = dope.profile;
+    const env = dope.env;
+    return {
+      name: esc(p.name),
+      caliber: esc(p.caliber),
+      bullet: esc(p.bullet?.name || ''),
+      weight: `${fmtTrim(num(p.bullet?.weightGr, NaN), 1)} gr`,
+      mv: `${fmtInt(u.fromMs(num(p.muzzleVelocityMs, NaN)))} ${u.vel}`,
+      zero: `${fmtInt(u.fromM(num(p.zeroDistanceM, NaN)))} ${u.dist}`,
+      sight: `${fmt(u.fromCm(num(p.sightHeightM, NaN) * 100), u.size === 'in' ? 2 : 1)} ${u.size}`,
+      da: `${fmtInt(u.fromAltM(num(dope.atmos?.densityAltitudeM, NaN)))} ${u.alt}`,
+      temp: `${fmtInt(u.fromC(num(env.temperatureC, NaN)))} ${u.temp}`,
+      press: `${fmt(u.fromHpa(num(env.pressureHpa, NaN)), u.pressDec)} ${u.press}`,
+      optic: esc(p.optic?.model || ''),
+      click: esc(p.optic?.clickName || '0.1 MRAD'),
+      twist: `1:${fmtTrim(num(p.twistRateIn, NaN), 1)} in${p.twistDirection ? `, ${esc(String(p.twistDirection).toLowerCase())}` : ''}`,
+      envName: esc(env.name || ''),
+    };
+  }
+
+  _ruler() {
+    const ticks = [];
+    for (let mm = 0; mm <= 50; mm++) {
+      const len = mm % 10 === 0 ? 36 : mm % 5 === 0 ? 20 : 10;
+      ticks.push(`<line x1="${mm * 4}" y1="0" x2="${mm * 4}" y2="${len}" />`);
+    }
+    const labels = [0, 10, 20, 30, 40, 50].map((mm) => `<text x="${mm === 50 ? mm * 4 - 2 : mm * 4 + 2}" y="31" text-anchor="${mm === 50 ? 'end' : 'start'}">${mm}</text>`).join('');
+    return `
+      <figure class="calibration-ruler-strip">
+        <svg class="calibration-svg" width="50mm" height="9mm" viewBox="0 0 200 36" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="50 millimetre scale bar">
+          <rect x="0.5" y="0.5" width="199" height="35" fill="#ffffff" stroke="#111111" stroke-width="1" />
+          <g stroke="#111111" stroke-width="1">${ticks.join('')}</g>
+          <g font-family="ui-monospace, Menlo, monospace" font-size="9" fill="#111111">${labels}</g>
+        </svg>
+        <figcaption class="ruler-title">Print scale check: this bar should measure 50 mm</figcaption>
+      </figure>`;
+  }
+
+  _cropMarks() {
+    return '<span class="card-crop-corner crop-tl" aria-hidden="true"></span><span class="card-crop-corner crop-tr" aria-hidden="true"></span><span class="card-crop-corner crop-bl" aria-hidden="true"></span><span class="card-crop-corner crop-br" aria-hidden="true"></span>';
+  }
+
+  /** Older callers (tests) pass just the dope object: fill in default rows and units. */
+  _cardArgs(fmtId, rows, dope, u) {
+    if (Array.isArray(rows)) return { rows, dope, u, rowAt: null };
+    const units = this._units();
+    const r = this._rangeRows(pickSubset(this._defaultRanges(fmtId, units), FORMATS.find((f) => f.id === fmtId)?.maxRanges));
+    return { rows: r.rows, dope: r.dope, u: units, rowAt: r.rowAt };
+  }
+
+  // ---- scope cap --------------------------------------------------------------------------------
+
+  renderScopeCapSvg(rowsIn, dopeIn, uIn) {
+    const { rows, dope, u } = this._cardArgs('scope-cap', rowsIn, dopeIn, uIn);
+    const d = this.scopeCapDiameterMm;
+    const info = this._rifleInfo(dope, u);
+    const n = rows.length;
+    let labels = '';
+    rows.forEach((r, idx) => {
+      // Spread the labels over a 280° arc, starting upper left and running clockwise
+      const angleDeg = n > 1 ? -140 + (idx / (n - 1)) * 280 : -90;
+      const a = (angleDeg * Math.PI) / 180;
+      const at = (rad) => [250 + rad * Math.cos(a), 250 + rad * Math.sin(a)];
+      let rot = angleDeg + 90;
+      if (rot > 90 && rot < 270) rot -= 180;
+      const [t1x, t1y] = at(241);
+      const [t2x, t2y] = at(228);
+      const label = (rad, cls, text) => {
+        const [x, y] = at(rad);
+        return `<text ${CAP_TEXT[cls]} transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${rot.toFixed(1)})" text-anchor="middle" dominant-baseline="central">${text}</text>`;
+      };
+      labels += `<line x1="${t1x.toFixed(1)}" y1="${t1y.toFixed(1)}" x2="${t2x.toFixed(1)}" y2="${t2y.toFixed(1)}" stroke="#111111" stroke-width="3" stroke-linecap="round" />`;
+      labels += label(210, 'cap-dist', fmtInt(r.dist));
+      labels += label(170, 'cap-elev', fmt(r.elev, 1));
+      labels += label(134, 'cap-clicks', fmtInt(r.clicks));
+    });
+
+    return `
+      <div class="scope-cap-print-container paper" data-cap-diameter-mm="${d}">
+        <svg viewBox="0 0 500 500" class="scope-cap-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Scope cap insert, ${d} millimetres across, ${n} distances">
+          <circle cx="250" cy="250" r="247" fill="#ffffff" stroke="#111111" stroke-width="2" stroke-dasharray="7 5" />
+          <circle cx="250" cy="250" r="241" fill="none" stroke="#111111" stroke-width="2.5" />
+          <circle cx="250" cy="250" r="190" fill="none" stroke="#9aa3ad" stroke-width="1.2" />
+          <circle cx="250" cy="250" r="152" fill="none" stroke="#c4cad1" stroke-width="1" stroke-dasharray="4 3" />
+          <circle cx="250" cy="250" r="116" fill="#ffffff" stroke="#6b7480" stroke-width="2" />
+          <text ${CAP_CENTER} x="250" y="176" text-anchor="middle" font-size="24" font-weight="900">${info.caliber}</text>
+          <text ${CAP_CENTER} x="250" y="203" text-anchor="middle" font-size="16" font-weight="700">${info.weight} · ${info.mv}</text>
+          <text ${CAP_CENTER} x="250" y="227" text-anchor="middle" font-size="15" font-weight="600">Zero ${info.zero}</text>
+          <rect x="146" y="243" width="208" height="30" rx="15" fill="#0b4f8a" />
+          <text x="250" y="258" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif" font-size="14" font-weight="800" fill="#ffffff">${u.dist} · ${u.elev} · clicks</text>
+          <text ${CAP_CENTER} x="250" y="294" text-anchor="middle" font-size="13" font-weight="600">${info.click} per click</text>
+          <text ${CAP_CENTER} x="250" y="316" text-anchor="middle" font-size="13" font-weight="600">DA ${info.da} · Ø ${fmtTrim(d, 1)} mm</text>
+          ${labels}
+        </svg>
+      </div>`;
+  }
+
+  // ---- wrist card -------------------------------------------------------------------------------
+
+  renderWristCoach(rowsIn, dopeIn, uIn) {
+    const { rows, dope, u } = this._cardArgs('wrist-coach', rowsIn, dopeIn, uIn);
+    const info = this._rifleInfo(dope, u);
+    const speeds = u.windSpeeds;
+    return `
+      <div class="wrist-coach-card print-sheet paper">
+        ${this._cropMarks()}
+        <div class="coach-header">
+          <div class="coach-title-block">
+            <span class="coach-title">${info.name}</span>
+            <span class="coach-spec">${info.caliber} · ${info.weight} · ${info.mv}</span>
+          </div>
+          <div class="coach-meta">
+            <span>Zero ${info.zero}</span>
+            <span>DA ${info.da}</span>
+          </div>
+        </div>
+        <table class="coach-table">
+          <thead>
+            <tr>
+              <th scope="col">Range</th>
+              <th scope="col">Elev.</th>
+              <th scope="col">Clicks</th>
+              <th scope="colgroup" colspan="${speeds.length}" class="coach-wind-head">Wind hold</th>
+              <th scope="col">Speed</th>
+            </tr>
+            <tr class="sub-header-row">
+              <th scope="col">${u.dist}</th>
+              <th scope="col">${u.elev}</th>
+              <th scope="col">${info.click}</th>
+              ${speeds.map((s) => `<th scope="col">${s} ${u.wind}</th>`).join('')}
+              <th scope="col">${u.vel}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r) => `
+              <tr>
+                <td class="cell-dist">${fmtInt(r.dist)}</td>
+                <td class="cell-elev">${fmt(r.elev, 1)}</td>
+                <td class="cell-clk">${fmtInt(r.clicks)}</td>
+                ${speeds.map((s, i) => `<td class="${i === 1 ? 'cell-wind' : ''}">${fmt(r.windHold(s), 1)}</td>`).join('')}
+                <td class="cell-vel">${fmtInt(u.fromMs(r.velocityMs))}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        <p class="coach-footer-note">Wind holds: full-value crosswind (3 or 9 o’clock), wind only. ${esc(info.envName)}</p>
+      </div>`;
+  }
+
+  // ---- stock tape -------------------------------------------------------------------------------
+
+  renderStockTape(rowsIn, dopeIn, uIn) {
+    const { rows, dope, u } = this._cardArgs('stock-tape', rowsIn, dopeIn, uIn);
+    const info = this._rifleInfo(dope, u);
+    const [w1, w2] = u.tapeSpeeds;
+    return `
+      <div class="stock-tape-strip print-sheet paper">
+        <div class="tape-header">
+          <span class="tape-header-weapon">${info.caliber} · ${info.weight}</span>
+          <span class="tape-header-meta">${info.mv} · Zero ${info.zero} · DA ${info.da} · ${u.elev}, clicks ${info.click}</span>
+        </div>
+        <table class="tape-matrix-table">
+          <thead>
+            <tr>
+              <th scope="row" class="tape-label-col">Range ${u.dist}</th>
+              ${rows.map((r) => `<th scope="col">${fmtInt(r.dist)}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="tape-row-elev">
+              <th scope="row" class="tape-label-col">Elev. ${u.elev}</th>
+              ${rows.map((r) => `<td class="tape-cell-elev">${fmt(r.elev, 1)}</td>`).join('')}
+            </tr>
+            <tr class="tape-row-clk">
+              <th scope="row" class="tape-label-col">Clicks</th>
+              ${rows.map((r) => `<td class="tape-cell-clk">${fmtInt(r.clicks)}</td>`).join('')}
+            </tr>
+            <tr class="tape-row-wind">
+              <th scope="row" class="tape-label-col">Wind ${w1} ${u.wind}</th>
+              ${rows.map((r) => `<td>${fmt(r.windHold(w1), 1)}</td>`).join('')}
+            </tr>
+            <tr class="tape-row-gust">
+              <th scope="row" class="tape-label-col">Wind ${w2} ${u.wind}</th>
+              ${rows.map((r) => `<td>${fmt(r.windHold(w2), 1)}</td>`).join('')}
+            </tr>
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  // ---- turret tape ------------------------------------------------------------------------------
+
+  /** Returns the tape markup; this._turretOffTurn counts distances that need more than one turn. */
+  renderTurretTape(rowsIn, dopeIn, uIn) {
+    const { rows, dope, u } = this._cardArgs('turret-tape', rowsIn, dopeIn, uIn);
+    const circMm = this.turretCircumferenceMm;
+    const heightMm = this.turretTapeHeightMm;
+    const total = this.turretClicksPerTurn;
+    const pxPerMm = 4;
+    const W = circMm * pxPerMm;
+    const H = heightMm * pxPerMm;
+    const clickRad = num(dope.profile.optic?.clickValueRad, 0.0001) || 0.0001;
+    const opticMoa = /moa/i.test(dope.profile.optic?.clickName || '');
+
+    let ticks = '';
+    let numbers = '';
+    for (let c = 0; c <= total; c++) {
+      const x = (c / total) * W;
+      const major = c % 10 === 0;
+      const medium = !major && c % 5 === 0;
+      const len = H * (major ? 0.42 : medium ? 0.28 : 0.16);
+      ticks += `<line x1="${x.toFixed(1)}" y1="${H}" x2="${x.toFixed(1)}" y2="${(H - len).toFixed(1)}" stroke-width="${major ? 1.6 : 1}" />`;
+      if (major && c > 0 && c < total) {
+        const ang = c * clickRad;
+        const v = opticMoa ? ang * RAD_TO_MOA : ang * 1000;
+        numbers += `<text x="${x.toFixed(1)}" y="${(H - len - 3).toFixed(1)}" text-anchor="middle">${fmtTrim(v, 1)}</text>`;
+      }
+    }
+
+    // Range marks: distance in hundreds at the click it needs; two lanes avoid overlaps
+    const tagW = 22;
+    const lanes = [-Infinity, -Infinity];
+    let marks = '';
+    let offTurn = 0;
+    rows.forEach((r) => {
+      if (!(r.clicks > 0)) return;
+      if (r.clicks > total) { offTurn++; return; }
+      const x = (r.clicks / total) * W;
+      const lane = x - lanes[0] >= tagW ? 0 : x - lanes[1] >= tagW ? 1 : -1;
+      if (lane < 0) return;
+      lanes[lane] = x;
+      const y = 2 + lane * 15;
+      marks += `
+        <g class="turret-range-tag">
+          <line x1="${x.toFixed(1)}" y1="${y + 12}" x2="${x.toFixed(1)}" y2="${(H * 0.55).toFixed(1)}" stroke="#0b4f8a" stroke-width="1" stroke-dasharray="2 2" />
+          <rect x="${(x - tagW / 2 + 1).toFixed(1)}" y="${y}" width="${tagW - 2}" height="12" rx="2" fill="#0b4f8a" />
+          <text x="${x.toFixed(1)}" y="${y + 9}" text-anchor="middle" fill="#ffffff" font-weight="700">${fmtTrim(r.dist / 100, 1)}</text>
+        </g>`;
+    });
+
+    const html = `
+      <div class="turret-tape-preview-wrapper print-sheet paper" data-tape-circ-mm="${circMm}" data-tape-height-mm="${heightMm}">
+        <svg id="turret-tape-svg" width="${circMm}mm" height="${heightMm}mm" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Turret tape, ${circMm} millimetres long">
+          <rect class="tape-bg" x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" fill="#ffffff" stroke="#111111" stroke-width="1" />
+          <g stroke="#111111">${ticks}</g>
+          <g font-family="ui-monospace, Menlo, monospace" font-size="9" font-weight="700" fill="#333333">${numbers}</g>
+          <g class="turret-zero-marker">
+            <line x1="1.5" y1="0" x2="1.5" y2="${H}" stroke="#b42318" stroke-width="2.5" />
+            <rect x="3" y="${H - 14}" width="28" height="12" rx="2" fill="#b42318" />
+            <text x="17" y="${H - 5}" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="8" font-weight="800" fill="#ffffff">ZERO</text>
+          </g>
+          <g class="turret-dir-arrow-group" transform="translate(${Math.max(W - 50, 36).toFixed(1)} ${H - 16})">
+            <rect x="0" y="0" width="46" height="13" rx="2" fill="#ffffff" stroke="#111111" stroke-width="0.8" />
+            <text x="6" y="9.5" font-family="system-ui, sans-serif" font-size="8.5" font-weight="800" fill="#111111">UP</text>
+            <path d="M 22 6.5 H 39 M 35 3 L 39 6.5 L 35 10" fill="none" stroke="#111111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </g>
+          <g font-family="ui-monospace, Menlo, monospace" font-size="9">${marks}</g>
+        </svg>
+      </div>`;
+    this._turretOffTurn = offTurn;
+    return html;
+  }
+
+  // ---- full page --------------------------------------------------------------------------------
+
+  renderA4ReticleHoldReference(rowAt, u) {
+    const ref = u.windSpeeds[1];
+    const points = this._reticleDefaults(u).map(rowAt).filter(Boolean);
+    return `
+      <section class="a4-reticle-hold-section">
+        <h3 class="a4-section-title">Reticle holds <span class="a4-section-note">elevation in ${u.elev}, wind in ${u.windAng} for a ${ref} ${u.wind} full-value crosswind</span></h3>
+        <div class="reticle-tree-grid">
+          ${points.map((r) => `
+            <div class="reticle-tree-node">
+              <span class="node-dist">${fmtInt(r.dist)} ${u.dist}</span>
+              <span class="node-elev">Elev. ${fmt(r.elev, 1)}</span>
+              <span class="node-wind">Wind ${fmt(r.windHold(ref), 1)}</span>
+            </div>`).join('')}
+        </div>
+      </section>`;
+  }
+
+  renderA4ShooterNotesGrid(u, info) {
+    const blank = '<span class="notes-blank"></span>';
+    return `
+      <section class="a4-notes-section">
+        <h3 class="a4-section-title">Notes</h3>
+        <div class="a4-notes-grid">
+          <div class="notes-box">
+            <span class="notes-box-title">Cold bore and zero check</span>
+            <div class="notes-line-entry">Date and time ${blank}</div>
+            <div class="notes-line-entry">Temperature / DA ${blank}</div>
+            <div class="notes-line-entry">Zero group at ${info.zero}: up/down ${blank} left/right ${blank}</div>
+          </div>
+          <div class="notes-box">
+            <span class="notes-box-title">Chronograph</span>
+            <div class="notes-line-entry">1 ${blank} 2 ${blank} 3 ${blank} 4 ${blank} 5 ${blank}</div>
+            <div class="notes-line-entry">6 ${blank} 7 ${blank} 8 ${blank} 9 ${blank} 10 ${blank}</div>
+            <div class="notes-line-entry">Average ${blank} ${u.vel} · SD ${blank} · ES ${blank}</div>
+          </div>
+          <div class="notes-box">
+            <span class="notes-box-title">Wind calls</span>
+            <div class="notes-line-entry">Mirage angle ${blank} Speed ${blank} ${u.wind}</div>
+            <div class="notes-line-entry">Lull ${blank} Gust ${blank}</div>
+            <div class="notes-line-entry">Direction ${blank}</div>
+          </div>
+          <div class="notes-box">
+            <span class="notes-box-title">Terrain and updraft notes</span>
+            <div class="notes-line-entry">${blank}</div>
+            <div class="notes-line-entry">${blank}</div>
+            <div class="notes-line-entry">${blank}</div>
+          </div>
+        </div>
+      </section>`;
+  }
+
+  renderA4DataSheet(rowsIn, rowAtIn, dopeIn, uIn) {
+    const compat = Array.isArray(rowsIn) ? null : this._cardArgs('a4-sheet', null);
+    const rows = compat ? compat.rows : rowsIn;
+    const rowAt = compat ? compat.rowAt : rowAtIn;
+    const dope = compat ? compat.dope : dopeIn;
+    const u = compat ? compat.u : uIn;
+    const info = this._rifleInfo(dope, u);
+    const speeds = u.windSpeeds;
+    const dropUnit = u.size;
+    const dropDec = 1;
+    // Drift with no wind is spin drift (and Coriolis); point-mass models have none, so the column is left out
+    const showDrift = rows.some((r) => Math.abs(u.fromCm(r.noWindDriftM * 100)) >= 0.05);
+    return `
+      <div class="a4-data-sheet print-sheet paper">
+        <header class="sheet-title-banner">
+          <h2 class="sheet-title">Ballistic data sheet</h2>
+          <dl class="sheet-meta-grid">
+            <div><dt>Rifle:</dt><dd>${info.name}</dd></div>
+            <div><dt>Caliber:</dt><dd>${info.caliber}</dd></div>
+            <div><dt>Bullet:</dt><dd>${info.bullet} (${info.weight})</dd></div>
+            <div><dt>Muzzle velocity:</dt><dd>${info.mv}</dd></div>
+            <div><dt>Optic:</dt><dd>${info.optic || '—'}, ${info.click} per click</dd></div>
+            <div><dt>Zero:</dt><dd>${info.zero}, sight height ${info.sight}</dd></div>
+            <div><dt>Conditions:</dt><dd>${info.temp}, ${info.press}, DA ${info.da}</dd></div>
+            <div><dt>Twist:</dt><dd>${info.twist}</dd></div>
+          </dl>
+        </header>
+
+        <table class="a4-table">
+          <thead>
+            <tr>
+              <th scope="col">Range<br />${u.dist}</th>
+              <th scope="col">Drop<br />${dropUnit}</th>
+              <th scope="col">Elevation<br />${u.elev}</th>
+              <th scope="col">Clicks<br />${info.click}</th>
+              ${speeds.map((s) => `<th scope="col">Wind ${s}<br />${u.windAng}</th>`).join('')}
+              ${showDrift ? `<th scope="col" title="Where the bullet drifts with no wind: spin drift, plus Coriolis if it is turned on in the Solver">Drift, no wind<br />${dropUnit}</th>` : ''}
+              <th scope="col">Speed<br />${u.vel}</th>
+              <th scope="col">Mach</th>
+              <th scope="col">Energy<br />${u.energy}</th>
+              <th scope="col">Time<br />s</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r) => {
+              const drift = u.fromCm(r.noWindDriftM * 100);
+              const driftTxt = Math.abs(drift) < 0.05 ? fmt(0, 1) : `${fmt(Math.abs(drift), 1)} ${drift > 0 ? 'R' : 'L'}`;
+              return `
+              <tr>
+                <th scope="row">${fmtInt(r.dist)}</th>
+                <td>${fmt(u.fromCm(r.dropM * 100), dropDec)}</td>
+                <td class="cell-elev">${fmt(r.elev, 2)}</td>
+                <td>${fmtInt(r.clicks)}</td>
+                ${speeds.map((s, i) => `<td class="${i === 1 ? 'cell-wind' : ''}">${fmt(r.windHold(s), 2)}</td>`).join('')}
+                ${showDrift ? `<td>${driftTxt}</td>` : ''}
+                <td>${fmtInt(u.fromMs(r.velocityMs))}</td>
+                <td>${fmt(r.mach, 2)}</td>
+                <td>${fmtInt(u.fromJ(r.energyJ))}</td>
+                <td>${fmt(r.tofS, 2)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        <p class="a4-legend">Wind columns: hold for a full-value crosswind (3 or 9 o’clock) of that speed in ${u.wind}, wind only. Conditions: ${info.envName}.</p>
+
+        ${this.renderA4ReticleHoldReference(rowAt, u)}
+        ${this.renderA4ShooterNotesGrid(u, info)}
+      </div>`;
+  }
+
+  // ---- stage card -------------------------------------------------------------------------------
+
+  /** Target silhouette (decorative; colour from currentColor). */
   renderTargetSilhouetteSvg(shape, size = 24, color = 'currentColor') {
+    const c = esc(color);
     switch (shape) {
       case 'ipsc':
-        return `<svg width="${size}" height="${size}" viewBox="0 0 36 44" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" class="silhouette-svg silhouette-ipsc">
-          <polygon points="12,3 24,3 24,10 33,16 33,41 3,41 3,16 12,10" fill="${color}" fill-opacity="0.25" />
+        return `<svg width="${size}" height="${size}" viewBox="0 0 36 44" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round" class="silhouette-svg silhouette-ipsc" aria-hidden="true" focusable="false">
+          <polygon points="12,3 24,3 24,10 33,16 33,41 3,41 3,16 12,10" fill="${c}" fill-opacity="0.25" />
           <rect x="11" y="16" width="14" height="18" rx="1" stroke-width="1.2" stroke-dasharray="2,2" />
         </svg>`;
       case 'square':
-        return `<svg width="${size}" height="${size}" viewBox="0 0 36 36" fill="none" stroke="${color}" stroke-width="2" class="silhouette-svg silhouette-square">
-          <rect x="6" y="9" width="24" height="24" rx="2" fill="${color}" fill-opacity="0.25" />
-          <circle cx="11" cy="14" r="1.5" fill="${color}" />
-          <circle cx="25" cy="14" r="1.5" fill="${color}" />
-          <line x1="11" y1="2" x2="11" y2="9" stroke="${color}" stroke-width="1.5" />
-          <line x1="25" y1="2" x2="25" y2="9" stroke="${color}" stroke-width="1.5" />
+        return `<svg width="${size}" height="${size}" viewBox="0 0 36 36" fill="none" stroke="${c}" stroke-width="2" class="silhouette-svg silhouette-square" aria-hidden="true" focusable="false">
+          <rect x="6" y="9" width="24" height="24" rx="2" fill="${c}" fill-opacity="0.25" />
+          <line x1="11" y1="2" x2="11" y2="9" stroke-width="1.5" />
+          <line x1="25" y1="2" x2="25" y2="9" stroke-width="1.5" />
         </svg>`;
       case 'diamond':
-        return `<svg width="${size}" height="${size}" viewBox="0 0 36 36" fill="none" stroke="${color}" stroke-width="2" class="silhouette-svg silhouette-diamond">
-          <polygon points="18,5 31,18 18,31 5,18" fill="${color}" fill-opacity="0.25" />
-          <circle cx="18" cy="9" r="1.5" fill="${color}" />
-          <line x1="18" y1="1" x2="18" y2="6" stroke="${color}" stroke-width="1.5" />
+        return `<svg width="${size}" height="${size}" viewBox="0 0 36 36" fill="none" stroke="${c}" stroke-width="2" class="silhouette-svg silhouette-diamond" aria-hidden="true" focusable="false">
+          <polygon points="18,5 31,18 18,31 5,18" fill="${c}" fill-opacity="0.25" />
+          <line x1="18" y1="1" x2="18" y2="6" stroke-width="1.5" />
         </svg>`;
       case 'kyl':
-        return `<svg width="${size}" height="${size * 0.75}" viewBox="0 0 44 32" fill="none" stroke="${color}" stroke-width="1.8" class="silhouette-svg silhouette-kyl">
-          <line x1="2" y1="4" x2="42" y2="4" stroke-width="2.5" stroke="${color}" />
-          <line x1="7" y1="4" x2="7" y2="10" stroke-width="1.5" />
-          <circle cx="7" cy="18" r="7" fill="${color}" fill-opacity="0.25" />
-          <line x1="19" y1="4" x2="19" y2="12" stroke-width="1.5" />
-          <circle cx="19" cy="18" r="5.5" fill="${color}" fill-opacity="0.25" />
-          <line x1="29" y1="4" x2="29" y2="14" stroke-width="1.5" />
-          <circle cx="29" cy="18" r="4" fill="${color}" fill-opacity="0.25" />
-          <line x1="37" y1="4" x2="37" y2="16" stroke-width="1.5" />
-          <circle cx="37" cy="18" r="2.5" fill="${color}" fill-opacity="0.25" />
+        return `<svg width="${size}" height="${Math.round(size * 0.75)}" viewBox="0 0 44 32" fill="none" stroke="${c}" stroke-width="1.8" class="silhouette-svg silhouette-kyl" aria-hidden="true" focusable="false">
+          <line x1="2" y1="4" x2="42" y2="4" stroke-width="2.5" />
+          <circle cx="7" cy="18" r="7" fill="${c}" fill-opacity="0.25" />
+          <circle cx="19" cy="18" r="5.5" fill="${c}" fill-opacity="0.25" />
+          <circle cx="29" cy="18" r="4" fill="${c}" fill-opacity="0.25" />
+          <circle cx="37" cy="18" r="2.5" fill="${c}" fill-opacity="0.25" />
         </svg>`;
       case 'gong':
       default:
-        return `<svg width="${size}" height="${size}" viewBox="0 0 36 36" fill="none" stroke="${color}" stroke-width="2" class="silhouette-svg silhouette-gong">
-          <circle cx="18" cy="20" r="13" fill="${color}" fill-opacity="0.25" />
-          <rect x="10" y="3" width="3.5" height="5" rx="0.8" fill="${color}" />
-          <rect x="22.5" y="3" width="3.5" height="5" rx="0.8" fill="${color}" />
-          <line x1="11.75" y1="1" x2="11.75" y2="4" stroke="${color}" stroke-width="1.5" />
-          <line x1="24.25" y1="1" x2="24.25" y2="4" stroke="${color}" stroke-width="1.5" />
+        return `<svg width="${size}" height="${size}" viewBox="0 0 36 36" fill="none" stroke="${c}" stroke-width="2" class="silhouette-svg silhouette-gong" aria-hidden="true" focusable="false">
+          <circle cx="18" cy="20" r="13" fill="${c}" fill-opacity="0.25" />
+          <line x1="11.75" y1="1" x2="11.75" y2="7" stroke-width="1.5" />
+          <line x1="24.25" y1="1" x2="24.25" y2="7" stroke-width="1.5" />
         </svg>`;
     }
   }
 
-  /**
-   * Render inline SVG node silhouette for downrange schematic map
-   */
-  _renderSchematicNodeSilhouette(shape) {
+  _schematicShape(shape) {
     switch (shape) {
-      case 'ipsc':
-        return `<polygon points="-4,-7 4,-7 4,-3 7,0 7,9 -7,9 -7,0 -4,-3" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="1.2" />`;
-      case 'square':
-        return `<rect x="-6" y="-4" width="12" height="12" rx="1.5" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="1.2" />
-                <line x1="-4" y1="-7" x2="-4" y2="-4" stroke="#38bdf8" stroke-width="1" />
-                <line x1="4" y1="-7" x2="4" y2="-4" stroke="#38bdf8" stroke-width="1" />`;
-      case 'diamond':
-        return `<polygon points="0,-7 7,0 0,7 -7,0" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="1.2" />`;
-      case 'kyl':
-        return `<line x1="-8" y1="-6" x2="8" y2="-6" stroke="#38bdf8" stroke-width="1.6" />
-                <circle cx="-5" cy="0" r="3.2" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="1" />
-                <circle cx="0" cy="1" r="2.4" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="1" />
-                <circle cx="4.5" cy="1.6" r="1.6" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="1" />`;
+      case 'ipsc': return '<polygon class="sch-shape" points="-4,-7 4,-7 4,-3 7,0 7,9 -7,9 -7,0 -4,-3" />';
+      case 'square': return '<rect class="sch-shape" x="-6" y="-5" width="12" height="12" rx="1.5" />';
+      case 'diamond': return '<polygon class="sch-shape" points="0,-7 7,0 0,7 -7,0" />';
+      case 'kyl': return '<circle class="sch-shape" cx="-5" cy="0" r="3.2" /><circle class="sch-shape" cx="0" cy="0.6" r="2.4" /><circle class="sch-shape" cx="4.5" cy="1.2" r="1.6" />';
       case 'gong':
-      default:
-        return `<circle cx="0" cy="1" r="6.5" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="1.2" />
-                <line x1="-3" y1="-6" x2="-3" y2="-2" stroke="#38bdf8" stroke-width="1" />
-                <line x1="3" y1="-6" x2="3" y2="-2" stroke="#38bdf8" stroke-width="1" />`;
+      default: return '<circle class="sch-shape" cx="0" cy="1" r="6.5" />';
     }
   }
 
   /**
-   * Render Visual Target Sequence Schematic SVG Map with shape silhouettes and collision avoidance
+   * Top-down drawing of the stage: targets in shooting order (dashed path), distance grid, firing
+   * line at the bottom and a wind arrow. Colours come from the card colour theme in dope.css.
    */
   renderStageSchematicSvg(stage, targetsWithBallistics, dope, isImperial) {
     if (!targetsWithBallistics || targetsWithBallistics.length === 0) return '';
-
+    const u = this._units();
+    // A narrower drawing on the portrait card keeps its text legible once printed
+    const VW = this.printOrientation === 'portrait-3x5' ? 360 : 540;
+    const cx0 = VW / 2;
     const distUnit = isImperial ? 'yd' : 'm';
-    const distances = targetsWithBallistics.map((t) => t.distanceM);
+    const toDisp = (m) => (isImperial ? m / M_PER_YD : m);
+    const distances = targetsWithBallistics.map((t) => num(t.distanceM, 0));
     const minD = Math.max(0, Math.min(...distances) - 50);
     const maxD = Math.max(...distances) + 50;
     const spanD = Math.max(100, maxD - minD);
-
-    const isAllSameDist = Math.max(...distances) - Math.min(...distances) < 15;
-    const staggerOffsets = [220, 340, 180, 390, 260, 310, 190, 370];
+    const sameDistance = Math.max(...distances) - Math.min(...distances) < 15;
+    const yAt = (m) => Math.round(145 - ((m - minD) / spanD) * 105);
 
     const points = targetsWithBallistics.map((t, idx) => {
-      const norm = (t.distanceM - minD) / spanD;
-      const y = Math.round(145 - norm * 105);
       let x;
-      if (isAllSameDist) {
-        // KYL rack or single-distance stages: space plates comfortably across corridor (170px to 370px)
+      if (sameDistance) {
         const count = targetsWithBallistics.length;
-        const spacing = Math.min(50, 240 / Math.max(1, count - 1));
-        const startX = 270 - ((count - 1) * spacing) / 2;
-        x = Math.round(startX + idx * spacing);
-      } else if (t.offsetM !== undefined) {
-        x = Math.round(270 + t.offsetM * 4.5);
+        const spacing = Math.min(50, (VW - 200) / Math.max(1, count - 1));
+        x = Math.round(cx0 - ((count - 1) * spacing) / 2 + idx * spacing);
       } else {
-        x = staggerOffsets[idx % staggerOffsets.length];
+        x = Math.round(cx0 + num(t.offsetM, 0) * (VW / 120));
       }
-      x = Math.max(70, Math.min(460, x));
-      return { ...t, x, y };
+      return { ...t, x: clamp(x, 70, VW - 70), y: yAt(num(t.distanceM, 0)) };
     });
-
-    // Sequence connection path (T1 ➔ T2 ➔ T3...)
     const pathD = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
-    // Range grid lines
-    const stepGrid = spanD > 450 ? 100 : 50;
-    const firstGrid = Math.ceil(minD / stepGrid) * stepGrid;
-    let gridSvg = '';
-    for (let g = firstGrid; g <= maxD; g += stepGrid) {
-      const gy = Math.round(145 - ((g - minD) / spanD) * 105);
-      const displayGridDist = isImperial ? Math.round(g * 1.09361) : g;
-      gridSvg += `
-        <line x1="45" y1="${gy}" x2="520" y2="${gy}" stroke="rgba(148, 163, 184, 0.16)" stroke-dasharray="3,3" />
-        <text x="12" y="${gy + 3}" font-family="monospace" font-size="8.5" fill="#64748b" text-anchor="start">${displayGridDist}${distUnit}</text>
-      `;
+    // Distance grid in round display units
+    const stepDisp = toDisp(spanD) > 450 ? 100 : 50;
+    let grid = '';
+    for (let g = Math.ceil(toDisp(minD) / stepDisp) * stepDisp; g <= toDisp(maxD); g += stepDisp) {
+      const gy = yAt(isImperial ? g * M_PER_YD : g);
+      grid += `<line class="sch-grid" x1="52" y1="${gy}" x2="${VW - 14}" y2="${gy}" /><text class="sch-grid-label" x="10" y="${gy + 3}">${g} ${distUnit}</text>`;
     }
 
-    // KYL Rack Crossbar (if KYL targets share same range)
-    let kylBarSvg = '';
-    if (isAllSameDist && points.length > 1 && points[0].shape === 'kyl') {
-      const minX = Math.min(...points.map((p) => p.x));
-      const maxX = Math.max(...points.map((p) => p.x));
-      const yRack = points[0].y;
-      kylBarSvg = `<line x1="${minX - 14}" y1="${yRack - 8}" x2="${maxX + 14}" y2="${yRack - 8}" stroke="#475569" stroke-width="2.5" stroke-linecap="round" />`;
+    let rack = '';
+    if (sameDistance && points.length > 1 && points[0].shape === 'kyl') {
+      const xs = points.map((p) => p.x);
+      rack = `<line class="sch-rack" stroke-width="2.5" x1="${Math.min(...xs) - 14}" y1="${points[0].y - 9}" x2="${Math.max(...xs) + 14}" y2="${points[0].y - 9}" />`;
     }
 
-    // Target nodes and collision-free callout badges
-    const isHighVis = this.cardTheme === 'match-day';
-    let targetsSvg = '';
+    // Callouts (distance and elevation): try a few spots around each target and keep the first one
+    // that overlaps no target, wind dial or earlier callout
+    const CW = 92;
+    const CH = 19;
+    const boxes = points.map((p) => ({ x: p.x - 15, y: p.y - 15, w: 30, h: 35 }));
+    boxes.push({ x: VW - 70, y: 4, w: 66, h: 58 });
+    const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    let nodes = '';
+    let callouts = '';
     points.forEach((p, idx) => {
-      // Alternate callouts above/below and left/right for collision avoidance
-      const isTop = idx % 2 === 0;
-      let calloutY = isTop ? p.y - 28 : p.y + 16;
-      if (p.y < 38) calloutY = p.y + 16;
-      if (p.y > 132) calloutY = p.y - 28;
-
-      const isLeft = (idx % 2 === 0) || (p.offsetM !== undefined && p.offsetM < 0);
-      let calloutX = isLeft ? p.x - 92 : p.x + 14;
-      // Avoid top-right wind HUD collision (x: 440-520, y: 10-60)
-      if (calloutX > 380 && calloutY < 65) {
-        calloutX = p.x - 92;
+      const spots = [
+        [p.x + 17, p.y - 26], [p.x - CW - 17, p.y - 26], [p.x + 17, p.y + 4], [p.x - CW - 17, p.y + 4],
+        [p.x - CW / 2, p.y - 38], [p.x - CW / 2, p.y + 22], [p.x + 17, p.y - 11], [p.x - CW - 17, p.y - 11],
+      ].map(([x, y]) => ({ x: clamp(x, 54, VW - CW - 8), y: clamp(y, 8, 150 - CH), w: CW, h: CH }));
+      let best = spots[0];
+      let bestScore = Infinity;
+      for (const s of spots) {
+        const score = boxes.reduce((sum, b) => sum + overlap(s, b), 0);
+        if (score < bestScore) { best = s; bestScore = score; }
+        if (score === 0) break;
       }
-      calloutX = Math.max(15, Math.min(435, calloutX));
-
-      targetsSvg += `
-        <g class="schematic-node ${this.highlightedTargetIdx === idx ? 'highlighted' : ''}" data-target-idx="${idx}" data-target-id="${esc(p.id)}">
-          <!-- Node Center Glow & Silhouetted Shape -->
-          <g transform="translate(${p.x}, ${p.y})">
-            <circle cx="0" cy="0" r="14" fill="${isHighVis ? '#ffffff' : '#0b111e'}" stroke="${isHighVis ? '#0284c7' : '#1e293b'}" stroke-width="2" />
-            ${this._renderSchematicNodeSilhouette(p.shape)}
-            <!-- Target Number Badge -->
-            <rect x="-9" y="8" width="18" height="10" rx="2" fill="${isHighVis ? '#0284c7' : '#0f172a'}" stroke="${isHighVis ? '#0284c7' : '#38bdf8'}" stroke-width="0.8" />
-            <text x="0" y="16" font-family="monospace" font-size="7" font-weight="bold" fill="${isHighVis ? '#ffffff' : '#38bdf8'}" text-anchor="middle">T${p.index}</text>
-          </g>
-
-          <!-- Node Callout Pill (Distance + Dial Value) -->
-          <g transform="translate(${calloutX}, ${calloutY})">
-            <rect x="0" y="0" width="88" height="18" rx="3" fill="${isHighVis ? '#ffffff' : 'rgba(15, 23, 42, 0.94)'}" stroke="${isHighVis ? '#cbd5e1' : '#334155'}" stroke-width="1" />
-            <text x="44" y="12" font-family="monospace" font-size="7.5" font-weight="bold" fill="${isHighVis ? '#0f172a' : '#f8fafc'}" text-anchor="middle">
-              ${p.displayDistance}${p.displayDistUnit} • <tspan fill="${isHighVis ? '#b45309' : '#f59e0b'}">${p.dialValue} ${p.dialUnit}</tspan>
-            </text>
-          </g>
-        </g>
-      `;
+      boxes.push(best);
+      nodes += `
+        <g class="schematic-node" data-target-idx="${idx}" transform="translate(${p.x} ${p.y})">
+          <circle class="sch-node-bg" r="14" />
+          ${this._schematicShape(p.shape)}
+          <rect class="sch-badge" x="-10" y="8" width="20" height="11" rx="2" />
+          <text class="sch-badge-text" x="0" y="16.5" text-anchor="middle">T${p.index}</text>
+        </g>`;
+      callouts += `
+        <g class="schematic-callout" transform="translate(${best.x} ${best.y})">
+          <rect class="sch-callout" width="${CW}" height="${CH}" rx="3" />
+          <text class="sch-callout-text" x="${CW / 2}" y="13" text-anchor="middle">T${p.index} ${p.displayDistance} ${esc(p.displayDistUnit)} · <tspan class="sch-callout-elev">${esc(p.dialValue)}</tspan></text>
+        </g>`;
     });
 
-    // Wind direction arrow & HUD
-    const windDeg = stage.windDirectionDeg !== undefined ? stage.windDirectionDeg : 90;
-    const windRad = (windDeg * Math.PI) / 180;
-    const windX1 = 490 - Math.cos(windRad) * 11;
-    const windY1 = 26 - Math.sin(windRad) * 11;
-    const windX2 = 490 + Math.cos(windRad) * 11;
-    const windY2 = 26 + Math.sin(windRad) * 11;
-
-    const windSpeedDisplay = isImperial ? Math.round(UnitConverter.convert(stage.windBaseMs, 'm/s', 'mph')) : stage.windBaseMs;
-    const windSpeedUnit = isImperial ? 'mph' : 'm/s';
-    const clockHour = Math.round(windDeg / 30) || 12;
+    // Wind arrow: comes from the clock position of windDirectionDeg (0 = from downrange, 90 = from the right)
+    const windDeg = num(stage.windDirectionDeg, 90);
+    const wr = (windDeg * Math.PI) / 180;
+    const sx = Math.sin(wr) * 11;
+    const sy = -Math.cos(wr) * 11;
+    const ex = -sx;
+    const ey = -sy;
+    const ux = (ex - sx) / 22;
+    const uy = (ey - sy) / 22;
+    const head = `${ex.toFixed(1)},${ey.toFixed(1)} ${(ex - ux * 5 - uy * 3.5).toFixed(1)},${(ey - uy * 5 + ux * 3.5).toFixed(1)} ${(ex - ux * 5 + uy * 3.5).toFixed(1)},${(ey - uy * 5 - ux * 3.5).toFixed(1)}`;
+    const windSpeed = fmtTrim(u.windFromMs(num(stage.windBaseMs, 0)), 1);
 
     return `
       <div class="stage-schematic-container">
-        <svg viewBox="0 0 540 180" width="100%" class="stage-schematic-svg" preserveAspectRatio="xMidYMid meet">
+        <svg viewBox="0 0 ${VW} 182" class="stage-schematic-svg" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Stage drawing: ${points.length} targets in shooting order, wind from ${clockLabel(windDeg)} o’clock">
           <defs>
             <marker id="seq-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M 0 1 L 9 5 L 0 9 z" fill="#f59e0b" />
+              <path class="sch-arrow" d="M 0 1 L 9 5 L 0 9 z" />
             </marker>
           </defs>
-
-          <!-- Range Corridor Backdrop -->
-          <rect x="5" y="5" width="530" height="170" rx="6" fill="${isHighVis ? '#f8fafc' : '#070c16'}" stroke="${isHighVis ? '#cbd5e1' : '#1e293b'}" stroke-width="1" />
-
-          <!-- Center Corridor Azimuth Baseline -->
-          <line x1="270" y1="20" x2="270" y2="155" stroke="${isHighVis ? 'rgba(2, 132, 199, 0.15)' : 'rgba(56, 189, 248, 0.08)'}" stroke-dasharray="4,4" />
-
-          <!-- Range Distance Grid Lines -->
-          ${gridSvg}
-
-          <!-- KYL Rack Bar (if applicable) -->
-          ${kylBarSvg}
-
-          <!-- Sequence Polyline connecting targets -->
-          <path d="${pathD}" fill="none" stroke="#f59e0b" stroke-width="1.8" stroke-dasharray="4,3" marker-mid="url(#seq-arrow)" opacity="0.9" />
-
-          <!-- Target Nodes -->
-          ${targetsSvg}
-
-          <!-- Firing Line at Bottom with Prop Indicators -->
-          <line x1="45" y1="162" x2="520" y2="162" stroke="${isHighVis ? '#0284c7' : '#38bdf8'}" stroke-width="2" />
-          <circle cx="270" cy="162" r="3.5" fill="${isHighVis ? '#0284c7' : '#38bdf8'}" />
-          <text x="270" y="174" font-family="sans-serif" font-size="7.5" font-weight="bold" fill="${isHighVis ? '#475569' : '#94a3b8'}" text-anchor="middle" letter-spacing="1">FIRING LINE • PROP POSITIONS</text>
-
-          <!-- Wind Vector HUD Indicator in Top Right -->
-          <g class="schematic-wind-hud" transform="translate(488, 26)">
-            <circle cx="0" cy="0" r="16" fill="${isHighVis ? '#ffffff' : 'rgba(15, 23, 42, 0.9)'}" stroke="${isHighVis ? '#cbd5e1' : '#334155'}" stroke-width="1" />
-            <!-- Wind vector arrow line -->
-            <line x1="${(windX1 - 490).toFixed(1)}" y1="${(windY1 - 26).toFixed(1)}" x2="${(windX2 - 490).toFixed(1)}" y2="${(windY2 - 26).toFixed(1)}" stroke="${isHighVis ? '#059669' : '#10b981'}" stroke-width="2" stroke-linecap="round" />
-            <polygon points="${(windX2 - 490).toFixed(1)},${(windY2 - 26).toFixed(1)} ${((windX2 - 490) - 4).toFixed(1)},${((windY2 - 26) - 3).toFixed(1)} ${((windX2 - 490) - 4).toFixed(1)},${((windY2 - 26) + 3).toFixed(1)}" fill="${isHighVis ? '#059669' : '#10b981'}" />
-            <text x="0" y="-19" font-family="sans-serif" font-size="7" font-weight="bold" fill="${isHighVis ? '#059669' : '#10b981'}" text-anchor="middle">WIND ${windSpeedDisplay}${windSpeedUnit}</text>
-            <text x="0" y="25" font-family="sans-serif" font-size="6.5" fill="${isHighVis ? '#475569' : '#94a3b8'}" text-anchor="middle">${windDeg}° (${clockHour}:00)</text>
+          <rect class="sch-bg" x="3" y="3" width="${VW - 6}" height="176" rx="6" />
+          <line class="sch-center" x1="${cx0}" y1="20" x2="${cx0}" y2="156" />
+          ${grid}
+          ${rack}
+          <path class="sch-path" d="${pathD}" marker-mid="url(#seq-arrow)" />
+          ${nodes}
+          ${callouts}
+          <line class="sch-firing" x1="52" y1="162" x2="${VW - 14}" y2="162" />
+          <circle class="sch-firing-dot" cx="${cx0}" cy="162" r="3.5" />
+          <text class="sch-firing-text" x="${cx0}" y="175" text-anchor="middle">FIRING LINE</text>
+          <g transform="translate(${VW - 38} 30)">
+            <circle class="sch-wind-bg" r="16" />
+            <line class="sch-wind" x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" />
+            <polygon class="sch-wind-head" points="${head}" />
+            <text class="sch-wind-text" x="0" y="-20" text-anchor="middle">WIND ${windSpeed} ${u.wind}</text>
+            <text class="sch-wind-sub" x="0" y="28" text-anchor="middle">${clockLabel(windDeg)}</text>
           </g>
         </svg>
-      </div>
-    `;
+      </div>`;
   }
 
-  /**
-   * Render Par Time Pacing Breakdown Bar for PRS stages
-   */
+  /** Suggested pace: the stage time split over the positions by shot count. */
   _renderParTimeFlow(stage, totalRounds, timeLimitSec) {
     if (!stage.targets || stage.targets.length === 0 || totalRounds <= 0) return '';
-
-    // Group target rounds by distinct props
-    const propGroups = [];
+    const groups = [];
     stage.targets.forEach((t) => {
-      const propName = t.prop || 'Position';
-      const existing = propGroups.find((g) => g.prop === propName);
-      if (existing) {
-        existing.rounds += (Number(t.rounds) || 2);
-        existing.targets.push(t.name);
-      } else {
-        propGroups.push({ prop: propName, rounds: Number(t.rounds) || 2, targets: [t.name] });
-      }
+      const prop = t.prop || 'Position';
+      const shots = Number(t.rounds) || 2;
+      const g = groups.find((x) => x.prop === prop);
+      if (g) g.rounds += shots;
+      else groups.push({ prop, rounds: shots });
     });
-
-    const secPerRound = timeLimitSec / totalRounds;
-    let accumulatedSec = 0;
-
-    const splits = propGroups.map((g) => {
-      const startSec = Math.round(accumulatedSec);
-      accumulatedSec += g.rounds * secPerRound;
-      const endSec = Math.round(accumulatedSec);
-      return `<div class="pace-split-pill">
-        <span class="split-prop-name">${esc(g.prop)}</span>
-        <span class="split-time">${startSec}s–${endSec}s <span class="split-rnds">(${g.rounds}r)</span></span>
-      </div>`;
-    }).join('<span class="split-arrow">➔</span>');
-
+    const perShot = timeLimitSec / totalRounds;
+    let acc = 0;
+    const splits = groups.map((g) => {
+      const start = Math.round(acc);
+      acc += g.rounds * perShot;
+      return `<li class="pace-split-pill"><span class="split-prop-name">${esc(g.prop)}</span> <span class="split-time">${start}–${Math.round(acc)} s (${g.rounds})</span></li>`;
+    }).join('');
     return `
       <div class="par-time-flow-bar">
-        <span class="flow-tag">PAR PACING:</span>
-        <div class="pace-splits-container">${splits}</div>
-      </div>
-    `;
+        <span class="flow-tag">Suggested pace</span>
+        <ol class="pace-splits-container">${splits}</ol>
+      </div>`;
   }
 
-  /**
-   * Render Visual Tactical Wrist Coach / Arm Board PRS Match Stage Card & Interactive Builder
-   */
-  renderPrsStage(dope) {
-    const isImperial = appState.state.systemUnits === 'imperial';
-    const profile = dope.profile;
-    const stage = this.prsStage;
-
-    const windDir = stage.windDirectionDeg !== undefined ? stage.windDirectionDeg : 90;
-
-    // Run Trajectories for Base, Lull, and Gust winds
-    const baseDope = this.computeDope(10, 1200, stage.windBaseMs, windDir);
-    const lullDope = this.computeDope(10, 1200, stage.windLullMs, windDir);
-    const gustDope = this.computeDope(10, 1200, stage.windGustMs, windDir);
-
-    // Compute ballistics for each target
-    const targetsWithBallistics = this.computeStageBallistics(stage, baseDope, lullDope, gustDope, profile, isImperial);
-
-    // Summary calculations
+  _stageSummary(stage, u) {
     const totalRounds = stage.targets.reduce((sum, t) => sum + (Number(t.rounds) || 0), 0);
-    const targetCount = stage.targets.length;
     const timeLimitSec = Number(stage.timeLimitSec) || 90;
-    const paceSecPerShot = totalRounds > 0 ? (timeLimitSec / totalRounds).toFixed(1) : '--';
-    const minDistanceM = Math.min(...stage.targets.map((t) => t.distanceM));
-    const maxDistanceM = Math.max(...stage.targets.map((t) => t.distanceM));
-    const distSpan = isImperial
-      ? `${Math.round(UnitConverter.convert(minDistanceM, 'm', 'yd'))} - ${Math.round(UnitConverter.convert(maxDistanceM, 'm', 'yd'))} yd`
-      : `${minDistanceM} - ${maxDistanceM} m`;
-
-    const opticDialUnit = profile.optic?.clickName?.includes('MOA') || (isImperial && !profile.optic?.clickName?.includes('MRAD')) ? 'MOA' : 'MRAD';
-    const daFormatted = Math.round(dope.atmos.densityAltitudeM);
-
-    const windUnit = isImperial ? 'mph' : 'm/s';
-    const windBaseDisplay = isImperial ? Math.round(UnitConverter.convert(stage.windBaseMs, 'm/s', 'mph')) : stage.windBaseMs;
-    const windLullDisplay = isImperial ? Math.round(UnitConverter.convert(stage.windLullMs, 'm/s', 'mph')) : stage.windLullMs;
-    const windGustDisplay = isImperial ? Math.round(UnitConverter.convert(stage.windGustMs, 'm/s', 'mph')) : stage.windGustMs;
-
-    return `
-      <div class="prs-stage-workspace">
-        <!-- TOP TOOLBAR & QUICK ACTIONS -->
-        <div class="card-meta-bar no-print">
-          <div class="meta-left">
-            <span class="meta-title">🎯 Tactical Wrist Coach / Arm Board Card</span>
-            <span class="meta-badge">${targetCount} Targets • ${totalRounds} Rnds • ${timeLimitSec}s</span>
-          </div>
-
-          <div class="meta-center">
-            <!-- Orientation Switcher -->
-            <div class="orientation-toggle-group">
-              <button class="btn-orientation ${this.printOrientation === 'portrait-3x5' ? 'active' : ''}" data-orientation="portrait-3x5" title="Standard 3x5 inch forearm sleeve format">3"x5" Wrist</button>
-              <button class="btn-orientation ${this.printOrientation === 'landscape-5x3' ? 'active' : ''}" data-orientation="landscape-5x3" title="5x3 inch horizontal arm board format">5"x3" Board</button>
-              <button class="btn-orientation ${this.printOrientation === 'full-page' ? 'active' : ''}" data-orientation="full-page" title="Full size clipboard match sheet">Full Page</button>
-            </div>
-
-            <!-- Card Theme Switcher -->
-            <div class="theme-toggle-group">
-              <button class="btn-theme-swatch ${this.cardTheme === 'tactical-night' ? 'active' : ''}" data-theme="tactical-night" title="Tactical Night Theme (OLED Black)">🌑 Night</button>
-              <button class="btn-theme-swatch ${this.cardTheme === 'milspec-od' ? 'active' : ''}" data-theme="milspec-od" title="Mil-Spec OD Green Theme">🌲 Mil-Spec</button>
-              <button class="btn-theme-swatch ${this.cardTheme === 'match-day' ? 'active' : ''}" data-theme="match-day" title="Match Day High-Vis White Theme">☀️ High-Vis</button>
-            </div>
-          </div>
-
-          <div class="meta-right">
-            <button id="btn-toggle-builder" class="btn-secondary-sm">
-              ${this.builderCollapsed ? '⚙️ Open Stage Builder' : '🔼 Hide Builder'}
-            </button>
-            <button class="btn-secondary-sm" id="btn-copy-prs-brief" title="Copy text brief to clipboard">📋 Copy Brief</button>
-            <button class="btn-secondary-sm" id="btn-export-prs-png" title="Export card as PNG image for phone">💾 Save PNG</button>
-            <button class="btn-print">🖨️ Print Arm Card</button>
-          </div>
-        </div>
-
-        <!-- INTERACTIVE STAGE BUILDER PANEL -->
-        <div class="prs-builder-panel no-print ${this.builderCollapsed ? 'collapsed' : ''}" id="prs-builder-panel">
-          <div class="builder-header">
-            <div class="builder-title-group">
-              <span class="builder-badge">STAGE BUILDER</span>
-              <h3>Interactive Match Stage & Barricade Configurator</h3>
-            </div>
-            <div class="preset-pill-group">
-              <span class="preset-label">1-Click Presets:</span>
-              <button class="btn-preset ${stage.name.includes('Troop') ? 'active' : ''}" data-preset="troop-line">🎯 Troop Line (300-700m)</button>
-              <button class="btn-preset ${stage.name.includes('KYL') ? 'active' : ''}" data-preset="kyl-rack">🎯 KYL Rack (400m)</button>
-              <button class="btn-preset ${stage.name.includes('Far-to-Near') ? 'active' : ''}" data-preset="far-to-near">🎯 Far-to-Near Barricade</button>
-              <button class="btn-preset ${stage.name.includes('Skills') ? 'active' : ''}" data-preset="skills-stage">🎯 PRS Skills Stage</button>
-              <button class="btn-preset ${stage.name.includes('Rooftop') ? 'active' : ''}" data-preset="rooftop-barricade">🎯 Rooftop & Barricade</button>
-            </div>
-          </div>
-
-          <!-- Stage Metadata Form Inputs -->
-          <div class="builder-config-grid">
-            <div class="input-field">
-              <label for="input-stage-name">Stage Name / Title</label>
-              <input type="text" id="input-stage-name" class="stage-form-input" value="${esc(stage.name)}" placeholder="e.g. Stage 4: Rooftop & Barricade" />
-            </div>
-
-            <div class="input-field input-field-sm">
-              <label for="input-stage-timer">Stage Timer (s)</label>
-              <input type="number" id="input-stage-timer" class="stage-form-input mono-num" value="${stage.timeLimitSec}" min="30" max="300" step="5" />
-            </div>
-
-            <div class="input-field input-field-sm">
-              <label for="input-wind-direction">Wind Dir (°)</label>
-              <input type="number" id="input-wind-direction" class="stage-form-input mono-num" value="${stage.windDirectionDeg !== undefined ? stage.windDirectionDeg : 90}" min="0" max="359" step="15" title="Wind direction in degrees (0 = Headwind, 90 = Right, 270 = Left)" />
-            </div>
-
-            <div class="input-field input-field-sm">
-              <label for="input-wind-base">Base Wind (${windUnit})</label>
-              <input type="number" id="input-wind-base" class="stage-form-input mono-num" value="${windBaseDisplay}" step="0.5" />
-            </div>
-
-            <div class="input-field input-field-sm">
-              <label for="input-wind-lull">Lull Wind (${windUnit})</label>
-              <input type="number" id="input-wind-lull" class="stage-form-input mono-num" value="${windLullDisplay}" step="0.5" />
-            </div>
-
-            <div class="input-field input-field-sm">
-              <label for="input-wind-gust">Gust Wind (${windUnit})</label>
-              <input type="number" id="input-wind-gust" class="stage-form-input mono-num" value="${windGustDisplay}" step="0.5" />
-            </div>
-
-            <!-- Wind Clock Angle Quick Presets -->
-            <div class="input-field input-field-full">
-              <div class="wind-dir-presets-row">
-                <span class="preset-label">Quick Wind Angle:</span>
-                <button class="btn-wind-dir-pill ${windDir === 90 ? 'active' : ''}" data-dir="90">90° (3:00 Right)</button>
-                <button class="btn-wind-dir-pill ${windDir === 45 ? 'active' : ''}" data-dir="45">45° (1:30 Quarter)</button>
-                <button class="btn-wind-dir-pill ${windDir === 0 ? 'active' : ''}" data-dir="0">0° (12:00 Head)</button>
-                <button class="btn-wind-dir-pill ${windDir === 270 ? 'active' : ''}" data-dir="270">270° (9:00 Left)</button>
-                <button class="btn-wind-dir-pill ${windDir === 180 ? 'active' : ''}" data-dir="180">180° (6:00 Tail)</button>
-              </div>
-            </div>
-
-            <!-- Barricade Flow & Quick Prop Inserter -->
-            <div class="input-field input-field-full">
-              <label for="input-stage-props">Barricade Flow & Round Allocation</label>
-              <input type="text" id="input-stage-props" class="stage-form-input" value="${esc(stage.propsDescription)}" placeholder="Pos 1: Tank Trap (2) ➔ Pos 2: Spool (2) ➔ Pos 3: Barricade (2)..." />
-              <div class="quick-prop-tags-row">
-                <span class="preset-label">Quick Insert:</span>
-                <button class="btn-prop-tag" data-prop="Tank Trap">+ Tank Trap</button>
-                <button class="btn-prop-tag" data-prop="Cable Spool">+ Cable Spool</button>
-                <button class="btn-prop-tag" data-prop="Rooftop">+ Rooftop</button>
-                <button class="btn-prop-tag" data-prop="Barricade">+ Barricade</button>
-                <button class="btn-prop-tag" data-prop="Prone Mat">+ Prone Mat</button>
-                <button class="btn-prop-tag" data-prop="Tires">+ Tires</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Target Sequence Editor Table -->
-          <div class="builder-target-list-wrapper">
-            <div class="builder-table-header-bar">
-              <h4>Target Sequence Downrange (${targetCount} Targets, ${totalRounds} Rounds)</h4>
-              <div class="builder-stats-pill">
-                <span>Pace: <strong>${paceSecPerShot}s / shot</strong></span>
-                <span>Span: <strong>${distSpan}</strong></span>
-              </div>
-            </div>
-
-            <table class="builder-target-table">
-              <thead>
-                <tr>
-                  <th class="w-45px">TGT</th>
-                  <th class="w-95px">SHAPE</th>
-                  <th>TARGET NAME</th>
-                  <th class="w-85px">DIST (${isImperial ? 'yd' : 'm'})</th>
-                  <th class="w-75px">SIZE (${isImperial ? 'in' : 'cm'})</th>
-                  <th class="w-85px">OFFSET (m)</th>
-                  <th class="w-55px">RNDS</th>
-                  <th>PROP / BARRICADE</th>
-                  <th>HOLD NOTES</th>
-                  <th class="w-125px text-center">ACTIONS</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${stage.targets.map((t, idx) => `
-                  <tr data-target-idx="${idx}">
-                    <td class="font-bold text-center">T${idx + 1}</td>
-                    <td>
-                      <select class="target-field-select target-shape-select" data-field="shape">
-                        <option value="gong" ${t.shape === 'gong' ? 'selected' : ''}>Gong (Circle)</option>
-                        <option value="ipsc" ${t.shape === 'ipsc' ? 'selected' : ''}>IPSC Torso</option>
-                        <option value="square" ${t.shape === 'square' ? 'selected' : ''}>Square Plate</option>
-                        <option value="diamond" ${t.shape === 'diamond' ? 'selected' : ''}>Diamond</option>
-                        <option value="kyl" ${t.shape === 'kyl' ? 'selected' : ''}>KYL Rack</option>
-                      </select>
-                    </td>
-                    <td>
-                      <input type="text" class="target-field-input" data-field="name" value="${esc(t.name)}" />
-                    </td>
-                    <td>
-                      <input type="number" class="target-field-input mono-num" data-field="distanceM" value="${isImperial ? Math.round(UnitConverter.convert(t.distanceM, 'm', 'yd')) : t.distanceM}" step="5" />
-                    </td>
-                    <td>
-                      <input type="number" class="target-field-input mono-num" data-field="widthCm" value="${isImperial ? Math.round(t.widthCm / 2.54) : t.widthCm}" step="1" title="Width/Diameter" />
-                    </td>
-                    <td>
-                      <input type="number" class="target-field-input mono-num" data-field="offsetM" value="${t.offsetM !== undefined ? t.offsetM : 0}" step="2" title="Lateral corridor offset in meters (- left, + right)" />
-                    </td>
-                    <td>
-                      <input type="number" class="target-field-input mono-num text-center" data-field="rounds" value="${t.rounds || 2}" min="1" max="10" />
-                    </td>
-                    <td>
-                      <input type="text" class="target-field-input" data-field="prop" value="${esc(t.prop || `Pos ${idx + 1}`)}" placeholder="e.g. Pos 1: Tank Trap" />
-                    </td>
-                    <td>
-                      <input type="text" class="target-field-input" data-field="notes" value="${esc(t.notes || '')}" placeholder="Hold / Order note" />
-                    </td>
-                    <td class="text-center action-btn-cell">
-                      <button class="btn-action-icon btn-move-up" data-idx="${idx}" title="Move Target Up" ${idx === 0 ? 'disabled' : ''}>▲</button>
-                      <button class="btn-action-icon btn-move-down" data-idx="${idx}" title="Move Target Down" ${idx === stage.targets.length - 1 ? 'disabled' : ''}>▼</button>
-                      <button class="btn-action-icon btn-clone-target" data-idx="${idx}" title="Duplicate Target">📋</button>
-                      <button class="btn-action-icon btn-delete-target" data-idx="${idx}" title="Delete Target" ${stage.targets.length <= 1 ? 'disabled' : ''}>🗑️</button>
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-
-            <div class="builder-actions-bottom">
-              <button class="btn-secondary-sm" id="btn-add-target">➕ Add Target Downrange</button>
-              <button class="btn-secondary-sm" id="btn-reset-stage">🔄 Reset to Preset Default</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- AUTHENTIC TACTICAL WRIST COACH SLEEVE FRAME -->
-        <div class="arm-board-sleeve-frame ${this.printOrientation}">
-          <div class="sleeve-strap-accent top"></div>
-
-          <!-- THE AUTHENTIC ARM BOARD CARD (3"x5" / 5"x3" SLEEVE READY) -->
-          <div class="prs-arm-board-card print-sheet ${this.printOrientation} theme-${this.cardTheme}" id="prs-arm-board-card">
-            <!-- CORNER CROP MARKS FOR WATERPROOF SLEEVE TRIMMING -->
-            <div class="card-crop-corner crop-tl">┌</div>
-            <div class="card-crop-corner crop-tr">┐</div>
-            <div class="card-crop-corner crop-bl">└</div>
-            <div class="card-crop-corner crop-br">┘</div>
-
-            <!-- WATERPROOF LAMINATION SEAM GUIDE -->
-            <div class="lamination-guide-border">
-              <!-- 1. HIGH-CONTRAST TACTICAL HEADER -->
-              <div class="card-tactical-header">
-                <div class="header-main-banner">
-                  <div class="banner-title-block">
-                    <span class="badge-stage-tag">PRS / NRL MATCH BRIEF</span>
-                    <h2 class="stage-title-text">${esc(stage.name)}</h2>
-                  </div>
-                  <div class="tactical-pills-row">
-                    <span class="tactical-pill pill-timer">⏱️ <strong>${timeLimitSec}s</strong></span>
-                    <span class="tactical-pill pill-rounds">🎯 <strong>${totalRounds} RNDS</strong></span>
-                    <span class="tactical-pill pill-targets">📍 <strong>${targetCount} TGTS</strong></span>
-                    <span class="tactical-pill pill-pace">⚡ <strong>${paceSecPerShot}s/shot</strong></span>
-                    <span class="tactical-pill pill-wind">💨 <strong>${windLullDisplay}/${windBaseDisplay}/${windGustDisplay} ${windUnit}</strong></span>
-                  </div>
-                </div>
-
-                <!-- Rifle & Atmospheric Baseline Sub-Bar -->
-                <div class="header-sub-meta">
-                  <div class="meta-profile-str">
-                    <strong>RIFLE:</strong> ${esc(profile.name)} • ${profile.bullet.weightGr}gr ${esc(profile.caliber)} (${profile.muzzleVelocityMs} m/s)
-                  </div>
-                  <div class="meta-atmos-str">
-                    <strong>BASELINE:</strong> DA: ${daFormatted}m • ${dope.env.temperatureC}°C • ${dope.env.pressureHpa}hPa • Zero: ${profile.zeroDistanceM}m
-                  </div>
-                </div>
-
-                <!-- Barricade / Prop Flow Sequence Bar -->
-                <div class="barricade-flow-bar">
-                  <span class="flow-tag">PROP FLOW:</span>
-                  <span class="flow-desc">${esc(stage.propsDescription)}</span>
-                </div>
-
-                <!-- Suggested Stage Par Time Breakdown Bar -->
-                ${this._renderParTimeFlow(stage, totalRounds, timeLimitSec)}
-              </div>
-
-              <!-- 2. DOWNRANGE TARGET SEQUENCE SCHEMATIC MAP WITH SHAPE SILHOUETTES -->
-              ${this.renderStageSchematicSvg(stage, targetsWithBallistics, dope, isImperial)}
-
-              <!-- 3. HIGH-CONTRAST TARGET MATRIX -->
-              <table class="prs-target-matrix">
-                <thead>
-                  <tr>
-                    <th class="col-tgt">TGT</th>
-                    <th class="col-prop">PROP / ALLOC</th>
-                    <th class="col-range">RANGE / SIZE</th>
-                    <th class="col-elev">ELEVATION DIAL</th>
-                    <th class="col-wind">WIND BRACKET (◀ LULL | BASE | GUST ▶)</th>
-                    <th class="col-ballistics">TOF / VEL</th>
-                    <th class="col-notes">NOTES / ORDER</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${targetsWithBallistics.map((t, idx) => `
-                    <tr class="matrix-row ${this.highlightedTargetIdx === idx ? 'highlighted' : ''}" data-target-idx="${idx}">
-                      <!-- Target ID & Silhouette -->
-                      <td class="cell-tgt">
-                        <div class="tgt-badge-wrap">
-                          <span class="tgt-num-badge">T${t.index}</span>
-                          <div class="tgt-silhouette-icon">
-                            ${this.renderTargetSilhouetteSvg(t.shape, 20)}
-                          </div>
-                        </div>
-                        <div class="tgt-name-sub">${esc(t.name)}</div>
-                      </td>
-
-                      <!-- Prop Position & Shot Count -->
-                      <td class="cell-prop">
-                        <div class="prop-badge-pill">${esc(t.prop || `Pos ${t.index}`)}</div>
-                        <div class="rounds-alloc-tag">⚡ <strong>${t.rounds}</strong> ${t.rounds > 1 ? 'shots' : 'shot'}</div>
-                      </td>
-
-                      <!-- Distance, Dimensions & Angular Size -->
-                      <td class="cell-range">
-                        <div class="dist-large-val">${t.displayDistance}<span class="dist-unit-sub">${t.displayDistUnit}</span></div>
-                        <div class="size-sub-dim">${t.displayWidth}×${t.displayHeight}${t.displaySizeUnit}</div>
-                        <div class="angular-size-dim">${t.angularSizeDisplay}</div>
-                      </td>
-
-                      <!-- Elevation Dial (Bold + Clicks + Danger Space) -->
-                      <td class="cell-elev">
-                        <div class="elev-dial-card">
-                          <div class="dial-primary-num">${t.dialValue} <span class="dial-unit-lbl">${t.dialUnit}</span></div>
-                          <div class="dial-sub-meta">
-                            <span class="clicks-chip">[${t.clicks} clk]</span>
-                            <span class="danger-space-chip" title="Danger Space range forgiveness">±${Math.round(t.dangerSpaceDisplay / 2)}${t.displayDistUnit}</span>
-                          </div>
-                        </div>
-                      </td>
-
-                      <!-- 3-Way Wind Brackets -->
-                      <td class="cell-wind">
-                        <div class="wind-bracket-pill">
-                          <div class="wind-segment wind-lull">
-                            <span class="wind-bracket-arrow">◀</span>
-                            <span class="wind-val">${t.lullHold}</span>
-                          </div>
-                          <div class="wind-segment wind-base">
-                            <span class="wind-dir-chip">${t.holdDirLabel}</span>
-                            <span class="wind-val-bold">${t.baseHold}</span>
-                          </div>
-                          <div class="wind-segment wind-gust">
-                            <span class="wind-val">${t.gustHold}</span>
-                            <span class="wind-bracket-arrow">▶</span>
-                          </div>
-                        </div>
-                        <div class="wind-unit-caption">${opticDialUnit} Hold into Wind (${windLullDisplay}/${windBaseDisplay}/${windGustDisplay} ${windUnit})</div>
-                      </td>
-
-                      <!-- Ballistics (TOF & Velocity) -->
-                      <td class="cell-ballistics">
-                        <div class="tof-val">${t.tofS}s</div>
-                        <div class="vel-val">${t.velocity} ${t.velocityUnit}</div>
-                      </td>
-
-                      <!-- Prop & Shooter Hold Notes -->
-                      <td class="cell-notes">
-                        <div class="note-text-display">${esc(t.notes || '—')}</div>
-                      </td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-
-              <!-- 4. TACTICAL FOOTER & SAFETY RULE REMINDERS -->
-              <div class="card-tactical-footer">
-                <div class="footer-callout">
-                  <span>⚠️ CONFIRM ZERO BEFORE STAGE • CALL WIND AT SHOT BREAK • BOLT BACK ON TRANSITIONS</span>
-                </div>
-                <div class="footer-spec">
-                  <span>3"x5" (75x125mm) WRIST COACH SLEEVE • BALLISTIC WORKBENCH</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="sleeve-strap-accent bottom"></div>
-        </div>
-        <p class="print-instructions no-print">Cut along the outer solid border and insert inside standard 3"x5" tactical wrist coach sleeve or stock pouch.</p>
-      </div>
-    `;
+    const ds = stage.targets.map((t) => num(t.distanceM, NaN)).filter(Number.isFinite);
+    return {
+      totalRounds,
+      targetCount: stage.targets.length,
+      timeLimitSec,
+      pace: totalRounds > 0 ? fmt(timeLimitSec / totalRounds, 1) : '—',
+      span: ds.length ? `${fmtInt(u.fromM(Math.min(...ds)))}–${fmtInt(u.fromM(Math.max(...ds)))} ${u.dist}` : '—',
+      lull: fmtTrim(u.windFromMs(num(stage.windLullMs, 0)), 1),
+      base: fmtTrim(u.windFromMs(num(stage.windBaseMs, 0)), 1),
+      gust: fmtTrim(u.windFromMs(num(stage.windGustMs, 0)), 1),
+      dir: num(stage.windDirectionDeg, 90),
+    };
   }
 
-  renderScopeCapSvg(dope) {
-    const isImp = (dope?.sysUnits || appState.state.systemUnits) === 'imperial';
-    const isMrad = (dope?.dispUnits || appState.state.displayUnits).elevationAngle === 'MRAD';
-    const d = this.scopeCapDiameterMm;
-    const radius = 245; // viewBox 0 0 500 500 (cx=250, cy=250)
-    const customRanges = appState.state.customDopeRanges;
-    let sample = customRanges && customRanges.length > 0
-      ? dope.trajectory.filter((p) => customRanges.includes(p.distanceM))
-      : dope.trajectory.filter((p) => p.distanceM >= 100 && p.distanceM <= 1000 && p.distanceM % 100 === 0);
-
-    if (!sample || sample.length === 0) {
-      sample = dope.trajectory.filter((p) => p.distanceM >= 100 && p.distanceM <= 1000 && p.distanceM % 100 === 0);
-    }
-    if (!sample || sample.length === 0) {
-      sample = dope.trajectory.slice(0, 10);
-    }
-
-    let labelsSvg = '';
-    const numPoints = sample.length;
-
-    sample.forEach((pt, idx) => {
-      // Position around 280-degree circular arc (from -140 deg to +140 deg)
-      const angleDeg = -140 + (idx / Math.max(1, numPoints - 1)) * 280;
-      const angleRad = (angleDeg * Math.PI) / 180;
-
-      // Distance label radius (track centered at r=210)
-      const rDist = 210;
-      const xDist = 250 + rDist * Math.cos(angleRad);
-      const yDist = 250 + rDist * Math.sin(angleRad);
-
-      // Elevation label radius (track centered at r=170)
-      const rElev = 170;
-      const xElev = 250 + rElev * Math.cos(angleRad);
-      const yElev = 250 + rElev * Math.sin(angleRad);
-
-      // Turret click label radius (track centered at r=134)
-      const rClk = 134;
-      const xClk = 250 + rClk * Math.cos(angleRad);
-      const yClk = 250 + rClk * Math.sin(angleRad);
-
-      // Major radial tick mark (from r=241 down to r=228, 13px length)
-      const xTick1 = 250 + 241 * Math.cos(angleRad);
-      const yTick1 = 250 + 241 * Math.sin(angleRad);
-      const xTick2 = 250 + 228 * Math.cos(angleRad);
-      const yTick2 = 250 + 228 * Math.sin(angleRad);
-
-      const dispDist = isImp ? Math.round(pt.distanceM * 1.09361) : pt.distanceM;
-      const rawElev = isMrad ? pt.elevationMrad : pt.elevationMoa;
-      const dispElev = formatDec(rawElev, 1);
-      const clkVal = pt.elevationClicks !== undefined ? pt.elevationClicks : Math.round(isMrad ? pt.elevationMrad * 10 : pt.elevationMoa * 4);
-
-      // Tangential angle along circle tangent with upright flip
-      let rot = angleDeg + 90;
-      if (rot > 90 && rot < 270) {
-        rot -= 180;
-      }
-
-      labelsSvg += `
-        <!-- Range Tick & Dial Labels for ${dispDist} -->
-        <line x1="${xTick1.toFixed(1)}" y1="${yTick1.toFixed(1)}" x2="${xTick2.toFixed(1)}" y2="${yTick2.toFixed(1)}" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-        <g transform="translate(${xDist.toFixed(1)}, ${yDist.toFixed(1)}) rotate(${rot.toFixed(1)})">
-          <text x="0" y="0" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="900" fill="#0f172a" text-anchor="middle" dominant-baseline="central">${dispDist}</text>
-        </g>
-        <g transform="translate(${xElev.toFixed(1)}, ${yElev.toFixed(1)}) rotate(${rot.toFixed(1)})">
-          <text x="0" y="0" font-family="monospace" font-size="21" font-weight="900" fill="#0284c7" text-anchor="middle" dominant-baseline="central">${dispElev}</text>
-        </g>
-        <g transform="translate(${xClk.toFixed(1)}, ${yClk.toFixed(1)}) rotate(${rot.toFixed(1)})">
-          <text x="0" y="0" font-family="monospace" font-size="14" font-weight="800" fill="#b45309" text-anchor="middle" dominant-baseline="central">${clkVal}c</text>
-        </g>
-      `;
-
-      // Minor intermediate tick mark (between points)
-      if (idx < numPoints - 1) {
-        const nextAngleDeg = -140 + ((idx + 0.5) / Math.max(1, numPoints - 1)) * 280;
-        const nextAngleRad = (nextAngleDeg * Math.PI) / 180;
-        const xm1 = 250 + 241 * Math.cos(nextAngleRad);
-        const ym1 = 250 + 241 * Math.sin(nextAngleRad);
-        const xm2 = 250 + 233 * Math.cos(nextAngleRad);
-        const ym2 = 250 + 233 * Math.sin(nextAngleRad);
-        labelsSvg += `
-          <line x1="${xm1.toFixed(1)}" y1="${ym1.toFixed(1)}" x2="${xm2.toFixed(1)}" y2="${ym2.toFixed(1)}" stroke="#475569" stroke-width="2" stroke-linecap="round" />
-        `;
-      }
-    });
-
-    const daVal = Math.round(isImp ? dope.atmos.densityAltitudeM * 3.28084 : dope.atmos.densityAltitudeM);
-    const daUnit = isImp ? 'ft' : 'm';
-    const zeroVal = isImp ? Math.round(dope.profile.zeroDistanceM * 1.09361) : dope.profile.zeroDistanceM;
-    const distUnit = isImp ? 'yd' : 'm';
-    const mvVal = isImp ? Math.round(dope.profile.muzzleVelocityMs * 3.28084) : dope.profile.muzzleVelocityMs;
-    const mvUnit = isImp ? 'fps' : 'm/s';
-
-    const presets = [
-      { id: '13', mm: 39.9, label: 'Butler Creek #13 (39.9mm)' },
-      { id: '15', mm: 42.2, label: 'Butler Creek #15 (42.2mm)' },
-      { id: '19', mm: 43.9, label: 'Butler Creek #19 (43.9mm)' },
-      { id: '25', mm: 45.7, label: 'Butler Creek #25 (45.7mm)' },
-      { id: '30', mm: 49.8, label: 'Butler Creek #30 (49.8mm)' },
-      { id: '31', mm: 50.7, label: 'Butler Creek #31 (50.7mm)' },
-      { id: '34', mm: 53.3, label: 'Butler Creek #34 (53.3mm)' },
-      { id: '43', mm: 58.7, label: 'Butler Creek #43 (58.7mm)' },
-    ];
-    const isCustom = !presets.some((p) => Math.abs(p.mm - d) < 0.2);
-
-    return `
-      <div class="print-preview-card">
-        <div class="card-meta-bar no-print">
-          <div class="meta-left">
-            <span class="meta-title">Scope Cap Disk</span>
-            <span class="meta-badge">Diameter: ${d}mm</span>
-            <label class="tape-ctrl-label ml-10px">
-              Preset:
-              <select id="scope-cap-preset-select" class="form-select-sm">
-                ${presets.map((p) => `<option value="${p.mm}" ${Math.abs(p.mm - d) < 0.2 ? 'selected' : ''}>${p.label}</option>`).join('')}
-                <option value="custom" ${isCustom ? 'selected' : ''}>Custom mm</option>
-              </select>
-            </label>
-            <label class="tape-ctrl-label">
-              Size (mm):
-              <input type="number" id="scope-cap-diameter-input" min="25" max="85" step="0.1" value="${d}" class="form-input-sm w-65px" />
-            </label>
-          </div>
-          <div class="meta-right">
-            <button class="btn-print">🖨️ Print Scope Cap (${d}mm)</button>
-          </div>
-        </div>
-
-        <div class="scope-cap-preview-wrapper">
-          <div class="scope-cap-print-container" data-cap-diameter-mm="${d}">
-            <svg viewBox="0 0 500 500" width="100%" height="100%" class="scope-cap-svg">
-              <!-- Cutout Boundary Circle -->
-              <circle cx="250" cy="250" r="246" fill="#ffffff" stroke="#000000" stroke-width="2.5" stroke-dasharray="6,4" />
-              <!-- Outer Solid High-Contrast Ring -->
-              <circle cx="250" cy="250" r="243" fill="none" stroke="#0f172a" stroke-width="3" />
-              <!-- Distance Track Divider -->
-              <circle cx="250" cy="250" r="190" fill="none" stroke="#cbd5e1" stroke-width="1.2" />
-              <!-- Elevation Track Divider -->
-              <circle cx="250" cy="250" r="150" fill="none" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4,2" />
-              <!-- Center Rifle Info Circle -->
-              <circle cx="250" cy="250" r="116" fill="#ffffff" stroke="#94a3b8" stroke-width="2" />
-
-              <!-- Caliber & Profile Header in Center -->
-              <text x="250" y="178" font-family="system-ui, -apple-system, sans-serif" font-size="21" font-weight="900" fill="#0f172a" text-anchor="middle" letter-spacing="0.04em">${esc(dope.profile.caliber)}</text>
-              <text x="250" y="204" font-family="system-ui, -apple-system, sans-serif" font-size="15.5" font-weight="800" fill="#334155" text-anchor="middle">${dope.profile.bullet.weightGr}gr | ${mvVal}${mvUnit}</text>
-              <text x="250" y="228" font-family="monospace" font-size="13.5" font-weight="700" fill="#475569" text-anchor="middle">DA: ${daVal}${daUnit} | ${zeroVal}${distUnit} Zero</text>
-
-              <!-- Pill Badge for Dial Unit -->
-              <rect x="155" y="244" width="190" height="28" rx="14" fill="#0284c7" />
-              <text x="250" y="259" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800" fill="#ffffff" text-anchor="middle" dominant-baseline="central" letter-spacing="0.05em">${isMrad ? 'MRAD (0.1 MIL)' : 'MOA (1/4 MOA)'}</text>
-
-              <!-- Physical Spec Footnote -->
-              <text x="250" y="293" font-family="monospace" font-size="12.5" font-weight="800" fill="#475569" text-anchor="middle">Ø ${d}mm • BUTLER CREEK</text>
-
-              <!-- Radial Distance & Dial Labels -->
-              ${labelsSvg}
-            </svg>
-          </div>
-
-          <!-- 1:1 SCALE PRINT CALIBRATION RULER -->
-          <div class="calibration-ruler-strip">
-            <span class="ruler-title">1:1 PRINT CALIBRATION CHECK RULER (50mm EXACT)</span>
-            <svg width="50mm" height="9mm" viewBox="0 0 200 36" xmlns="http://www.w3.org/2000/svg" class="calibration-svg">
-              <rect x="0" y="0" width="200" height="36" fill="#f8fafc" stroke="#0f172a" stroke-width="1.5" rx="2" />
-              ${[0, 10, 20, 30, 40, 50].map((mm) => `
-                <line x1="${mm * 4}" y1="0" x2="${mm * 4}" y2="36" stroke="#0f172a" stroke-width="1.5" />
-                <text x="${mm * 4 + 2}" y="28" font-family="monospace" font-size="10" font-weight="700" fill="#0f172a">${mm}</text>
-              `).join('')}
-              ${[5, 15, 25, 35, 45].map((mm) => `
-                <line x1="${mm * 4}" y1="0" x2="${mm * 4}" y2="20" stroke="#475569" stroke-width="1.2" />
-              `).join('')}
-              ${Array.from({ length: 51 }, (_, i) => i).filter((i) => i % 5 !== 0).map((mm) => `
-                <line x1="${mm * 4}" y1="0" x2="${mm * 4}" y2="10" stroke="#94a3b8" stroke-width="0.8" />
-              `).join('')}
-            </svg>
-            <span class="ruler-subtitle no-print">Verify with physical metric ruler after printing before cutting</span>
-          </div>
-        </div>
-
-        <p class="print-instructions no-print">Cut precisely along the dotted perimeter circle (Ø ${d}mm) and place inside transparent flip-up scope cap.</p>
-      </div>
-    `;
+  _stageData() {
+    const stage = this.prsStage;
+    const windDir = num(stage.windDirectionDeg, 90);
+    const maxD = Math.max(300, ...stage.targets.map((t) => num(t.distanceM, 0))) + 50;
+    const maxRangeM = Math.min(3000, maxD);
+    const baseDope = this.computeDope(10, maxRangeM, num(stage.windBaseMs, 0), windDir);
+    const lullDope = this.computeDope(10, maxRangeM, num(stage.windLullMs, 0), windDir);
+    const gustDope = this.computeDope(10, maxRangeM, num(stage.windGustMs, 0), windDir);
+    const targets = this.computeStageBallistics(stage, baseDope, lullDope, gustDope, baseDope.profile, appState.state.systemUnits === 'imperial');
+    return { baseDope, targets };
   }
 
-  renderWristCoach(dope) {
-    const isImp = (dope?.sysUnits || appState.state.systemUnits) === 'imperial';
-    const isMrad = (dope?.dispUnits || appState.state.displayUnits).elevationAngle === 'MRAD';
-    const distUnit = isImp ? 'yd' : 'm';
-    const velUnit = isImp ? 'fps' : 'm/s';
-    const customRanges = appState.state.customDopeRanges;
-    const rows = customRanges && customRanges.length > 0
-      ? dope.trajectory.filter((p) => customRanges.includes(p.distanceM))
-      : dope.trajectory.filter((p) => p.distanceM >= 100 && p.distanceM <= 1100 && p.distanceM % 50 === 0);
-
-    const mvVal = isImp ? Math.round(dope.profile.muzzleVelocityMs * 3.28084) : dope.profile.muzzleVelocityMs;
-    const daVal = Math.round(isImp ? dope.atmos.densityAltitudeM * 3.28084 : dope.atmos.densityAltitudeM);
-    const daUnit = isImp ? 'ft' : 'm';
-    const zeroVal = isImp ? Math.round(dope.profile.zeroDistanceM * 1.09361) : dope.profile.zeroDistanceM;
+  renderPrsStageCard(data, u) {
+    const stage = this.prsStage;
+    const dope = data.baseDope;
+    const info = this._rifleInfo(dope, u);
+    const s = this._stageSummary(stage, u);
+    const size = STAGE_SIZES.find((x) => x.id === this.printOrientation) || STAGE_SIZES[0];
+    const sizeNote = size.id === 'full-page' ? 'Full page' : size.id === 'landscape-5x3' ? '5 × 3 in card' : '3 × 5 in card';
 
     return `
-      <div class="print-preview-card">
-        <div class="card-meta-bar no-print">
-          <div class="meta-left">
-            <span class="meta-title">Wrist Coach Card</span>
-            <span class="meta-badge">Standard 3"×5" (75×125mm) Sleeve</span>
-            ${customRanges && customRanges.length > 0 ? `<span class="meta-badge">${customRanges.length} custom ranges</span>` : ''}
-          </div>
-          <div class="meta-right">
-            <button class="btn-print">🖨️ Print Wrist Coach (3"×5")</button>
-          </div>
-        </div>
-
-        <div class="wrist-coach-card print-sheet">
-          <!-- Crop Corner Marks for Sleeve Trimming -->
-          <div class="card-crop-corner crop-tl">┌</div>
-          <div class="card-crop-corner crop-tr">┐</div>
-          <div class="card-crop-corner crop-bl">└</div>
-          <div class="card-crop-corner crop-br">┘</div>
-
-          <div class="lamination-guide-border">
-            <div class="coach-header">
-              <div class="coach-title-block">
-                <span class="coach-title">${esc(dope.profile.name)}</span>
-                <span class="coach-spec">${dope.profile.bullet.weightGr}gr ${esc(dope.profile.caliber)}</span>
-              </div>
-              <div class="coach-meta">
-                <span>MV: ${mvVal}${velUnit}</span>
-                <span>DA: ${daVal}${daUnit}</span>
-                <span>Zero: ${zeroVal}${distUnit}</span>
-              </div>
+      <div class="prs-arm-board-card print-sheet paper ${size.id} card-theme-${this.cardTheme}" id="prs-arm-board-card">
+        ${this._cropMarks()}
+        <div class="lamination-guide-border">
+          <header class="card-tactical-header">
+            <div class="header-main-banner">
+              <span class="badge-stage-tag">Stage card</span>
+              <h2 class="stage-title-text">${esc(stage.name)}</h2>
             </div>
-
-            <table class="coach-table">
-              <thead>
-                <tr>
-                  <th class="col-rng">RNG</th>
-                  <th class="col-elev">ELEV</th>
-                  <th class="col-clk">CLK</th>
-                  <th class="col-w2">W ${isImp ? '5' : '2'}</th>
-                  <th class="col-w4">W ${isImp ? '10' : '4'}</th>
-                  <th class="col-w6">W ${isImp ? '15' : '6'}</th>
-                  <th class="col-vel">VEL</th>
-                </tr>
-                <tr class="sub-header-row">
-                  <th class="col-rng">${distUnit}</th>
-                  <th class="col-elev">${isMrad ? 'MIL' : 'MOA'}</th>
-                  <th class="col-clk">clk</th>
-                  <th class="col-w2">${isImp ? 'mph' : 'm/s'}</th>
-                  <th class="col-w4">${isImp ? 'mph' : 'm/s'}</th>
-                  <th class="col-w6">${isImp ? 'mph' : 'm/s'}</th>
-                  <th class="col-vel">${velUnit}</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows.map((r) => {
-                  const dispDist = isImp ? Math.round(r.distanceM * 1.09361) : r.distanceM;
-                  const rawElev = isMrad ? r.elevationMrad : r.elevationMoa;
-                  const dispElev = formatDec(rawElev, 1);
-                  const windBase = isMrad ? Math.abs(r.windageMrad) : Math.abs(r.windageMoa);
-                  const wind2 = formatDec(windBase * 0.5, 1);
-                  const wind4 = formatDec(windBase, 1);
-                  const wind6 = formatDec(windBase * 1.5, 1);
-                  const dispVel = isImp ? Math.round(r.velocityMs * 3.28084) : Math.round(r.velocityMs);
-                  return `
-                    <tr>
-                      <td class="cell-dist col-rng">${dispDist}</td>
-                      <td class="cell-elev col-elev">${dispElev}</td>
-                      <td class="cell-clk col-clk">${r.elevationClicks}</td>
-                      <td class="col-w2">${wind2}</td>
-                      <td class="cell-wind col-w4">${wind4}</td>
-                      <td class="col-w6">${wind6}</td>
-                      <td class="cell-vel col-vel">${dispVel}</td>
-                    </tr>
-                  `;
-                }).join('')}
-              </tbody>
-            </table>
-
-            <div class="coach-footer-note no-print">
-              <span>3"×5" (75×125mm) FOREARM SLEEVE FORMAT • ${isMrad ? '0.1 MRAD' : '1/4 MOA'}</span>
+            <ul class="tactical-pills-row">
+              <li class="tactical-pill">${s.timeLimitSec} s</li>
+              <li class="tactical-pill">${s.totalRounds} shots</li>
+              <li class="tactical-pill">${s.targetCount} targets</li>
+              <li class="tactical-pill">${s.pace} s per shot</li>
+              <li class="tactical-pill">Wind ${s.lull} / ${s.base} / ${s.gust} ${u.wind} from ${clockLabel(s.dir)}</li>
+            </ul>
+            <div class="header-sub-meta">
+              <span><strong>Rifle:</strong> ${info.name} · ${info.caliber} · ${info.weight} · ${info.mv}</span>
+              <span><strong>Conditions:</strong> DA ${info.da} · ${info.temp} · ${info.press} · Zero ${info.zero}</span>
             </div>
-          </div>
-        </div>
-        <p class="print-instructions no-print">Cut precisely along the outer border to fit standard 3"×5" (75mm×125mm) forearm tactical wrist sleeve.</p>
-      </div>
-    `;
-  }
+            ${stage.propsDescription ? `<div class="barricade-flow-bar"><span class="flow-tag">Positions</span> <span class="flow-desc">${esc(stage.propsDescription)}</span></div>` : ''}
+            ${this._renderParTimeFlow(stage, s.totalRounds, s.timeLimitSec)}
+          </header>
 
-  renderStockTape(dope) {
-    const isImp = (dope?.sysUnits || appState.state.systemUnits) === 'imperial';
-    const isMrad = (dope?.dispUnits || appState.state.displayUnits).elevationAngle === 'MRAD';
-    const distUnit = isImp ? 'yd' : 'm';
-    const velUnit = isImp ? 'fps' : 'm/s';
-    const customRanges = appState.state.customDopeRanges;
-    const rows = customRanges && customRanges.length > 0
-      ? dope.trajectory.filter((p) => customRanges.includes(p.distanceM))
-      : dope.trajectory.filter((p) => p.distanceM >= 200 && p.distanceM <= 1000 && p.distanceM % 100 === 0);
+          ${this.renderStageSchematicSvg(stage, data.targets, dope, u.dist === 'yd')}
 
-    const mvVal = isImp ? Math.round(dope.profile.muzzleVelocityMs * 3.28084) : dope.profile.muzzleVelocityMs;
-    const mvUnit = isImp ? 'fps' : 'm/s';
-    const zeroVal = isImp ? Math.round(dope.profile.zeroDistanceM * 1.09361) : dope.profile.zeroDistanceM;
-    const daVal = Math.round(isImp ? dope.atmos.densityAltitudeM * 3.28084 : dope.atmos.densityAltitudeM);
-    const daUnit = isImp ? 'ft' : 'm';
-
-    return `
-      <div class="print-preview-card">
-        <div class="card-meta-bar no-print">
-          <div class="meta-left">
-            <span class="meta-title">Rifle Stock Adhesive Tape</span>
-            <span class="meta-badge">180mm × 32mm Chassis Strip</span>
-            ${customRanges && customRanges.length > 0 ? `<span class="meta-badge">${customRanges.length} custom ranges</span>` : ''}
-          </div>
-          <div class="meta-right">
-            <button class="btn-print">🖨️ Print Stock Tape (180mm × 32mm)</button>
-          </div>
-        </div>
-
-        <div class="stock-tape-wrapper">
-          <div class="stock-tape-strip print-sheet">
-            <div class="tape-header">
-              <span class="tape-header-weapon"><strong>${dope.profile.bullet.weightGr}gr ${esc(dope.profile.caliber)}</strong></span>
-              <span class="tape-header-meta">MV: ${mvVal}${velUnit} | ZERO: ${zeroVal}${distUnit} | DA: ${daVal}${daUnit} | ${isMrad ? 'MRAD (0.1)' : 'MOA (1/4)'}</span>
-            </div>
-
-            <!-- Authentic Chassis Tape Grid (5 Aligned Rows: RNG, ELEV, CLK, WIND 4m/s, GUST 10m/s) -->
-            <table class="tape-matrix-table">
-              <thead>
-                <tr>
-                  <th class="tape-label-col">RNG</th>
-                  ${rows.map((r) => {
-                    const dispDist = isImp ? Math.round(r.distanceM * 1.09361) : r.distanceM;
-                    return `<th class="tape-data-col">${dispDist}</th>`;
-                  }).join('')}
-                </tr>
-              </thead>
-              <tbody>
-                <tr class="tape-row-elev">
-                  <td class="tape-label-col">ELEV</td>
-                  ${rows.map((r) => {
-                    const rawElev = isMrad ? r.elevationMrad : r.elevationMoa;
-                    const dispElev = formatDec(rawElev, 1);
-                    return `<td class="tape-cell-elev">${dispElev}</td>`;
-                  }).join('')}
-                </tr>
-                <tr class="tape-row-clk">
-                  <td class="tape-label-col">CLK</td>
-                  ${rows.map((r) => {
-                    return `<td class="tape-cell-clk">${r.elevationClicks}</td>`;
-                  }).join('')}
-                </tr>
-                <tr class="tape-row-wind">
-                  <td class="tape-label-col">W ${isImp ? '10' : '4'}</td>
-                  ${rows.map((r) => {
-                    const windBase = isMrad ? Math.abs(r.windageMrad) : Math.abs(r.windageMoa);
-                    return `<td>${formatDec(windBase, 1)}</td>`;
-                  }).join('')}
-                </tr>
-                <tr class="tape-row-gust">
-                  <td class="tape-label-col">G ${isImp ? '20' : '10'}</td>
-                  ${rows.map((r) => {
-                    const windBase = isMrad ? Math.abs(r.windageMrad) : Math.abs(r.windageMoa);
-                    const windGust = isImp ? windBase * 2.0 : windBase * 2.5;
-                    return `<td>${formatDec(windGust, 1)}</td>`;
-                  }).join('')}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- 1:1 Scale Print Calibration Ruler -->
-          <div class="calibration-ruler-strip">
-            <span class="ruler-title">1:1 PRINT CALIBRATION CHECK RULER (50mm EXACT)</span>
-            <svg width="50mm" height="9mm" viewBox="0 0 200 36" xmlns="http://www.w3.org/2000/svg" class="calibration-svg">
-              <rect x="0" y="0" width="200" height="36" fill="#f8fafc" stroke="#0f172a" stroke-width="1.5" rx="2" />
-              ${[0, 10, 20, 30, 40, 50].map((mm) => `
-                <line x1="${mm * 4}" y1="0" x2="${mm * 4}" y2="36" stroke="#0f172a" stroke-width="1.5" />
-                <text x="${mm * 4 + 2}" y="28" font-family="monospace" font-size="10" font-weight="700" fill="#0f172a">${mm}</text>
-              `).join('')}
-              ${[5, 15, 25, 35, 45].map((mm) => `
-                <line x1="${mm * 4}" y1="0" x2="${mm * 4}" y2="20" stroke="#475569" stroke-width="1.2" />
-              `).join('')}
-              ${Array.from({ length: 51 }, (_, i) => i).filter((i) => i % 5 !== 0).map((mm) => `
-                <line x1="${mm * 4}" y1="0" x2="${mm * 4}" y2="10" stroke="#94a3b8" stroke-width="0.8" />
-              `).join('')}
-            </svg>
-            <span class="ruler-subtitle no-print">Verify exactly 50mm before cutting and applying 180mm × 32mm strip to rifle chassis</span>
-          </div>
-        </div>
-        <p class="print-instructions no-print">Cut precisely along the dotted perimeter border (180mm × 32mm) and affix to rifle chassis rail with clear protective laminate.</p>
-      </div>
-    `;
-  }
-
-  renderTurretTape(dope) {
-    const isImp = (dope?.sysUnits || appState.state.systemUnits) === 'imperial';
-    const isMrad = (dope?.dispUnits || appState.state.displayUnits).elevationAngle === 'MRAD';
-    const circMm = this.turretCircumferenceMm || 94.2; // default 30mm diameter turret (94.2mm circ)
-    const heightMm = this.turretTapeHeightMm || 14;
-    const totalClicks = 100;
-    const pxPerMm = 4;
-    const svgW = circMm * pxPerMm;
-    const svgH = heightMm * pxPerMm;
-
-    // Presets including 30mm diameter (94.2mm circumference)
-    const presets = [
-      { id: '30mm', circ: 94.2, label: '30mm Diameter (94.2mm wrap)' },
-      { id: '32mm', circ: 100.5, label: '32mm Diameter (100.5mm wrap)' },
-      { id: '34mm', circ: 106.8, label: '34mm Diameter (106.8mm wrap)' },
-      { id: '35mm', circ: 110.0, label: '35mm Diameter (110.0mm wrap)' },
-    ];
-    const isCustom = !presets.some((p) => Math.abs(p.circ - circMm) < 0.3);
-
-    // Use custom selected ranges from workspace if present, or standard 100m - 1000m
-    const customRanges = appState.state.customDopeRanges;
-    const targetDistances = customRanges && customRanges.length > 0
-      ? customRanges
-      : [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
-
-    // Find elevation clicks for each distance
-    const rangeMarks = targetDistances.map((dist) => {
-      const match = dope.trajectory.reduce((prev, curr) =>
-        Math.abs(curr.distanceM - dist) < Math.abs(prev.distanceM - dist) ? curr : prev
-      );
-      const clicks = match ? Math.round(match.elevationClicks) : 0;
-      const dispDist = isImp ? Math.round(dist * 1.09361) : dist;
-      return { dist, dispDist, clicks, elev: isMrad ? match?.elevationMrad : match?.elevationMoa };
-    }).filter((m) => m.clicks >= 0 && m.clicks <= totalClicks);
-
-    // Graduation ticks
-    let ticksSvg = '';
-    for (let c = 0; c <= totalClicks; c++) {
-      const x = (c / totalClicks) * svgW;
-      const isMajor = c % 10 === 0;
-      const isMedium = c % 5 === 0 && !isMajor;
-      const tickH = isMajor ? svgH * 0.42 : isMedium ? svgH * 0.28 : svgH * 0.16;
-      const y1 = svgH;
-      const y2 = svgH - tickH;
-
-      ticksSvg += `<line x1="${x.toFixed(1)}" y1="${y1}" x2="${x.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${isMajor ? '#f8fafc' : isMedium ? '#cbd5e1' : '#64748b'}" stroke-width="${isMajor ? 1.5 : 1}" />`;
-
-      if (isMajor && c > 0 && c < totalClicks) {
-        ticksSvg += `<text x="${x.toFixed(1)}" y="${(svgH - tickH - 3).toFixed(1)}" font-family="monospace" font-size="9" font-weight="bold" fill="#94a3b8" text-anchor="middle">${c / 10}</text>`;
-      }
-    }
-
-    // Prominent Red ZERO indicator at 0 clicks
-    const zeroMarkerSvg = `
-      <g class="turret-zero-marker">
-        <line x1="1" y1="0" x2="1" y2="${svgH}" stroke="#ef4444" stroke-width="2.5" />
-        <rect x="2" y="${(svgH - 14).toFixed(1)}" width="28" height="12" rx="2" fill="#ef4444" />
-        <text x="16" y="${(svgH - 5).toFixed(1)}" font-family="monospace" font-size="8" font-weight="900" fill="#ffffff" text-anchor="middle">ZERO</text>
-      </g>
-    `;
-
-    // Prominent Direction Arrow "UP ▲" positioned at top-right clear of range marks
-    const arrowX = Math.max(svgW - 58, 10);
-    const dirArrowSvg = `
-      <g class="turret-dir-arrow-group" transform="translate(${arrowX.toFixed(1)}, 3)">
-        <rect x="0" y="0" width="54" height="13" rx="2" fill="#064e3b" stroke="#10b981" stroke-width="0.8" />
-        <path d="M 5,6.5 L 17,6.5 M 14,3.5 L 17,6.5 L 14,9.5" fill="none" stroke="#34d399" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-        <text x="21" y="9.5" font-family="system-ui, -apple-system, sans-serif" font-size="8.5" font-weight="900" fill="#34d399" letter-spacing="0.05em">UP ▲</text>
-      </g>
-    `;
-
-    // Calibrated Range Overlays along top edge
-    let rangeMarkersSvg = '';
-    rangeMarks.forEach((m) => {
-      if (m.clicks === 0) return;
-      const x = (m.clicks / totalClicks) * svgW;
-      const distForLabel = isImp ? m.dispDist : m.dist;
-      const label = distForLabel >= 1000 ? `${(distForLabel / 100).toFixed(0)}` : `${Math.round(distForLabel / 100)}`;
-      rangeMarkersSvg += `
-        <g class="turret-range-tag">
-          <line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${(svgH * 0.45).toFixed(1)}" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="2,2" />
-          <rect x="${(x - 9).toFixed(1)}" y="2" width="18" height="12" rx="2" fill="#0284c7" />
-          <text x="${x.toFixed(1)}" y="11" font-family="monospace" font-size="9" font-weight="bold" fill="#ffffff" text-anchor="middle">${label}</text>
-        </g>
-      `;
-    });
-
-    return `
-      <div class="print-preview-card">
-        <div class="card-meta-bar no-print">
-          <div class="meta-left">
-            <span class="meta-title">🎯 Calibrated Turret Tape / Wrap</span>
-            <span class="meta-badge">${esc(dope.profile.name)}</span>
-            <label class="tape-ctrl-label ml-10px">Preset:
-              <select id="turret-tape-preset-select" class="form-select-sm">
-                ${presets.map((p) => `<option value="${p.circ}" ${Math.abs(p.circ - circMm) < 0.3 ? 'selected' : ''}>${p.label}</option>`).join('')}
-                <option value="custom" ${isCustom ? 'selected' : ''}>Custom mm</option>
-              </select>
-            </label>
-            <label class="tape-ctrl-label">Circumference (mm):
-              <input type="number" id="tape-circ-input" class="form-input-sm w-65px" min="60" max="180" step="0.1" value="${circMm}" />
-            </label>
-            <label class="tape-ctrl-label">Height (mm):
-              <input type="number" id="tape-height-input" class="form-input-sm w-55px" min="8" max="25" value="${heightMm}" />
-            </label>
-          </div>
-          <div class="meta-right">
-            <button id="btn-download-tape-svg" class="btn-secondary-sm">📥 Download SVG</button>
-            <button class="btn-print">🖨️ Print 1:1 Scale Wrap</button>
-          </div>
-        </div>
-
-        <div class="turret-tape-preview-wrapper print-sheet" data-tape-circ-mm="${circMm}" data-tape-height-mm="${heightMm}">
-          <div class="turret-tape-label-bar no-print">
-            <span>Cut along perimeter border. Calibrated for <strong>${circMm}mm</strong> circumference (~${(circMm / Math.PI).toFixed(1)}mm turret diameter) with UP ▲ dial direction.</span>
-          </div>
-
-          <!-- THE MILLIMETER-CALIBRATED SVG STRIP -->
-          <div class="turret-tape-svg-box">
-            <svg id="turret-tape-svg" width="${circMm}mm" height="${heightMm}mm" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">
-              <rect class="tape-bg" x="0" y="0" width="${svgW}" height="${svgH}" fill="#05070a" stroke="#38bdf8" stroke-width="1" />
-              <!-- Graduation Ticks -->
-              ${ticksSvg}
-              <!-- Zero Marker -->
-              ${zeroMarkerSvg}
-              <!-- Direction Arrow UP -->
-              ${dirArrowSvg}
-              <!-- Range Number Badges -->
-              ${rangeMarkersSvg}
-              <!-- Cut guides -->
-              <line x1="0" y1="0" x2="0" y2="${svgH}" stroke="#ef4444" stroke-width="1.5" />
-              <line x1="${svgW}" y1="0" x2="${svgW}" y2="${svgH}" stroke="#ef4444" stroke-width="1.5" />
-            </svg>
-          </div>
-              <!-- Graduation Ticks -->
-              ${ticksSvg}
-              <!-- Direction Arrow UP -->
-              ${dirArrowSvg}
-              <!-- Range Number Badges -->
-              ${rangeMarkersSvg}
-              <!-- Cut guides -->
-              <line x1="0" y1="0" x2="0" y2="${svgH}" stroke="#ef4444" stroke-width="1.5" />
-              <line x1="${svgW}" y1="0" x2="${svgW}" y2="${svgH}" stroke="#ef4444" stroke-width="1.5" />
-            </svg>
-          </div>
-
-          <!-- 1:1 SCALE PRINT CALIBRATION RULER -->
-          <div class="calibration-ruler-strip">
-            <span class="ruler-title">1:1 PRINT CALIBRATION CHECK RULER (50mm EXACT)</span>
-            <svg width="50mm" height="9mm" viewBox="0 0 200 36" xmlns="http://www.w3.org/2000/svg" class="calibration-svg">
-              <rect x="0" y="0" width="200" height="36" fill="#f8fafc" stroke="#0f172a" stroke-width="1.5" rx="2" />
-              ${[0, 10, 20, 30, 40, 50].map((mm) => `
-                <line x1="${mm * 4}" y1="0" x2="${mm * 4}" y2="36" stroke="#0f172a" stroke-width="1.5" />
-                <text x="${mm * 4 + 2}" y="28" font-family="monospace" font-size="10" font-weight="700" fill="#0f172a">${mm}</text>
-              `).join('')}
-              ${[5, 15, 25, 35, 45].map((mm) => `
-                <line x1="${mm * 4}" y1="0" x2="${mm * 4}" y2="20" stroke="#475569" stroke-width="1.2" />
-              `).join('')}
-              ${Array.from({ length: 51 }, (_, i) => i).filter((i) => i % 5 !== 0).map((mm) => `
-                <line x1="${mm * 4}" y1="0" x2="${mm * 4}" y2="10" stroke="#94a3b8" stroke-width="0.8" />
-              `).join('')}
-            </svg>
-            <span class="ruler-subtitle no-print">Measure with calipers after printing. Verify exactly 50mm before applying wrap.</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  renderA4ReticleHoldReference(dope, isImp, isMrad) {
-    const distUnit = isImp ? 'yd' : 'm';
-    const holdDistances = [200, 300, 400, 500, 600, 700, 800, 900, 1000];
-    const holdPoints = holdDistances.map((dist) => {
-      const match = dope.trajectory.reduce((prev, curr) =>
-        Math.abs(curr.distanceM - dist) < Math.abs(prev.distanceM - dist) ? curr : prev
-      );
-      const dispDist = isImp ? Math.round(dist * 1.09361) : dist;
-      const elev = isMrad ? formatDec(match?.elevationMrad, 1) : formatDec(match?.elevationMoa, 1);
-      const wind4 = isMrad ? formatDec(Math.abs(match?.windageMrad), 1) : formatDec(Math.abs(match?.windageMoa), 1);
-      return { dist: dispDist, elev, wind4 };
-    });
-
-    return `
-      <div class="a4-reticle-hold-section">
-        <h3 class="a4-section-title">OPTIC RETICLE HOLDOVER REFERENCE TREE (${isMrad ? 'MRAD' : 'MOA'})</h3>
-        <div class="reticle-tree-grid">
-          ${holdPoints.map((hp) => `
-            <div class="reticle-tree-node">
-              <span class="node-dist">${hp.dist}${distUnit}</span>
-              <span class="node-elev">▲ ${hp.elev} ${isMrad ? 'MIL' : 'MOA'}</span>
-              <span class="node-wind">◀▶ ${hp.wind4} (4m/s)</span>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-  }
-
-  renderA4ShooterNotesGrid() {
-    return `
-      <div class="a4-notes-section">
-        <h3 class="a4-section-title">FIELD SHOOTER LOG & TARGET ENGAGEMENT NOTES</h3>
-        <div class="a4-notes-grid">
-          <div class="notes-box">
-            <span class="notes-box-title">COLD BORE & ZERO CONFIRMATION</span>
-            <div class="notes-line-entry">Date/Time: ___________________ Temp / DA: ___________________</div>
-            <div class="notes-line-entry">Target: 100m Impact: [ X: _______mm | Y: _______mm ] ES: _______</div>
-            <div class="notes-line-entry">Optic Dial Check: [ Elevation: _______ | Windage: _______ ]</div>
-          </div>
-          <div class="notes-box">
-            <span class="notes-box-title">CHRONOGRAPH VELOCITY STRING</span>
-            <div class="notes-line-entry">1: ______ 2: ______ 3: ______ 4: ______ 5: ______</div>
-            <div class="notes-line-entry">6: ______ 7: ______ 8: ______ 9: ______ 10: _____</div>
-            <div class="notes-line-entry">Avg MV: ________ m/s | SD: ________ | ES: ________</div>
-          </div>
-          <div class="notes-box">
-            <span class="notes-box-title">MIRAGE & SQUAD WIND CALLS</span>
-            <div class="notes-line-entry">Base Mirage Angle: _________° | Speed Est: _________ m/s</div>
-            <div class="notes-line-entry">Lull Bracket: _________ | Gust Bracket: _________</div>
-            <div class="notes-line-entry">Terrain Drift / Canyon Updraft Notes: __________________</div>
-          </div>
-          <div class="notes-box">
-            <span class="notes-box-title">STAGE BARRICADE & PROP NOTES</span>
-            <div class="notes-line-entry">Position 1: _____________________________________________</div>
-            <div class="notes-line-entry">Position 2: _____________________________________________</div>
-            <div class="notes-line-entry">Target Order: ___________________________________________</div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  renderA4DataSheet(dope) {
-    const isImp = (dope?.sysUnits || appState.state.systemUnits) === 'imperial';
-    const isMrad = (dope?.dispUnits || appState.state.displayUnits).elevationAngle === 'MRAD';
-    const distUnit = isImp ? 'yd' : 'm';
-    const dropUnit = isImp ? 'in' : 'cm';
-    const dropFactor = isImp ? 39.3701 : 100;
-    const velUnit = isImp ? 'fps' : 'm/s';
-    const energyUnit = isImp ? 'ft-lb' : 'J';
-    const customRanges = appState.state.customDopeRanges;
-    const fullRows = customRanges && customRanges.length > 0
-      ? dope.trajectory.filter((p) => customRanges.includes(p.distanceM))
-      : dope.trajectory.filter((p) => p.distanceM % 50 === 0);
-
-    const mvVal = isImp ? Math.round(dope.profile.muzzleVelocityMs * 3.28084) : dope.profile.muzzleVelocityMs;
-    const zeroVal = isImp ? Math.round(dope.profile.zeroDistanceM * 1.09361) : dope.profile.zeroDistanceM;
-    const shVal = isImp ? (dope.profile.sightHeightM * 39.3701).toFixed(2) : (dope.profile.sightHeightM * 100).toFixed(1);
-    const shUnit = isImp ? 'in' : 'cm';
-    const daVal = Math.round(isImp ? dope.atmos.densityAltitudeM * 3.28084 : dope.atmos.densityAltitudeM);
-    const daUnit = isImp ? 'ft' : 'm';
-    const pressVal = isImp ? (dope.env.pressureHpa * 0.02953).toFixed(2) : dope.env.pressureHpa;
-    const pressUnit = isImp ? 'inHg' : 'hPa';
-    const tempVal = isImp ? Math.round((dope.env.temperatureC * 9) / 5 + 32) : dope.env.temperatureC;
-    const tempUnit = isImp ? '°F' : '°C';
-
-    return `
-      <div class="print-preview-card">
-        <div class="card-meta-bar no-print">
-          <div class="meta-left">
-            <span class="meta-title">Master Precision Rifle Data Sheet (A4 / Letter)</span>
-            ${customRanges && customRanges.length > 0 ? `<span class="meta-badge">${customRanges.length} custom ranges</span>` : ''}
-          </div>
-          <div class="meta-right">
-            <button class="btn-print">🖨️ Print A4 Data Sheet</button>
-          </div>
-        </div>
-        <div class="a4-data-sheet print-sheet">
-          <div class="sheet-title-banner">
-            <h1>BALLISTIC DATA SHEET - PRECISION RIFLE</h1>
-            <div class="sheet-meta-grid">
-              <div><strong>Weapon:</strong> ${esc(dope.profile.name)}</div>
-              <div><strong>Caliber:</strong> ${esc(dope.profile.caliber)}</div>
-              <div><strong>Optic:</strong> ${esc(dope.profile.optic?.model)}</div>
-              <div><strong>Zero:</strong> ${zeroVal}${distUnit} (${shVal}${shUnit} SH)</div>
-              <div><strong>Bullet:</strong> ${esc(dope.profile.bullet.name)} (${dope.profile.bullet.weightGr}gr)</div>
-              <div><strong>Muzzle Velocity:</strong> ${mvVal} ${velUnit}</div>
-              <div><strong>Atmosphere:</strong> ${tempVal}${tempUnit}, ${pressVal} ${pressUnit}, DA ${daVal}${daUnit}</div>
-              <div><strong>Twist:</strong> 1:${dope.profile.twistRateIn}" (${dope.profile.twistDirection})</div>
-            </div>
-          </div>
-
-          <table class="a4-table">
+          <table class="prs-target-matrix">
             <thead>
               <tr>
-                <th>Range (${distUnit})</th>
-                <th>Drop (${dropUnit})</th>
-                <th>Elev (${isMrad ? 'MRAD' : 'MOA'})</th>
-                <th>Clicks</th>
-                <th>Drift (${dropUnit})</th>
-                <th>Wind ${isImp ? '5mph' : '2m/s'}</th>
-                <th>Wind ${isImp ? '10mph' : '4m/s'}</th>
-                <th>Wind ${isImp ? '15mph' : '6m/s'}</th>
-                <th>Velocity (${velUnit})</th>
-                <th>Mach</th>
-                <th>Energy (${energyUnit})</th>
-                <th>ToF (s)</th>
+                <th scope="col" class="col-tgt">Target</th>
+                <th scope="col" class="col-prop">Position</th>
+                <th scope="col" class="col-range">Range</th>
+                <th scope="col" class="col-elev">Elevation</th>
+                <th scope="col" class="col-wind">Wind hold: lull / base / gust (${u.windAng})</th>
+                <th scope="col" class="col-ballistics">Time / speed</th>
+                <th scope="col" class="col-notes">Notes</th>
               </tr>
             </thead>
             <tbody>
-              ${fullRows.map((r) => {
-                const dispDist = isImp ? Math.round(r.distanceM * 1.09361) : r.distanceM;
-                const dropLin = formatDec(r.dropM * dropFactor, 1);
-                const dispElev = isMrad ? formatDec(r.elevationMrad, 2) : formatDec(r.elevationMoa, 2);
-                const driftLin = formatDec(Math.abs(r.driftM) * dropFactor, 1);
-                const windBase = isMrad ? Math.abs(r.windageMrad) : Math.abs(r.windageMoa);
-                const wind2 = formatDec(windBase * 0.5, 2);
-                const wind4 = formatDec(windBase, 2);
-                const wind6 = formatDec(windBase * 1.5, 2);
-                const velVal = isImp ? Math.round(r.velocityMs * 3.28084) : Math.round(r.velocityMs);
-                const energyVal = isImp ? Math.round(r.energyJ * 0.737562) : Math.round(r.energyJ);
-
-                return `
-                  <tr>
-                    <td class="font-bold">${dispDist}${distUnit}</td>
-                    <td>${dropLin}</td>
-                    <td class="cell-elev">${dispElev}</td>
-                    <td>${r.elevationClicks}</td>
-                    <td>${driftLin}</td>
-                    <td>${wind2}</td>
-                    <td class="cell-wind">${wind4}</td>
-                    <td>${wind6}</td>
-                    <td>${velVal}</td>
-                    <td>${r.mach.toFixed(2)}</td>
-                    <td>${energyVal}</td>
-                    <td>${r.tofS.toFixed(3)}</td>
-                  </tr>
-                `;
-              }).join('')}
+              ${data.targets.map((t, idx) => `
+                <tr class="matrix-row" data-target-idx="${idx}">
+                  <td class="cell-tgt">
+                    <span class="tgt-badge-wrap"><span class="tgt-num-badge">T${t.index}</span><span class="tgt-silhouette-icon">${this.renderTargetSilhouetteSvg(t.shape, 20)}</span></span>
+                    <span class="tgt-name-sub">${esc(t.name)}</span>
+                  </td>
+                  <td class="col-prop">
+                    <span class="prop-badge-pill">${esc(t.prop || `Position ${t.index}`)}</span>
+                    <span class="rounds-alloc-tag">${fmtInt(t.rounds)} ${Number(t.rounds) === 1 ? 'shot' : 'shots'}</span>
+                  </td>
+                  <td class="cell-range">
+                    <span class="dist-large-val">${t.displayDistance}<span class="dist-unit-sub"> ${esc(t.displayDistUnit)}</span></span>
+                    <span class="size-sub-dim">${t.displayWidth} × ${t.displayHeight} ${esc(t.displaySizeUnit)}</span>
+                    <span class="angular-size-dim">${esc(t.angularSizeDisplay)}</span>
+                  </td>
+                  <td class="cell-elev">
+                    <span class="dial-primary-num">${esc(t.dialValue)}<span class="dial-unit-lbl"> ${esc(t.dialUnit)}</span></span>
+                    <span class="dial-sub-meta"><span class="clicks-chip">${fmtInt(t.clicks)} clicks</span> <span class="danger-space-chip" title="Danger space: range error that still hits">±${Number.isFinite(t.dangerSpaceDisplay) ? Math.round(t.dangerSpaceDisplay / 2) : '—'} ${esc(t.displayDistUnit)}</span></span>
+                  </td>
+                  <td class="cell-wind">
+                    <span class="wind-bracket-pill">
+                      <span class="wind-segment wind-lull">${t.lullHold}</span>
+                      <span class="wind-segment wind-base"><span class="wind-dir-chip">${t.holdDirLabel}</span> ${t.baseHold}</span>
+                      <span class="wind-segment wind-gust">${t.gustHold}</span>
+                    </span>
+                  </td>
+                  <td class="cell-ballistics">
+                    <span class="tof-val">${t.tofS} s</span>
+                    <span class="vel-val">${t.velocity} ${esc(t.velocityUnit)}</span>
+                  </td>
+                  <td class="cell-notes"><span class="note-text-display">${esc(t.notes || '—')}</span></td>
+                </tr>`).join('')}
             </tbody>
           </table>
 
-          <!-- RETICLE HOLDOVER REFERENCE -->
-          ${this.renderA4ReticleHoldReference(dope, isImp, isMrad)}
+          <footer class="card-tactical-footer">
+            <span>R / L: hold right or left into the wind. ± is danger space: range error that still hits.</span>
+            <span>${sizeNote} · Ballistic Workbench</span>
+          </footer>
+        </div>
+      </div>`;
+  }
 
-          <!-- SHOOTER NOTES GRID -->
-          ${this.renderA4ShooterNotesGrid()}
+  // ---- settings column --------------------------------------------------------------------------
+
+  _rangeSourceHtml(ranges, u, skipped, extraNote = '') {
+    const notes = [];
+    if (ranges.shown.length < ranges.all.length) {
+      notes.push(`This card has room for ${ranges.shown.length} distances, so it shows ${ranges.shown.length} of ${ranges.all.length}, spread evenly.`);
+    }
+    if (skipped > 0) notes.push(`${skipped} ${skipped === 1 ? 'distance is' : 'distances are'} past the end of the trajectory and left out.`);
+    if (extraNote) notes.push(extraNote);
+    const first = ranges.all.length ? fmtInt(u.fromM(ranges.all[0])) : '—';
+    const last = ranges.all.length ? fmtInt(u.fromM(ranges.all[ranges.all.length - 1])) : '—';
+    return `
+      <div class="dope-setting-block">
+        <h3 class="dope-block-title">${icon('list')} Distances</h3>
+        ${ranges.fromSolver
+          ? `<p class="dope-range-source">Using ${ranges.all.length} ${ranges.all.length === 1 ? 'distance' : 'distances'} from the Solver (${first}–${last} ${u.dist}). <button type="button" class="btn-link" data-action="use-default-ranges">Use defaults</button></p>`
+          : `<p class="dope-range-source">Default distances, ${first}–${last} ${u.dist}. To choose your own, tick rows in the Solver’s table and press <strong>Make DOPE card</strong>.</p>`}
+        ${notes.map((n) => `<p class="field-hint">${n}</p>`).join('')}
+      </div>`;
+  }
+
+  _sourceHtml(dope, u) {
+    const info = this._rifleInfo(dope, u);
+    return `
+      <div class="dope-setting-block dope-source">
+        <h3 class="dope-block-title">${icon('rifle')} Data from</h3>
+        <dl class="dope-source-list">
+          <div><dt>Rifle</dt><dd>${info.name}</dd></div>
+          <div><dt>Conditions</dt><dd>${info.envName || '—'}</dd></div>
+          <div><dt>Units</dt><dd>${u.dist}, ${u.elev}, wind in ${u.wind}</dd></div>
+        </dl>
+        <p class="field-hint">Change the rifle, conditions or units in the <a href="#workspace">Solver</a> or the header.</p>
+      </div>`;
+  }
+
+  _scopeCapSettings() {
+    const d = this.scopeCapDiameterMm;
+    const isCustom = !SCOPE_CAP_PRESETS.some((p) => Math.abs(p.mm - d) < 0.05);
+    return `
+      <div class="dope-setting-block">
+        <div class="field-row">
+          <label class="field-label" for="scope-cap-preset-select">Cap size</label>
+          <select id="scope-cap-preset-select" class="form-select">
+            ${SCOPE_CAP_PRESETS.map((p) => `<option value="${p.mm}" ${Math.abs(p.mm - d) < 0.05 ? 'selected' : ''}>${p.label}</option>`).join('')}
+            <option value="custom" ${isCustom ? 'selected' : ''}>Other size</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label class="field-label" for="scope-cap-diameter-input">Diameter (mm)</label>
+          <input type="number" inputmode="decimal" id="scope-cap-diameter-input" class="form-input" min="25" max="85" step="0.1" value="${d}" />
+          <p class="field-hint">Measure the inside of the clear cap lid.</p>
+        </div>
+      </div>`;
+  }
+
+  _turretSettings(offTurn) {
+    const circ = this.turretCircumferenceMm;
+    const isCustom = !TURRET_PRESETS.some((p) => Math.abs(p.circ - circ) < 0.05);
+    return `
+      <div class="dope-setting-block">
+        <div class="field-row">
+          <label class="field-label" for="turret-tape-preset-select">Turret size</label>
+          <select id="turret-tape-preset-select" class="form-select">
+            ${TURRET_PRESETS.map((p) => `<option value="${p.circ}" ${Math.abs(p.circ - circ) < 0.05 ? 'selected' : ''}>${p.label}</option>`).join('')}
+            <option value="custom" ${isCustom ? 'selected' : ''}>Other size</option>
+          </select>
+        </div>
+        <div class="field-grid-2">
+          <div>
+            <label class="field-label" for="tape-circ-input">Length around (mm)</label>
+            <input type="number" inputmode="decimal" id="tape-circ-input" class="form-input" min="60" max="180" step="0.1" value="${circ}" />
+          </div>
+          <div>
+            <label class="field-label" for="tape-height-input">Height (mm)</label>
+            <input type="number" inputmode="decimal" id="tape-height-input" class="form-input" min="8" max="25" step="0.5" value="${this.turretTapeHeightMm}" />
+          </div>
+          <div>
+            <label class="field-label" for="tape-clicks-input">Clicks per turn</label>
+            <input type="number" inputmode="numeric" id="tape-clicks-input" class="form-input" min="40" max="200" step="1" value="${this.turretClicksPerTurn}" />
+          </div>
+        </div>
+        <p class="field-hint">Wrap a strip of paper around the turret and measure it for the exact length. Distance marks show hundreds (3 = 300).</p>
+        ${offTurn > 0 ? `<p class="field-hint dope-warn">${icon('alert')} ${offTurn} ${offTurn === 1 ? 'distance needs' : 'distances need'} more than one turn and ${offTurn === 1 ? 'is' : 'are'} left out.</p>` : ''}
+      </div>`;
+  }
+
+  _stageSettings(u) {
+    const stage = this.prsStage;
+    const windDir = num(stage.windDirectionDeg, 90);
+    const known = WIND_DIRECTIONS.some((w) => w.deg === windDir);
+    return `
+      <div class="dope-setting-block">
+        <div class="field-row">
+          <label class="field-label" for="stage-preset-select">Presets</label>
+          <select id="stage-preset-select" class="form-select">
+            <option value="" selected>Load a preset stage…</option>
+            ${Object.keys(this.presets).map((k) => `<option value="${k}">${esc(this.presetLabels[k] || k)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-row">
+          <label class="field-label" for="input-stage-name">Stage name</label>
+          <input type="text" id="input-stage-name" class="form-input" maxlength="80" value="${esc(stage.name)}" />
+        </div>
+        <div class="field-grid-2">
+          <div>
+            <label class="field-label" for="input-stage-timer">Time limit (s)</label>
+            <input type="number" inputmode="numeric" id="input-stage-timer" class="form-input" min="10" max="600" step="5" value="${fmtInt(stage.timeLimitSec)}" />
+          </div>
+          <div>
+            <label class="field-label" for="input-wind-direction">Wind angle (°)</label>
+            <input type="number" inputmode="numeric" id="input-wind-direction" class="form-input" min="0" max="359" step="15" value="${fmtInt(windDir)}" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label class="field-label" for="wind-dir-select">Wind from</label>
+          <select id="wind-dir-select" class="form-select">
+            ${WIND_DIRECTIONS.map((w) => `<option value="${w.deg}" ${w.deg === windDir ? 'selected' : ''}>${w.label}</option>`).join('')}
+            ${known ? '' : `<option value="custom" selected>${fmtInt(windDir)}° (${clockLabel(windDir)})</option>`}
+          </select>
+        </div>
+        <fieldset class="dope-fieldset">
+          <legend class="field-label">Wind hold: lull / base / gust (${u.wind})</legend>
+          <div class="field-grid-3">
+            <div><label class="lg-sr-only" for="input-wind-lull">Lull wind (${u.wind})</label><input type="number" inputmode="decimal" id="input-wind-lull" class="form-input" min="0" max="${u.wind === 'mph' ? 80 : 35}" step="0.5" value="${fmtTrim(u.windFromMs(num(stage.windLullMs, 0)), 1)}" /></div>
+            <div><label class="lg-sr-only" for="input-wind-base">Base wind (${u.wind})</label><input type="number" inputmode="decimal" id="input-wind-base" class="form-input" min="0" max="${u.wind === 'mph' ? 80 : 35}" step="0.5" value="${fmtTrim(u.windFromMs(num(stage.windBaseMs, 0)), 1)}" /></div>
+            <div><label class="lg-sr-only" for="input-wind-gust">Gust wind (${u.wind})</label><input type="number" inputmode="decimal" id="input-wind-gust" class="form-input" min="0" max="${u.wind === 'mph' ? 80 : 35}" step="0.5" value="${fmtTrim(u.windFromMs(num(stage.windGustMs, 0)), 1)}" /></div>
+          </div>
+        </fieldset>
+        <div class="field-row">
+          <label class="field-label" for="input-stage-props">Positions, in order</label>
+          <input type="text" id="input-stage-props" class="form-input" maxlength="200" value="${esc(stage.propsDescription)}" placeholder="Tank trap (2), then barricade (3)" />
+          <div class="dope-chip-row" role="group" aria-label="Add a position">
+            ${['Tank trap', 'Cable spool', 'Barricade', 'Rooftop', 'Prone mat', 'Tires'].map((p) => `<button type="button" class="dope-chip" data-action="add-prop" data-value="${p}">${icon('plus')} ${p}</button>`).join('')}
+          </div>
         </div>
       </div>
-    `;
+      <div class="dope-setting-block">
+        <h3 class="dope-block-title">${icon('card')} Card</h3>
+        <p class="field-label" id="stage-size-label">Size</p>
+        <div class="lg-segmented dope-segmented" role="group" aria-labelledby="stage-size-label">
+          ${STAGE_SIZES.map((sz) => `<button type="button" class="tab-btn" data-action="stage-orientation" data-value="${sz.id}" aria-pressed="${this.printOrientation === sz.id}" aria-label="${sz.label}"><span class="seg-main">${sz.short}</span><span class="seg-sub">${sz.sub}</span></button>`).join('')}
+        </div>
+        <p class="field-label dope-label-gap" id="stage-colour-label">Colour</p>
+        <div class="lg-segmented dope-segmented" role="group" aria-labelledby="stage-colour-label">
+          ${CARD_THEMES.map((t) => `<button type="button" class="tab-btn" data-action="card-theme" data-value="${t.id}" aria-pressed="${this.cardTheme === t.id}"><span class="swatch swatch-${t.id}" aria-hidden="true"></span>${t.label}</button>`).join('')}
+        </div>
+        <p class="field-hint dope-warn" id="stage-fit-warning" hidden>${icon('alert')} <span>The card is full and the last rows are cut off. Remove targets, or choose a bigger size.</span></p>
+      </div>`;
   }
 
-  bindPrsEvents() {
-    const isImperial = appState.state.systemUnits === 'imperial';
+  // ---- stage target editor ----------------------------------------------------------------------
 
-    // 1. Preset Buttons
-    const presetBtns = this.container.querySelectorAll('.btn-preset');
-    presetBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.loadPreset(btn.dataset.preset);
-      });
-    });
-
-    // 2. Orientation Switcher
-    const orientBtns = this.container.querySelectorAll('.btn-orientation');
-    orientBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.setPrintOrientation(btn.dataset.orientation);
-      });
-    });
-
-    // 3. Theme Switcher
-    const themeBtns = this.container.querySelectorAll('.btn-theme-swatch');
-    themeBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.setTheme(btn.dataset.theme);
-      });
-    });
-
-    // 4. Toggle Stage Builder Drawer
-    const toggleBuilderBtn = this.container.querySelector('#btn-toggle-builder');
-    if (toggleBuilderBtn) {
-      toggleBuilderBtn.addEventListener('click', () => {
-        this.builderCollapsed = !this.builderCollapsed;
-        const panel = this.container.querySelector('#prs-builder-panel');
-        if (panel) {
-          panel.classList.toggle('collapsed', this.builderCollapsed);
-          toggleBuilderBtn.textContent = this.builderCollapsed ? '⚙️ Open Stage Builder' : '🔼 Hide Builder';
-        }
-      });
-    }
-
-    // 5. Stage Configuration Inputs
-    const stageNameInput = this.container.querySelector('#input-stage-name');
-    if (stageNameInput) {
-      stageNameInput.addEventListener('change', (e) => {
-        this.prsStage.name = e.target.value.trim() || 'PRS Match Stage';
-        this._saveStageState();
-        this.render();
-      });
-    }
-
-    const stageTimerInput = this.container.querySelector('#input-stage-timer');
-    if (stageTimerInput) {
-      stageTimerInput.addEventListener('change', (e) => {
-        const val = parseInt(e.target.value, 10);
-        this.prsStage.timeLimitSec = isNaN(val) ? 90 : Math.max(10, val);
-        this._saveStageState();
-        this.render();
-      });
-    }
-
-    const windDirInput = this.container.querySelector('#input-wind-direction');
-    if (windDirInput) {
-      windDirInput.addEventListener('change', (e) => {
-        const val = parseFloat(e.target.value);
-        if (!isNaN(val)) {
-          this.prsStage.windDirectionDeg = ((val % 360) + 360) % 360;
-          this._saveStageState();
-          this.render();
-        }
-      });
-    }
-
-    // Quick Wind Direction Pills
-    this.container.querySelectorAll('.btn-wind-dir-pill').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const deg = parseFloat(btn.dataset.dir);
-        if (!isNaN(deg)) {
-          this.prsStage.windDirectionDeg = deg;
-          this._saveStageState();
-          this.render();
-        }
-      });
-    });
-
-    // Wind Speeds (converting from mph if Imperial)
-    const windBaseInput = this.container.querySelector('#input-wind-base');
-    if (windBaseInput) {
-      windBaseInput.addEventListener('change', (e) => {
-        const val = parseFloat(e.target.value);
-        if (!isNaN(val) && val >= 0) {
-          this.prsStage.windBaseMs = isImperial ? UnitConverter.convert(val, 'mph', 'm/s') : val;
-          this._saveStageState();
-          this.render();
-        }
-      });
-    }
-
-    const windLullInput = this.container.querySelector('#input-wind-lull');
-    if (windLullInput) {
-      windLullInput.addEventListener('change', (e) => {
-        const val = parseFloat(e.target.value);
-        if (!isNaN(val) && val >= 0) {
-          this.prsStage.windLullMs = isImperial ? UnitConverter.convert(val, 'mph', 'm/s') : val;
-          this._saveStageState();
-          this.render();
-        }
-      });
-    }
-
-    const windGustInput = this.container.querySelector('#input-wind-gust');
-    if (windGustInput) {
-      windGustInput.addEventListener('change', (e) => {
-        const val = parseFloat(e.target.value);
-        if (!isNaN(val) && val >= 0) {
-          this.prsStage.windGustMs = isImperial ? UnitConverter.convert(val, 'mph', 'm/s') : val;
-          this._saveStageState();
-          this.render();
-        }
-      });
-    }
-
-    const stagePropsInput = this.container.querySelector('#input-stage-props');
-    if (stagePropsInput) {
-      stagePropsInput.addEventListener('change', (e) => {
-        this.prsStage.propsDescription = e.target.value.trim();
-        this._saveStageState();
-        this.render();
-      });
-    }
-
-    // Quick Prop Inserter Tags
-    this.container.querySelectorAll('.btn-prop-tag').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const propName = btn.dataset.prop;
-        const current = this.prsStage.propsDescription ? this.prsStage.propsDescription.trim() : '';
-        const addition = `Pos ${this.prsStage.targets.length}: ${propName} (2)`;
-        this.prsStage.propsDescription = current ? `${current} ➔ ${addition}` : addition;
-        this._saveStageState();
-        this.render();
-      });
-    });
-
-    // 6. Target Field Inputs inside the Builder Table
-    const targetRows = this.container.querySelectorAll('.builder-target-table tbody tr');
-    targetRows.forEach((row) => {
-      const idx = parseInt(row.dataset.targetIdx, 10);
-      if (isNaN(idx) || !this.prsStage.targets[idx]) return;
-
-      const target = this.prsStage.targets[idx];
-
-      // Shape select
-      const shapeSel = row.querySelector('.target-shape-select');
-      if (shapeSel) {
-        shapeSel.addEventListener('change', (e) => {
-          target.shape = e.target.value;
-          this._saveStageState();
-          this.render();
-        });
-      }
-
-      // Text and number inputs
-      row.querySelectorAll('.target-field-input').forEach((input) => {
-        input.addEventListener('change', (e) => {
-          const field = input.dataset.field;
-          const val = e.target.value.trim();
-
-          if (field === 'distanceM') {
-            const num = parseFloat(val);
-            if (!isNaN(num) && num > 0) {
-              target.distanceM = isImperial ? Math.round(UnitConverter.convert(num, 'yd', 'm')) : num;
-            }
-          } else if (field === 'widthCm') {
-            const num = parseFloat(val);
-            if (!isNaN(num) && num > 0) {
-              const cm = isImperial ? Math.round(num * 2.54) : num;
-              target.widthCm = cm;
-              if (!target.heightCm || target.heightCm === target.widthCm) {
-                target.heightCm = cm;
-              }
-            }
-          } else if (field === 'offsetM') {
-            const num = parseFloat(val);
-            target.offsetM = isNaN(num) ? 0 : Math.max(-40, Math.min(40, num));
-          } else if (field === 'rounds') {
-            const num = parseInt(val, 10);
-            target.rounds = isNaN(num) ? 2 : Math.max(1, num);
-          } else if (field === 'name') {
-            target.name = val || `T${idx + 1}`;
-          } else if (field === 'prop') {
-            target.prop = val;
-          } else if (field === 'notes') {
-            target.notes = val;
-          }
-
-          this._saveStageState();
-          this.render();
-        });
-      });
-    });
-
-    // 7. Target Action Buttons (Move Up, Move Down, Clone, Delete)
-    this.container.querySelectorAll('.btn-move-up').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const idx = parseInt(btn.dataset.idx, 10);
-        if (idx > 0) {
-          const temp = this.prsStage.targets[idx];
-          this.prsStage.targets[idx] = this.prsStage.targets[idx - 1];
-          this.prsStage.targets[idx - 1] = temp;
-          this._saveStageState();
-          this.render();
-        }
-      });
-    });
-
-    this.container.querySelectorAll('.btn-move-down').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const idx = parseInt(btn.dataset.idx, 10);
-        if (idx < this.prsStage.targets.length - 1) {
-          const temp = this.prsStage.targets[idx];
-          this.prsStage.targets[idx] = this.prsStage.targets[idx + 1];
-          this.prsStage.targets[idx + 1] = temp;
-          this._saveStageState();
-          this.render();
-        }
-      });
-    });
-
-    this.container.querySelectorAll('.btn-clone-target').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const idx = parseInt(btn.dataset.idx, 10);
-        if (this.prsStage.targets[idx]) {
-          const cloned = JSON.parse(JSON.stringify(this.prsStage.targets[idx]));
-          cloned.id = `t${Date.now()}`;
-          cloned.name = `${cloned.name} (Copy)`;
-          this.prsStage.targets.splice(idx + 1, 0, cloned);
-          this._saveStageState();
-          this.render();
-        }
-      });
-    });
-
-    this.container.querySelectorAll('.btn-delete-target').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const idx = parseInt(btn.dataset.idx, 10);
-        if (this.prsStage.targets.length > 1) {
-          this.prsStage.targets.splice(idx, 1);
-          this._saveStageState();
-          this.render();
-        }
-      });
-    });
-
-    // 8. Add Target Button
-    const addTargetBtn = this.container.querySelector('#btn-add-target');
-    if (addTargetBtn) {
-      addTargetBtn.addEventListener('click', () => {
-        const count = this.prsStage.targets.length;
-        const lastDist = count > 0 ? this.prsStage.targets[count - 1].distanceM : 300;
-        const newDist = Math.min(1000, lastDist + 80);
-        const newTarget = {
-          id: `t${Date.now()}`,
-          name: `T${count + 1} - Target`,
-          shape: 'gong',
-          distanceM: newDist,
-          widthCm: 30,
-          heightCm: 30,
-          rounds: 2,
-          prop: `Pos ${count + 1}`,
-          notes: '',
-          offsetM: (count % 2 === 0 ? 1 : -1) * 12,
-        };
-        this.prsStage.targets.push(newTarget);
-        this._saveStageState();
-        this.render();
-      });
-    }
-
-    // 9. Reset to Default Preset Button
-    const resetStageBtn = this.container.querySelector('#btn-reset-stage');
-    if (resetStageBtn) {
-      resetStageBtn.addEventListener('click', () => {
-        this.prsStage = JSON.parse(JSON.stringify(this.presets['rooftop-barricade']));
-        this._saveStageState();
-        this.render();
-      });
-    }
-
-    // 10. Copy Match Brief text to clipboard
-    const copyBriefBtn = this.container.querySelector('#btn-copy-prs-brief');
-    if (copyBriefBtn) {
-      copyBriefBtn.addEventListener('click', () => {
-        const windUnit = isImperial ? 'mph' : 'm/s';
-        const windBaseDisplay = isImperial ? Math.round(UnitConverter.convert(this.prsStage.windBaseMs, 'm/s', 'mph')) : this.prsStage.windBaseMs;
-        const windLullDisplay = isImperial ? Math.round(UnitConverter.convert(this.prsStage.windLullMs, 'm/s', 'mph')) : this.prsStage.windLullMs;
-        const windGustDisplay = isImperial ? Math.round(UnitConverter.convert(this.prsStage.windGustMs, 'm/s', 'mph')) : this.prsStage.windGustMs;
-        const lines = [
-          `=== ${this.prsStage.name.toUpperCase()} ===`,
-          `Time: ${this.prsStage.timeLimitSec}s | Prop Flow: ${this.prsStage.propsDescription}`,
-          `Wind Baseline: Lull ${windLullDisplay} | Base ${windBaseDisplay} | Gust ${windGustDisplay} ${windUnit} @ ${this.prsStage.windDirectionDeg || 90}°`,
-          `----------------------------------------------------`,
-        ];
-        this.prsStage.targets.forEach((t, i) => {
-          const distDisp = isImperial ? Math.round(UnitConverter.convert(t.distanceM, 'm', 'yd')) : t.distanceM;
-          const distU = isImperial ? 'yd' : 'm';
-          const sizeDisp = isImperial ? Math.round(t.widthCm / 2.54) : t.widthCm;
-          const sizeU = isImperial ? '"' : 'cm';
-          lines.push(`T${i + 1}: ${t.name} @ ${distDisp}${distU} (${sizeDisp}${sizeU} ${t.shape}) - ${t.rounds} rnds [${t.prop}]`);
-        });
-        navigator.clipboard?.writeText(lines.join('\n')).then(() => {
-          copyBriefBtn.textContent = '✅ Copied!';
-          setTimeout(() => {
-            copyBriefBtn.textContent = '📋 Copy Brief';
-          }, 1800);
-        }).catch(() => {
-          // fallback
-        });
-      });
-    }
-
-    // 11. Export Card Image as PNG (Canvas rasterization)
-    const exportPngBtn = this.container.querySelector('#btn-export-prs-png');
-    if (exportPngBtn) {
-      exportPngBtn.addEventListener('click', () => {
-        this._exportCardAsPng();
-      });
-    }
-
-    // 12. Interactive Target Highlighting Sync (Table Rows <-> Schematic Nodes)
-    const matrixRows = this.container.querySelectorAll('.prs-target-matrix .matrix-row');
-    const schematicNodes = this.container.querySelectorAll('.schematic-node');
-
-    matrixRows.forEach((row) => {
-      row.addEventListener('mouseenter', () => {
-        const idx = row.dataset.targetIdx;
-        schematicNodes.forEach((n) => n.classList.toggle('highlighted', n.dataset.targetIdx === idx));
-      });
-      row.addEventListener('mouseleave', () => {
-        schematicNodes.forEach((n) => n.classList.remove('highlighted'));
-      });
-      row.addEventListener('click', () => {
-        const idx = parseInt(row.dataset.targetIdx, 10);
-        this.highlightedTargetIdx = this.highlightedTargetIdx === idx ? null : idx;
-        matrixRows.forEach((r) => r.classList.toggle('highlighted', parseInt(r.dataset.targetIdx, 10) === this.highlightedTargetIdx));
-        schematicNodes.forEach((n) => n.classList.toggle('highlighted', parseInt(n.dataset.targetIdx, 10) === this.highlightedTargetIdx));
-      });
-    });
-
-    schematicNodes.forEach((node) => {
-      node.addEventListener('mouseenter', () => {
-        const idx = node.dataset.targetIdx;
-        matrixRows.forEach((r) => r.classList.toggle('highlighted', r.dataset.targetIdx === idx));
-      });
-      node.addEventListener('mouseleave', () => {
-        matrixRows.forEach((r) => r.classList.remove('highlighted'));
-      });
-      node.addEventListener('click', () => {
-        const idx = parseInt(node.dataset.targetIdx, 10);
-        this.highlightedTargetIdx = this.highlightedTargetIdx === idx ? null : idx;
-        matrixRows.forEach((r) => r.classList.toggle('highlighted', parseInt(r.dataset.targetIdx, 10) === this.highlightedTargetIdx));
-        schematicNodes.forEach((n) => n.classList.toggle('highlighted', parseInt(n.dataset.targetIdx, 10) === this.highlightedTargetIdx));
-      });
-    });
+  _stageEditorHtml(u) {
+    const stage = this.prsStage;
+    const s = this._stageSummary(stage, u);
+    const n = stage.targets.length;
+    return `
+      <section class="panel stage-targets no-print" aria-labelledby="stage-targets-heading">
+        <div class="panel-header">
+          <h2 id="stage-targets-heading">${icon('target')} Stage setup: targets in shooting order</h2>
+          <p class="stage-targets-stats">${s.targetCount} targets · ${s.totalRounds} shots · ${s.pace} s per shot · ${s.span}</p>
+        </div>
+        <div class="panel-body">
+          ${this._undo ? `<div class="dope-undo" role="status"><span>${esc(this._undo.label)}</span><button type="button" class="btn-secondary-sm" data-action="undo">${icon('refresh')} Undo</button></div>` : '<div class="dope-undo" role="status" hidden></div>'}
+          <ol class="target-editor-list">
+            ${stage.targets.map((t, idx) => this._targetEditorHtml(t, idx, n, u)).join('')}
+          </ol>
+          <div class="builder-actions-bottom">
+            <button type="button" class="btn-secondary-sm" id="btn-add-target" data-action="add-target">${icon('plus')} Add target</button>
+            <button type="button" class="btn-ghost-sm" id="btn-reset-stage" data-action="reset-stage">${icon('refresh')} Start over from the default stage</button>
+          </div>
+        </div>
+      </section>`;
   }
 
-  /**
-   * Export tactical arm board card as a high-resolution PNG image
-   */
-  _exportCardAsPng() {
-    const cardEl = this.container.querySelector('#prs-arm-board-card');
-    if (!cardEl) return;
+  _targetEditorHtml(t, idx, n, u) {
+    const id = (f) => `tgt-${idx}-${f}`;
+    const tn = `T${idx + 1}`;
+    const maxDist = Math.round(u.fromM(2500));
+    const maxSize = Math.round(u.fromCm(500));
+    const maxOff = Math.round(u.fromM(100));
+    return `
+      <li class="target-editor" data-target-idx="${idx}">
+        <div class="target-editor-head">
+          <span class="tgt-num-badge">${tn}</span>
+          <label class="lg-sr-only" for="${id('name')}">${tn} name</label>
+          <input type="text" id="${id('name')}" class="form-input target-name-input" maxlength="60" data-target-field="name" value="${esc(t.name)}" />
+          <div class="target-editor-actions">
+            <button type="button" class="btn-secondary-sm btn-icon-only btn-move-up" data-action="target-up" data-idx="${idx}" aria-label="Move ${tn} up" title="Move up" ${idx === 0 ? 'disabled' : ''}>${icon('arrow-up')}</button>
+            <button type="button" class="btn-secondary-sm btn-icon-only btn-move-down" data-action="target-down" data-idx="${idx}" aria-label="Move ${tn} down" title="Move down" ${idx === n - 1 ? 'disabled' : ''}>${icon('arrow-down')}</button>
+            <button type="button" class="btn-secondary-sm btn-icon-only btn-clone-target" data-action="target-copy" data-idx="${idx}" aria-label="Duplicate ${tn}" title="Duplicate" ${n >= 30 ? 'disabled' : ''}>${icon('copy')}</button>
+            <button type="button" class="btn-secondary-sm btn-icon-only btn-delete-target btn-danger-sm" data-action="target-delete" data-idx="${idx}" aria-label="Remove ${tn}" title="Remove" ${n <= 1 ? 'disabled' : ''}>${icon('trash')}</button>
+          </div>
+        </div>
+        <div class="target-editor-fields">
+          <div>
+            <label class="field-label" for="${id('shape')}">Shape</label>
+            <select id="${id('shape')}" class="form-select" data-target-field="shape">
+              ${Object.entries(SHAPES).map(([k, v]) => `<option value="${k}" ${t.shape === k ? 'selected' : ''}>${v}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="${id('distanceM')}">Distance (${u.dist})</label>
+            <input type="number" inputmode="numeric" id="${id('distanceM')}" class="form-input" data-target-num="distanceM" min="${Math.ceil(u.fromM(10))}" max="${maxDist}" step="5" value="${fmtInt(u.fromM(num(t.distanceM, 300)))}" />
+          </div>
+          <div>
+            <label class="field-label" for="${id('widthCm')}">Width (${u.size})</label>
+            <input type="number" inputmode="decimal" id="${id('widthCm')}" class="form-input" data-target-num="widthCm" min="1" max="${maxSize}" step="1" value="${fmtTrim(u.fromCm(num(t.widthCm, 30)), 1)}" />
+          </div>
+          <div>
+            <label class="field-label" for="${id('heightCm')}">Height (${u.size})</label>
+            <input type="number" inputmode="decimal" id="${id('heightCm')}" class="form-input" data-target-num="heightCm" min="1" max="${maxSize}" step="1" value="${fmtTrim(u.fromCm(num(t.heightCm, num(t.widthCm, 30))), 1)}" />
+          </div>
+          <div>
+            <label class="field-label" for="${id('rounds')}">Shots</label>
+            <input type="number" inputmode="numeric" id="${id('rounds')}" class="form-input" data-target-num="rounds" min="1" max="20" step="1" value="${fmtInt(t.rounds)}" />
+          </div>
+          <div>
+            <label class="field-label" for="${id('offsetM')}" title="Where the target sits on the drawing: minus is left, plus is right">Side offset (${u.dist})</label>
+            <input type="number" inputmode="numeric" id="${id('offsetM')}" class="form-input" data-target-num="offsetM" min="${-maxOff}" max="${maxOff}" step="1" value="${fmtInt(u.fromM(num(t.offsetM, 0)))}" />
+          </div>
+          <div class="target-field-wide">
+            <label class="field-label" for="${id('prop')}">Position</label>
+            <input type="text" id="${id('prop')}" class="form-input" maxlength="60" data-target-field="prop" value="${esc(t.prop || '')}" placeholder="Barricade" />
+          </div>
+          <div class="target-field-wide">
+            <label class="field-label" for="${id('notes')}">Note</label>
+            <input type="text" id="${id('notes')}" class="form-input" maxlength="80" data-target-field="notes" value="${esc(t.notes || '')}" placeholder="Hold or order note" />
+          </div>
+        </div>
+      </li>`;
+  }
 
-    try {
-      const svgSchematic = cardEl.querySelector('.stage-schematic-svg');
-      let svgXml = '';
-      if (svgSchematic) {
-        svgXml = new XMLSerializer().serializeToString(svgSchematic);
+  // ---- main render ------------------------------------------------------------------------------
+
+  render() {
+    const fmtDef = FORMATS.find((f) => f.id === this.activeFormat) || FORMATS[0];
+    const u = this._units();
+    const focusId = typeof document !== 'undefined' ? document.activeElement?.id : null;
+
+    let paperHtml = '';
+    let settingsHtml = '';
+    let withRuler = true;
+    let cutHint = '';
+    let badge = '';
+    let editorHtml = '';
+    let dope;
+
+    if (fmtDef.id === 'prs-stage') {
+      const data = this._stageData();
+      dope = data.baseDope;
+      paperHtml = this.renderPrsStageCard(data, u);
+      settingsHtml = this._stageSettings(u);
+      editorHtml = this._stageEditorHtml(u);
+      withRuler = this.printOrientation !== 'full-page';
+      badge = (STAGE_SIZES.find((x) => x.id === this.printOrientation) || STAGE_SIZES[0]).label;
+      cutHint = this.printOrientation === 'full-page'
+        ? 'Prints on one A4 or Letter page.'
+        : 'Cut along the solid border and slide into a 3 × 5 in wrist sleeve.';
+      this._stageTargets = data.targets;
+    } else {
+      const ranges = this._rangesFor(fmtDef, u);
+      const { rows, rowAt, dope: base, skipped } = this._rangeRows(ranges.shown);
+      dope = base;
+      this._rows = rows;
+
+      switch (fmtDef.id) {
+        case 'wrist-coach':
+          paperHtml = this.renderWristCoach(rows, dope, u);
+          badge = '3 × 5 in';
+          cutHint = 'Cut along the solid border and slide into a 3 × 5 in wrist sleeve.';
+          break;
+        case 'stock-tape':
+          paperHtml = this.renderStockTape(rows, dope, u);
+          badge = '180 × 32 mm';
+          cutHint = 'Cut along the dotted border and stick to the stock under clear tape.';
+          break;
+        case 'turret-tape': {
+          paperHtml = this.renderTurretTape(rows, dope, u);
+          badge = `${fmtTrim(this.turretCircumferenceMm, 1)} × ${fmtTrim(this.turretTapeHeightMm, 1)} mm`;
+          cutHint = 'Cut along the border, wrap around the elevation turret with ZERO at your zero mark, and cover with clear tape.';
+          settingsHtml = this._turretSettings(ranges.fromSolver ? this._turretOffTurn : 0);
+          break;
+        }
+        case 'a4-sheet':
+          paperHtml = this.renderA4DataSheet(rows, rowAt, dope, u);
+          badge = 'A4 or Letter';
+          cutHint = 'Prints on one A4 or Letter page.';
+          withRuler = false;
+          break;
+        case 'scope-cap':
+        default:
+          paperHtml = this.renderScopeCapSvg(rows, dope, u);
+          badge = `Ø ${fmtTrim(this.scopeCapDiameterMm, 1)} mm`;
+          cutHint = `Cut along the dotted circle (Ø ${fmtTrim(this.scopeCapDiameterMm, 1)} mm) and place inside a clear flip-up scope cap.`;
+          settingsHtml = this._scopeCapSettings();
+          break;
       }
+      settingsHtml += this._rangeSourceHtml(ranges, u, skipped, fmtDef.id === 'turret-tape' && !ranges.fromSolver ? 'The tape shows the ones that fit on one turn of the turret.' : '');
+    }
+    settingsHtml += this._sourceHtml(dope, u);
 
-      // Create a canvas with 2x retina density
-      const canvas = document.createElement('canvas');
-      const w = cardEl.offsetWidth || 440;
-      const h = cardEl.offsetHeight || 650;
-      canvas.width = w * 2;
-      canvas.height = h * 2;
-      const ctx = canvas.getContext('2d');
-      ctx.scale(2, 2);
+    const tabs = FORMATS.map((f) => {
+      const sel = f.id === fmtDef.id;
+      return `<button type="button" role="tab" id="dope-tab-${f.id}" class="dope-format btn-format ${sel ? 'active' : ''}" data-format="${f.id}" aria-selected="${sel}" aria-controls="dope-panel" tabindex="${sel ? '0' : '-1'}">
+          <span class="dope-format-icon">${icon(f.icon)}</span>
+          <span class="dope-format-text"><span class="dope-format-label">${f.label}</span><span class="dope-format-hint">${f.hint}</span></span>
+        </button>`;
+    }).join('');
 
-      // Render dark tactical card background
-      ctx.fillStyle = this.cardTheme === 'match-day' ? '#ffffff' : (this.cardTheme === 'milspec-od' ? '#182417' : '#070b13');
-      ctx.fillRect(0, 0, w, h);
+    // eslint-disable-next-line no-unsanitized/property -- reviewed: rifle/stage strings are esc()'d at source (_rifleInfo, stage fields); the rest are numbers and constants
+    this.container.innerHTML = `
+      <div class="dope-view">
+        <header class="view-header no-print">
+          <div>
+            <h1>DOPE cards</h1>
+            <p>Print range cards for your scope cap, wrist, stock or a full page. <abbr title="Data On Previous Engagement">DOPE</abbr> is your elevation and wind holds for each distance.</p>
+          </div>
+        </header>
 
-      // Draw border
-      ctx.strokeStyle = this.cardTheme === 'match-day' ? '#0f172a' : '#1e293b';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(4, 4, w - 8, h - 8);
+        <div class="dope-formats no-print" role="tablist" aria-label="Card format">${tabs}</div>
 
-      // Draw header text
-      ctx.fillStyle = this.cardTheme === 'match-day' ? '#0284c7' : '#f59e0b';
-      ctx.font = 'bold 9px monospace';
-      ctx.fillText('PRS / NRL MATCH BRIEF', 14, 20);
+        <div class="dope-layout" id="dope-panel" role="tabpanel" aria-labelledby="dope-tab-${fmtDef.id}">
+          <section class="dope-settings panel no-print" aria-labelledby="dope-settings-heading">
+            <div class="panel-header">
+              <h2 id="dope-settings-heading">${icon(fmtDef.icon)} ${fmtDef.title}</h2>
+            </div>
+            <div class="panel-body">
+              <p class="dope-format-desc">${fmtDef.desc}</p>
+              ${settingsHtml}
+            </div>
+          </section>
 
-      ctx.fillStyle = this.cardTheme === 'match-day' ? '#0f172a' : '#f8fafc';
-      ctx.font = 'bold 15px sans-serif';
-      ctx.fillText(this.prsStage.name, 14, 40);
+          <section class="dope-desk" aria-labelledby="dope-preview-heading">
+            <div class="desk-toolbar no-print">
+              <h2 id="dope-preview-heading" class="desk-title">Preview <span class="badge">${badge}</span></h2>
+              <div class="desk-actions">
+                <button type="button" class="btn-secondary-sm" data-action="copy-text" id="btn-copy-text">${icon('copy')} Copy as text</button>
+                <button type="button" class="btn-secondary-sm" data-action="save-image" id="btn-save-image">${icon('download')} Save image</button>
+                <button type="button" class="btn-primary-sm btn-print">${icon('print')} Print card</button>
+              </div>
+            </div>
+            <div class="desk-surface">
+              <div class="print-area print-area-${fmtDef.id}">
+                ${paperHtml}
+                ${withRuler ? this._ruler() : ''}
+              </div>
+            </div>
+            <p class="dope-cut-hint no-print">${icon('info')} ${cutHint} Print at 100% scale (turn off “fit to page”).</p>
+          </section>
+        </div>
+        ${editorHtml}
+      </div>`;
 
-      // Draw summary pills
-      ctx.font = '10px monospace';
-      ctx.fillStyle = this.cardTheme === 'match-day' ? '#334155' : '#94a3b8';
-      ctx.fillText(`⏱️ ${this.prsStage.timeLimitSec}s  |  🎯 ${this.prsStage.targets.reduce((s, t) => s + (t.rounds || 2), 0)} RNDS  |  📍 ${this.prsStage.targets.length} TGTS`, 14, 58);
+    this._afterRender(focusId);
+  }
 
-      // Draw targets summary rows
-      let y = 85;
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(14, 70);
-      ctx.lineTo(w - 14, 70);
-      ctx.stroke();
-
-      this.prsStage.targets.forEach((t, i) => {
-        ctx.fillStyle = this.cardTheme === 'match-day' ? '#0284c7' : '#38bdf8';
-        ctx.font = 'bold 11px monospace';
-        ctx.fillText(`T${i + 1}`, 14, y);
-
-        ctx.fillStyle = this.cardTheme === 'match-day' ? '#0f172a' : '#ffffff';
-        ctx.font = 'bold 11px sans-serif';
-        ctx.fillText(t.name.substring(0, 20), 40, y);
-
-        ctx.fillStyle = this.cardTheme === 'match-day' ? '#0284c7' : '#38bdf8';
-        ctx.font = 'bold 11px monospace';
-        ctx.fillText(`${t.distanceM}m`, w - 160, y);
-
-        ctx.fillStyle = '#f59e0b';
-        ctx.fillText(`(${t.rounds || 2} rnds)`, w - 90, y);
-
-        ctx.fillStyle = this.cardTheme === 'match-day' ? '#475569' : '#94a3b8';
-        ctx.font = '9px sans-serif';
-        ctx.fillText(t.prop || `Pos ${i + 1}`, 40, y + 13);
-        ctx.fillText(t.notes || '', w - 160, y + 13);
-
-        y += 32;
-      });
-
-      // Footer
-      ctx.fillStyle = this.cardTheme === 'match-day' ? '#64748b' : '#64748b';
-      ctx.font = '7.5px monospace';
-      ctx.fillText('3"x5" WRIST COACH • BALLISTIC WORKBENCH', 14, h - 14);
-
-      // Trigger download
-      const dataUrl = canvas.toDataURL('image/png');
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `${this.prsStage.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_Wrist_Card.png`;
-      a.click();
-    } catch (e) {
-      console.warn('Canvas PNG export notice:', e);
+  _afterRender(focusId) {
+    this.applyDynamicStyles();
+    this._bindNumberFields();
+    this._fitPreview();
+    this._observeDesk();
+    if (focusId && typeof document !== 'undefined') {
+      const el = document.getElementById(focusId);
+      if (el && this.container.contains?.(el)) el.focus({ preventScroll: true });
     }
   }
 
@@ -2249,130 +1787,505 @@ export class DopeStudioView {
     });
   }
 
-  render() {
-    const dope = this.computeDope(25, 1200);
-
-    let contentHtml = '';
+  /** Paper width in mm for the current format (for the preview zoom). */
+  _paperWidthMm() {
     switch (this.activeFormat) {
-      case 'wrist-coach':
-        contentHtml = this.renderWristCoach(dope);
-        break;
-      case 'stock-tape':
-        contentHtml = this.renderStockTape(dope);
-        break;
-      case 'turret-tape':
-        contentHtml = this.renderTurretTape(dope);
-        break;
-      case 'prs-stage':
-        contentHtml = this.renderPrsStage(dope);
-        break;
-      case 'a4-sheet':
-        contentHtml = this.renderA4DataSheet(dope);
-        break;
-      case 'scope-cap':
-      default:
-        contentHtml = this.renderScopeCapSvg(dope);
-        break;
+      case 'scope-cap': return Math.max(this.scopeCapDiameterMm, 56);
+      case 'turret-tape': return Math.max(this.turretCircumferenceMm + 4, 56);
+      case 'prs-stage': return (STAGE_SIZES.find((s) => s.id === this.printOrientation) || STAGE_SIZES[0]).widthMm + 8;
+      default: return (FORMATS.find((f) => f.id === this.activeFormat)?.widthMm || 190) + 8;
     }
+  }
 
-    this.container.innerHTML = `
-      <div class="dope-studio-header no-print">
-        <div>
-          <h2>Visual DOPE Card & Tactical Range Studio</h2>
-          <p class="subtitle">Generate precision print-ready scope cap inserts, tactical wrist coaches, adhesive stock tapes, and PRS match stage cards</p>
-        </div>
-        <div class="format-button-group">
-          <button class="btn-format ${this.activeFormat === 'scope-cap' ? 'active' : ''}" data-format="scope-cap">🔍 Scope Cap (SVG)</button>
-          <button class="btn-format ${this.activeFormat === 'wrist-coach' ? 'active' : ''}" data-format="wrist-coach">⌚ Wrist Coach</button>
-          <button class="btn-format ${this.activeFormat === 'stock-tape' ? 'active' : ''}" data-format="stock-tape">📏 Stock Tape</button>
-          <button class="btn-format ${this.activeFormat === 'turret-tape' ? 'active' : ''}" data-format="turret-tape">🎯 Turret Tape / Wrap</button>
-          <button class="btn-format ${this.activeFormat === 'prs-stage' ? 'active' : ''}" data-format="prs-stage">🎯 PRS Stage Card</button>
-          <button class="btn-format ${this.activeFormat === 'a4-sheet' ? 'active' : ''}" data-format="a4-sheet">📄 A4 Data Sheet</button>
-        </div>
-      </div>
+  /** Scales the paper preview to fit the desk (screen only; print uses the true size). */
+  _fitPreview() {
+    const area = this.container.querySelector('.print-area');
+    const desk = this.container.querySelector('.desk-surface');
+    if (!area || !desk) return;
+    const style = typeof getComputedStyle === 'function' ? getComputedStyle(desk) : null;
+    const pad = style ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) : 32;
+    const avail = Math.max(120, desk.clientWidth - pad);
+    const naturalPx = this._paperWidthMm() * PX_PER_MM;
+    let maxZoom;
+    if (this.activeFormat === 'scope-cap') maxZoom = 480 / (this.scopeCapDiameterMm * PX_PER_MM);
+    else if (this.activeFormat === 'prs-stage') maxZoom = (STAGE_SIZES.find((s) => s.id === this.printOrientation) || STAGE_SIZES[0]).maxZoom;
+    else maxZoom = FORMATS.find((f) => f.id === this.activeFormat)?.maxZoom || 1;
+    const zoom = clamp(Math.min(maxZoom, avail / naturalPx), 0.3, 4);
+    area.style.setProperty('--preview-zoom', zoom.toFixed(3));
+    // The scale bar is shown near true size, whatever the card's preview zoom
+    area.style.setProperty('--ruler-zoom', (Math.min(zoom, 1.25) / zoom).toFixed(3));
+    this._checkStageFit();
+  }
 
-      <div class="dope-canvas-workspace">
-        ${contentHtml}
-      </div>
-    `;
+  _observeDesk() {
+    const desk = this.container.querySelector('.desk-surface');
+    if (!desk) return;
+    if (typeof ResizeObserver !== 'undefined') {
+      this._resizeObserver?.disconnect();
+      this._resizeObserver = new ResizeObserver(() => this._fitPreview());
+      this._resizeObserver.observe(desk);
+    } else if (typeof window !== 'undefined' && !this._onWindowResize) {
+      this._onWindowResize = () => this._fitPreview();
+      window.addEventListener('resize', this._onWindowResize);
+    }
+  }
 
-    this.applyDynamicStyles();
+  /** Warns when the 3 × 5 in stage card overflows its fixed height. */
+  _checkStageFit() {
+    const warn = this.container.querySelector('#stage-fit-warning');
+    const card = this.container.querySelector('#prs-arm-board-card');
+    if (!warn || !card) return;
+    const inner = card.querySelector('.lamination-guide-border');
+    const overflow = this.printOrientation !== 'full-page' && inner && inner.scrollHeight > card.clientHeight + 2;
+    warn.hidden = !overflow;
+  }
 
-    // Bind format switcher
-    const formatBtns = this.container.querySelectorAll('.btn-format');
-    formatBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.setFormat(btn.dataset.format);
-      });
+  _bindNumberFields() {
+    const q = (sel) => this.container.querySelector(sel);
+    const u = this._units();
+
+    bindNumber(q('#scope-cap-diameter-input'), (v) => {
+      this.scopeCapDiameterMm = Math.round(v * 10) / 10;
+      this._saveSettings();
+      this.render();
+    });
+    bindNumber(q('#tape-circ-input'), (v) => {
+      this.turretCircumferenceMm = Math.round(v * 10) / 10;
+      this._saveSettings();
+      this.render();
+    });
+    bindNumber(q('#tape-height-input'), (v) => {
+      this.turretTapeHeightMm = v;
+      this._saveSettings();
+      this.render();
+    });
+    bindNumber(q('#tape-clicks-input'), (v) => {
+      this.turretClicksPerTurn = Math.round(v);
+      this._saveSettings();
+      this.render();
     });
 
-    // If PRS stage is active, bind stage builder events
+    // Stage fields
+    const stageNum = (sel, apply) => bindNumber(q(sel), (v) => {
+      this._undo = null;
+      apply(v);
+      this._saveStageState();
+      this.render();
+    });
+    stageNum('#input-stage-timer', (v) => { this.prsStage.timeLimitSec = Math.round(v); });
+    stageNum('#input-wind-direction', (v) => { this.prsStage.windDirectionDeg = ((Math.round(v) % 360) + 360) % 360; });
+    stageNum('#input-wind-lull', (v) => { this.prsStage.windLullMs = u.windToMs(v); });
+    stageNum('#input-wind-base', (v) => { this.prsStage.windBaseMs = u.windToMs(v); });
+    stageNum('#input-wind-gust', (v) => { this.prsStage.windGustMs = u.windToMs(v); });
+
+    this.container.querySelectorAll('[data-target-num]').forEach((input) => {
+      const idx = Number(input.closest?.('[data-target-idx]')?.dataset.targetIdx);
+      const field = input.dataset.targetNum;
+      bindNumber(input, (v) => {
+        const t = this.prsStage.targets[idx];
+        if (!t) return;
+        this._undo = null;
+        if (field === 'distanceM') t.distanceM = u.toM(v);
+        else if (field === 'widthCm') t.widthCm = u.toCm(v);
+        else if (field === 'heightCm') t.heightCm = u.toCm(v);
+        else if (field === 'offsetM') t.offsetM = u.toM(v);
+        else if (field === 'rounds') t.rounds = Math.round(v);
+        this._saveStageState();
+        this.render();
+      });
+    });
+  }
+
+  // ---- events -----------------------------------------------------------------------------------
+
+  _remember(label) {
+    this._undo = { label, stage: deepClone(this.prsStage) };
+  }
+
+  _handleClick(e) {
+    const tab = e.target.closest?.('[data-format]');
+    if (tab && this.container.contains(tab)) {
+      this.setFormat(tab.dataset.format);
+      this.container.querySelector(`#dope-tab-${tab.dataset.format}`)?.focus();
+      return;
+    }
+    const btn = e.target.closest?.('[data-action]');
+    if (!btn || !this.container.contains(btn) || btn.disabled) return;
+    const stage = this.prsStage;
+    const idx = Number(btn.dataset.idx);
+    switch (btn.dataset.action) {
+      case 'copy-text':
+        this._copyText();
+        break;
+      case 'save-image':
+        this._saveImage();
+        break;
+      case 'use-default-ranges':
+        appState.state.customDopeRanges = [];
+        appState.notify('dopeRanges');
+        toast('Using the default distances', 'ok');
+        break;
+      case 'stage-orientation':
+        this.setPrintOrientation(btn.dataset.value);
+        break;
+      case 'card-theme':
+        this.setTheme(btn.dataset.value);
+        break;
+      case 'add-prop': {
+        const current = (stage.propsDescription || '').trim();
+        const addition = `${btn.dataset.value.toLowerCase()} (2)`;
+        stage.propsDescription = current ? `${current}, then ${addition}` : addition.charAt(0).toUpperCase() + addition.slice(1);
+        this._undo = null;
+        this._saveStageState();
+        this.render();
+        break;
+      }
+      case 'target-up':
+      case 'target-down': {
+        const j = btn.dataset.action === 'target-up' ? idx - 1 : idx + 1;
+        if (!stage.targets[idx] || !stage.targets[j]) return;
+        [stage.targets[idx], stage.targets[j]] = [stage.targets[j], stage.targets[idx]];
+        this._undo = null;
+        this._saveStageState();
+        this.render();
+        this.container.querySelector(`[data-action="${btn.dataset.action}"][data-idx="${j}"]:not([disabled])`)?.focus()
+          || this.container.querySelector(`#tgt-${j}-name`)?.focus();
+        break;
+      }
+      case 'target-copy': {
+        if (!stage.targets[idx] || stage.targets.length >= 30) return;
+        const copy = deepClone(stage.targets[idx]);
+        copy.id = `t${Date.now()}`;
+        copy.name = `${copy.name} (copy)`.slice(0, 60);
+        stage.targets.splice(idx + 1, 0, copy);
+        this._undo = null;
+        this._saveStageState();
+        this.render();
+        this.container.querySelector(`#tgt-${idx + 1}-name`)?.focus();
+        break;
+      }
+      case 'target-delete': {
+        if (!stage.targets[idx] || stage.targets.length <= 1) return;
+        this._remember(`Removed T${idx + 1} (${stage.targets[idx].name}).`);
+        stage.targets.splice(idx, 1);
+        this._saveStageState();
+        this.render();
+        this.container.querySelector('[data-action="undo"]')?.focus();
+        break;
+      }
+      case 'add-target': {
+        if (stage.targets.length >= 30) {
+          toast('A stage can have at most 30 targets', 'info');
+          return;
+        }
+        const count = stage.targets.length;
+        const lastDist = count > 0 ? num(stage.targets[count - 1].distanceM, 300) : 300;
+        stage.targets.push({
+          id: `t${Date.now()}`,
+          name: `Target ${count + 1}`,
+          shape: 'gong',
+          distanceM: Math.min(1500, lastDist + 80),
+          widthCm: 30,
+          heightCm: 30,
+          rounds: 2,
+          prop: '',
+          notes: '',
+          offsetM: (count % 2 === 0 ? 1 : -1) * 12,
+        });
+        this._undo = null;
+        this._saveStageState();
+        this.render();
+        this.container.querySelector(`#tgt-${count}-name`)?.focus();
+        break;
+      }
+      case 'reset-stage':
+        this._remember('Started over from the default stage.');
+        this.prsStage = deepClone(this.presets['rooftop-barricade']);
+        this._saveStageState();
+        this.render();
+        this.container.querySelector('[data-action="undo"]')?.focus();
+        break;
+      case 'undo':
+        if (this._undo) {
+          this.prsStage = this._undo.stage;
+          this._undo = null;
+          this._saveStageState();
+          this.render();
+          toast('Undone', 'ok');
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  _handleChange(e) {
+    const el = e.target;
+    if (!el || !this.container.contains(el) || el.type === 'number') return;
+    const stage = this.prsStage;
+    switch (el.id) {
+      case 'scope-cap-preset-select':
+        if (el.value !== 'custom') {
+          this.scopeCapDiameterMm = parseFloat(el.value);
+          this._saveSettings();
+          this.render();
+        } else {
+          this.container.querySelector('#scope-cap-diameter-input')?.focus();
+        }
+        return;
+      case 'turret-tape-preset-select':
+        if (el.value !== 'custom') {
+          this.turretCircumferenceMm = parseFloat(el.value);
+          this._saveSettings();
+          this.render();
+        } else {
+          this.container.querySelector('#tape-circ-input')?.focus();
+        }
+        return;
+      case 'stage-preset-select':
+        if (el.value) this.loadPreset(el.value);
+        return;
+      case 'wind-dir-select':
+        if (el.value !== 'custom') {
+          this._undo = null;
+          stage.windDirectionDeg = Number(el.value);
+          this._saveStageState();
+          this.render();
+        }
+        return;
+      case 'input-stage-name':
+        this._undo = null;
+        stage.name = el.value.trim().slice(0, 80) || 'Match stage';
+        this._saveStageState();
+        this.render();
+        return;
+      case 'input-stage-props':
+        this._undo = null;
+        stage.propsDescription = el.value.trim().slice(0, 200);
+        this._saveStageState();
+        this.render();
+        return;
+      default:
+        break;
+    }
+    const field = el.dataset?.targetField;
+    if (field) {
+      const idx = Number(el.closest('[data-target-idx]')?.dataset.targetIdx);
+      const t = stage.targets[idx];
+      if (!t) return;
+      this._undo = null;
+      const val = el.value.trim();
+      if (field === 'shape') t.shape = Object.hasOwn(SHAPES, val) ? val : 'gong';
+      else if (field === 'name') t.name = val.slice(0, 60) || `Target ${idx + 1}`;
+      else if (field === 'prop') t.prop = val.slice(0, 60);
+      else if (field === 'notes') t.notes = val.slice(0, 80);
+      this._saveStageState();
+      this.render();
+    }
+  }
+
+  /** Arrow keys, Home and End move between the format tabs. */
+  _handleKeydown(e) {
+    const tab = e.target.closest?.('[role="tab"][data-format]');
+    if (!tab) return;
+    const i = FORMAT_IDS.indexOf(tab.dataset.format);
+    let next = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % FORMAT_IDS.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (i - 1 + FORMAT_IDS.length) % FORMAT_IDS.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = FORMAT_IDS.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    this.setFormat(FORMAT_IDS[next]);
+    this.container.querySelector(`#dope-tab-${FORMAT_IDS[next]}`)?.focus();
+  }
+
+  /** Hovering a target row highlights it on the stage drawing (and the other way round). */
+  _handleHover(e, entering) {
+    const hit = e.target.closest?.('#prs-arm-board-card [data-target-idx]');
+    if (!hit) return;
+    const idx = entering ? hit.dataset.targetIdx : null;
+    this.container.querySelectorAll('#prs-arm-board-card [data-target-idx]').forEach((n) => {
+      n.classList.toggle('highlighted', idx !== null && n.dataset.targetIdx === idx);
+    });
+  }
+
+  // ---- copy / save ------------------------------------------------------------------------------
+
+  /** Plain-text version of the current card. */
+  _textForFormat() {
+    const u = this._units();
     if (this.activeFormat === 'prs-stage') {
-      this.bindPrsEvents();
+      const stage = this.prsStage;
+      const s = this._stageSummary(stage, u);
+      const targets = this._stageTargets || [];
+      const lines = [
+        stage.name,
+        `Time ${s.timeLimitSec} s · ${s.totalRounds} shots · ${s.pace} s per shot`,
+        `Wind lull / base / gust: ${s.lull} / ${s.base} / ${s.gust} ${u.wind} from ${clockLabel(s.dir)} (${fmtInt(s.dir)}°)`,
+      ];
+      if (stage.propsDescription) lines.push(`Positions: ${stage.propsDescription}`);
+      lines.push('');
+      targets.forEach((t) => {
+        lines.push(`T${t.index} ${t.name}: ${t.displayDistance} ${t.displayDistUnit}, ${t.displayWidth} × ${t.displayHeight} ${t.displaySizeUnit}, ${t.rounds} shots${t.prop ? `, ${t.prop}` : ''}`);
+        lines.push(`   Elevation ${t.dialValue} ${t.dialUnit} (${fmtInt(t.clicks)} clicks) · wind ${t.holdDirLabel} ${t.lullHold} / ${t.baseHold} / ${t.gustHold} ${u.windAng}${t.notes ? ` · ${t.notes}` : ''}`);
+      });
+      return lines.join('\n');
+    }
+    const rows = this._rows || [];
+    const profile = appState.getActiveProfile();
+    const speeds = this.activeFormat === 'stock-tape' ? u.tapeSpeeds : u.windSpeeds;
+    const head = [`Range ${u.dist}`, `Elev ${u.elev}`, 'Clicks', ...speeds.map((s) => `Wind ${s} ${u.wind}`), `Speed ${u.vel}`];
+    const body = rows.map((r) => [fmtInt(r.dist), fmt(r.elev, this.activeFormat === 'a4-sheet' ? 2 : 1), fmtInt(r.clicks), ...speeds.map((s) => fmt(r.windHold(s), 1)), fmtInt(u.fromMs(r.velocityMs))]);
+    const widths = head.map((h, i) => Math.max(h.length, ...body.map((b) => b[i].length)));
+    const line = (cells) => cells.map((c, i) => c.padStart(widths[i])).join('  ');
+    return [
+      `${profile.name} · ${profile.caliber}`,
+      `Wind holds in ${u.windAng} for a full-value crosswind, wind only. Clicks: ${profile.optic?.clickName || '0.1 MRAD'}.`,
+      '',
+      line(head),
+      ...body.map(line),
+    ].join('\n');
+  }
+
+  _copyText() {
+    const text = this._textForFormat();
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+      toast('Copy is not available here', 'bad', 'The browser blocked clipboard access.');
+      return;
+    }
+    navigator.clipboard.writeText(text).then(
+      () => toast('Copied as text', 'ok'),
+      () => toast('Could not copy', 'bad', 'The browser blocked clipboard access.'),
+    );
+  }
+
+  _download(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  _fileName(base, ext) {
+    const name = String(base || 'card').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'card';
+    return `${name}.${ext}`;
+  }
+
+  /** Scope cap and turret tape save as SVG (true size); the table cards save as PNG. */
+  _saveImage() {
+    const profile = appState.getActiveProfile();
+    try {
+      if (this.activeFormat === 'scope-cap' || this.activeFormat === 'turret-tape') {
+        const svg = this.container.querySelector(this.activeFormat === 'scope-cap' ? '.scope-cap-svg' : '#turret-tape-svg');
+        if (!svg) return;
+        const clone = svg.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        if (this.activeFormat === 'scope-cap') {
+          clone.setAttribute('width', `${this.scopeCapDiameterMm}mm`);
+          clone.setAttribute('height', `${this.scopeCapDiameterMm}mm`);
+        }
+        const blob = new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml;charset=utf-8' });
+        this._download(blob, this._fileName(`${profile.name}-${this.activeFormat}`, 'svg'));
+        toast('Image saved', 'ok', 'An SVG at true size: print it at 100%.');
+        return;
+      }
+      this._savePng();
+    } catch (e) {
+      console.warn('Saving the image failed', e);
+      toast('Could not save the image', 'bad');
+    }
+  }
+
+  _savePng() {
+    const u = this._units();
+    const profile = appState.getActiveProfile();
+    let title;
+    let subtitle;
+    let headers;
+    let rows;
+    let theme = 'light';
+    if (this.activeFormat === 'prs-stage') {
+      const s = this._stageSummary(this.prsStage, u);
+      title = this.prsStage.name;
+      subtitle = `${s.timeLimitSec} s · ${s.totalRounds} shots · wind ${s.lull}/${s.base}/${s.gust} ${u.wind} from ${clockLabel(s.dir)} · ${profile.name}`;
+      headers = ['Target', `Range ${u.dist}`, `Elev ${u.elev}`, 'Clicks', `Wind lull/base/gust ${u.windAng}`, 'Shots', 'Note'];
+      rows = (this._stageTargets || []).map((t) => [`T${t.index} ${t.name}`, String(t.displayDistance), t.dialValue, fmtInt(t.clicks), `${t.holdDirLabel} ${t.lullHold} / ${t.baseHold} / ${t.gustHold}`, fmtInt(t.rounds), t.notes || '']);
+      theme = this.cardTheme;
+    } else {
+      const speeds = this.activeFormat === 'stock-tape' ? u.tapeSpeeds : u.windSpeeds;
+      title = `${profile.name}`;
+      subtitle = `${profile.caliber} · wind holds in ${u.windAng}, full-value crosswind · clicks ${profile.optic?.clickName || '0.1 MRAD'}`;
+      headers = [`Range ${u.dist}`, `Elev ${u.elev}`, 'Clicks', ...speeds.map((sp) => `Wind ${sp} ${u.wind}`), `Speed ${u.vel}`];
+      rows = (this._rows || []).map((r) => [fmtInt(r.dist), fmt(r.elev, 1), fmtInt(r.clicks), ...speeds.map((sp) => fmt(r.windHold(sp), 1)), fmtInt(u.fromMs(r.velocityMs))]);
     }
 
-    // If Scope Cap is active, bind diameter preset & input events
-    if (this.activeFormat === 'scope-cap') {
-      const presetSelect = this.container.querySelector('#scope-cap-preset-select');
-      presetSelect?.addEventListener('change', (e) => {
-        if (e.target.value !== 'custom') {
-          this.scopeCapDiameterMm = parseFloat(e.target.value);
-          this.render();
-        }
+    const palettes = {
+      light: { bg: '#ffffff', ink: '#111418', muted: '#4a525c', line: '#d5d9de', band: '#f2f4f6', accent: '#0b4f8a' },
+      dark: { bg: '#0d1117', ink: '#eef1f4', muted: '#9aa4b0', line: '#2b333d', band: '#151b23', accent: '#7cc4f2' },
+      green: { bg: '#1d2a1e', ink: '#eef2e6', muted: '#b6c3a9', line: '#3b4f3d', band: '#233225', accent: '#e6d28a' },
+    };
+    const pal = palettes[theme] || palettes.light;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const font = (w, s) => `${w} ${s}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+    ctx.font = font(600, 14);
+    const colW = headers.map((h, i) => Math.ceil(Math.max(ctx.measureText(h).width, ...rows.map((r) => ctx.measureText(String(r[i])).width)) + 22));
+    const pad = 24;
+    const rowH = 28;
+    const W = Math.max(480, pad * 2 + colW.reduce((a, b) => a + b, 0));
+    const H = pad * 2 + 30 + 22 + 16 + rowH * (rows.length + 1) + 24;
+    const scale = 2;
+    canvas.width = W * scale;
+    canvas.height = H * scale;
+    ctx.scale(scale, scale);
+    ctx.fillStyle = pal.bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = pal.ink;
+    ctx.font = font(700, 20);
+    ctx.fillText(title, pad, pad + 12);
+    ctx.fillStyle = pal.muted;
+    ctx.font = font(500, 13);
+    ctx.fillText(subtitle, pad, pad + 40);
+    let y = pad + 30 + 22 + 16;
+    let x = pad;
+    ctx.fillStyle = pal.band;
+    ctx.fillRect(pad, y, W - pad * 2, rowH);
+    ctx.fillStyle = pal.muted;
+    ctx.font = font(700, 12);
+    headers.forEach((h, i) => { ctx.fillText(h, x + 8, y + rowH / 2); x += colW[i]; });
+    y += rowH;
+    rows.forEach((r, ri) => {
+      x = pad;
+      if (ri % 2 === 1) { ctx.fillStyle = pal.band; ctx.fillRect(pad, y, W - pad * 2, rowH); }
+      r.forEach((cell, i) => {
+        ctx.fillStyle = i === 1 || i === 2 ? pal.accent : pal.ink;
+        ctx.font = font(i === 2 ? 700 : 500, 14);
+        ctx.fillText(String(cell), x + 8, y + rowH / 2);
+        x += colW[i];
       });
-
-      const diamInput = this.container.querySelector('#scope-cap-diameter-input');
-      diamInput?.addEventListener('change', (e) => {
-        const val = parseFloat(e.target.value);
-        if (val >= 20 && val <= 100) {
-          this.scopeCapDiameterMm = val;
-          this.render();
-        }
-      });
-    }
-
-    // If Turret Tape is active, bind tape configuration events
-    if (this.activeFormat === 'turret-tape') {
-      const presetSelect = this.container.querySelector('#turret-tape-preset-select');
-      presetSelect?.addEventListener('change', (e) => {
-        if (e.target.value !== 'custom') {
-          this.turretCircumferenceMm = parseFloat(e.target.value);
-          this.render();
-        }
-      });
-
-      const circInput = this.container.querySelector('#tape-circ-input');
-      circInput?.addEventListener('change', (e) => {
-        const val = parseFloat(e.target.value);
-        if (val >= 60 && val <= 180) {
-          this.turretCircumferenceMm = val;
-          this.render();
-        }
-      });
-
-      const heightInput = this.container.querySelector('#tape-height-input');
-      heightInput?.addEventListener('change', (e) => {
-        const val = parseFloat(e.target.value);
-        if (val >= 8 && val <= 30) {
-          this.turretTapeHeightMm = val;
-          this.render();
-        }
-      });
-
-      const downloadBtn = this.container.querySelector('#btn-download-tape-svg');
-      downloadBtn?.addEventListener('click', () => {
-        const svgEl = this.container.querySelector('#turret-tape-svg');
-        if (svgEl) {
-          const svgContent = svgEl.outerHTML;
-          const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `turret_tape_${this.turretCircumferenceMm || 110}mm_${Date.now()}.svg`;
-          a.click();
-          URL.revokeObjectURL(url);
-        }
-      });
-    }
+      ctx.strokeStyle = pal.line;
+      ctx.beginPath();
+      ctx.moveTo(pad, y + rowH);
+      ctx.lineTo(W - pad, y + rowH);
+      ctx.stroke();
+      y += rowH;
+    });
+    ctx.fillStyle = pal.muted;
+    ctx.font = font(500, 11);
+    ctx.fillText('Ballistic Workbench', pad, H - pad / 2 - 4);
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        toast('Could not save the image', 'bad');
+        return;
+      }
+      this._download(blob, this._fileName(`${title}-${this.activeFormat}`, 'png'));
+      toast('Image saved', 'ok', 'A PNG for your phone.');
+    }, 'image/png');
   }
 }
