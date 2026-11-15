@@ -36,6 +36,8 @@ const STATIC_ASSETS = [
   './src/ui/dopeStudio.js',
   './src/ui/fields.js',
   './src/ui/guide.js',
+  './src/ui/help.js',
+  './src/ui/helpContent.js',
   './src/ui/icons.js',
   './src/ui/libraryManager.js',
   './src/ui/notify.js',

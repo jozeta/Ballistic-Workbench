@@ -446,3 +446,39 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 @media (max-width: 760px) {
   .lg-main { padding-bottom: 96px; }
 }
+
+/* ---- "i" help buttons and info boxes (src/ui/help.js) ----------------------------------------- */
+.help-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+.help-row > label, .help-row > .field-label { margin-bottom: 0; }
+.help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--lg-muted);
+  cursor: help;
+  vertical-align: middle;
+}
+.help-btn .lg-icon { width: 15px; height: 15px; }
+.help-btn:hover, .help-btn[aria-expanded="true"] { color: var(--lg-accent); background: color-mix(in srgb, var(--lg-accent) 14%, transparent); }
+.help-btn:focus-visible { outline: 2px solid var(--lg-accent); outline-offset: 1px; }
+@media (pointer: coarse) {
+  .help-btn { width: 32px; height: 32px; margin: -7px -7px -7px -3px; }
+}
+.help-pop { width: min(340px, calc(100vw - 16px)); display: grid; gap: var(--lg-space-s); font-size: 13px; line-height: 1.5; }
+.help-pop[data-lg-open] { display: grid; }
+.help-pop p { margin: 0; }
+.help-title { font-weight: 600; font-size: 14px; }
+.help-text { color: var(--lg-text); }
+.help-label { margin: var(--lg-space-xxs) 0 0; }
+.help-steps { margin: 0; padding-left: 1.2em; display: grid; gap: 3px; }
+.help-typical { color: var(--lg-muted); }
+.help-tip { display: flex; gap: 6px; align-items: flex-start; color: var(--lg-muted); }
+.help-tip .lg-icon { width: 15px; height: 15px; flex: none; margin-top: 2px; color: var(--lg-warn-text); }
+.help-guide { justify-self: start; padding-left: 0; }

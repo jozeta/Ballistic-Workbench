@@ -10,6 +10,7 @@ import { DopeStudioView } from './dopeStudio.js';
 import { ToolsView } from './tools.js';
 import { LibraryManagerView } from './libraryManager.js';
 import { GuideView } from './guide.js';
+import { initHelp } from './help.js';
 
 const VIEWS = ['workspace', 'solverLab', 'dopeStudio', 'tools', 'libraryManager', 'guide'];
 const THEME_KEY = 'ballistic_theme_pref';
@@ -27,6 +28,7 @@ class BallisticWorkbenchApp {
     this.initCommandPalette();
     this.initVersion();
     this.initPrintButtons();
+    initHelp(document.getElementById('app-main-content'));
 
     const initialHash = (typeof window !== 'undefined' ? window.location.hash.replace('#', '') : '') || 'workspace';
     const validViews = VIEWS;
@@ -237,6 +239,7 @@ class BallisticWorkbenchApp {
       if (d.tool) v?.setTool?.(d.tool);
       if (d.panel) v?._showResultPanel?.(d.panel);
       if (d.format) v?.setFormat?.(d.format);
+      if (d.anchor) v?.showSection?.(d.anchor);
       document.getElementById('app-main-content')?.focus({ preventScroll: true });
       window.scrollTo({ top: 0 });
     });
