@@ -52,26 +52,20 @@ class BallisticWorkbenchApp {
       });
     });
 
-    const unitsToggle = document.getElementById('btn-units-toggle');
-    unitsToggle?.addEventListener('click', () => {
-      const next = appState.state.systemUnits === 'metric' ? 'imperial' : 'metric';
-      appState.setSystemUnits(next);
-      this.updateUnitsToggleLabel();
+    document.getElementById('units-switch')?.addEventListener('click', (e) => {
+      const tab = e.target.closest('[data-units]');
+      if (tab) appState.setSystemUnits(tab.dataset.units);
     });
-
     this.updateUnitsToggleLabel();
   }
 
+  /** Marks the active units in the sidebar switch. */
   updateUnitsToggleLabel() {
-    const unitsToggle = document.getElementById('btn-units-toggle');
-    if (unitsToggle) {
-      const isMetric = appState.state.systemUnits === 'metric';
-      const badge = document.createElement('span');
-      badge.className = 'unit-badge';
-      badge.textContent = isMetric ? 'SI' : 'IMP';
-      unitsToggle.replaceChildren(badge, document.createTextNode(isMetric ? ' Metric' : ' Imperial'));
-      unitsToggle.setAttribute('aria-label', isMetric ? 'Units: metric (m, MRAD). Switch to imperial' : 'Units: imperial (yd, MOA). Switch to metric');
-    }
+    document.querySelectorAll('#units-switch [data-units]').forEach((tab) => {
+      const on = tab.dataset.units === appState.state.systemUnits;
+      tab.setAttribute('aria-selected', String(on));
+      tab.tabIndex = on ? 0 : -1;
+    });
   }
 
   /**
@@ -92,10 +86,21 @@ class BallisticWorkbenchApp {
     });
     this.applyTheme(this.themePref, false);
 
-    document.getElementById('btn-theme-toggle')?.addEventListener('click', () => {
-      const next = THEME_PREFS[(THEME_PREFS.indexOf(this.themePref) + 1) % THEME_PREFS.length];
-      this.applyTheme(next, true);
+    document.getElementById('theme-switch')?.addEventListener('click', (e) => {
+      const tab = e.target.closest('[data-theme-set]');
+      if (tab) this.applyTheme(tab.dataset.themeSet, true);
     });
+    // Arrow keys move between the options of both sidebar switches
+    for (const id of ['units-switch', 'theme-switch']) {
+      document.getElementById(id)?.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        const tabs = [...e.currentTarget.querySelectorAll('[role="tab"]')];
+        const i = tabs.indexOf(document.activeElement);
+        const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+        next.focus();
+        next.click();
+      });
+    }
   }
 
   resolveTheme(pref) {
@@ -115,13 +120,11 @@ class BallisticWorkbenchApp {
     this.theme = resolved;
     document.documentElement.setAttribute('data-theme', resolved);
 
-    const labels = { system: 'System', light: 'Light', dark: 'Dark' };
-    const icons = { system: './assets/icons.svg#contrast', light: './assets/icons.svg#sun', dark: './assets/icons.svg#moon' };
-    const labelEl = document.getElementById('theme-toggle-label');
-    const iconEl = document.getElementById('theme-toggle-icon');
-    if (labelEl) labelEl.textContent = labels[pref];
-    iconEl?.setAttribute('href', icons[pref]);
-    document.getElementById('btn-theme-toggle')?.setAttribute('aria-label', `Theme: ${labels[pref]}. Change theme`);
+    document.querySelectorAll('#theme-switch [data-theme-set]').forEach((tab) => {
+      const on = tab.dataset.themeSet === pref;
+      tab.setAttribute('aria-selected', String(on));
+      tab.tabIndex = on ? 0 : -1;
+    });
 
     // Canvases draw with theme colours, so redraw the current view when the resolved theme changed
     if (notify && changed) this.rerenderCurrentView();
@@ -143,7 +146,7 @@ class BallisticWorkbenchApp {
     fetch('./manifest.json')
       .then((r) => r.json())
       .then((m) => {
-        if (typeof m.version === 'string') el.textContent = `v${m.version}`;
+        if (typeof m.version === 'string') el.textContent = m.version;
       })
       .catch(() => {
         // Offline without a cached manifest: the footer simply shows no version
@@ -228,6 +231,9 @@ class BallisticWorkbenchApp {
 
   /** Command palette (⌘K / Ctrl+K) from Låda Glass: fuzzy search, arrow keys, Enter, Esc. */
   initCommandPalette() {
+    const isApple = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+    const kbd = document.getElementById('palette-kbd');
+    if (kbd) kbd.textContent = isApple ? '⌘K' : 'Ctrl K';
     if (typeof LadaGlass === 'undefined') return;
     this.palette = LadaGlass.palette({
       placeholder: 'Search commands: views, units, theme, solver, rifle…',

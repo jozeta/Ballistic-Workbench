@@ -133,7 +133,7 @@ try {
   await ev(`(() => { localStorage.clear(); return true; })()`);
   await fresh();
   const expectedVersion = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'manifest.json'), 'utf8')).version;
-  check((await ev(`document.getElementById('app-version')?.textContent`)) === `v${expectedVersion}`, `footer shows v${expectedVersion}`);
+  check((await ev(`document.getElementById('app-version')?.textContent`)) === expectedVersion, `sidebar shows version ${expectedVersion}`);
   check(await ev(`!!document.querySelector('meta[http-equiv="Content-Security-Policy"]')`), 'strict CSP meta tag present');
   check((await ev(`document.documentElement.getAttribute('data-theme')`)) === 'dark', 'system dark theme resolves to data-theme="dark"');
   check(!(await ev(`/[\\u{1F300}-\\u{1FAFF}]/u.test(document.body.innerText)`)), 'no emoji in the UI text');
@@ -153,19 +153,28 @@ try {
   // ---- 3. Header: theme cycle, units, command palette ---------------------------------------------
   await fresh();
   const themes = [];
-  for (let i = 0; i < 3; i++) {
-    await ev(`document.getElementById('btn-theme-toggle').click()`);
+  for (const pref of ['light', 'dark', 'system']) {
+    await ev(`document.querySelector('#theme-switch [data-theme-set="${pref}"]').click()`);
     await sleep(300);
-    themes.push(await ev(`[document.getElementById('theme-toggle-label').textContent, document.documentElement.getAttribute('data-theme')].join('/')`));
+    themes.push(await ev(`[document.querySelector('#theme-switch [aria-selected="true"]').dataset.themeSet, document.documentElement.getAttribute('data-theme')].join('/')`));
   }
-  check(themes.join(',') === 'Light/light,Dark/dark,System/dark', `theme cycles System → Light → Dark → System (${themes.join(', ')})`);
+  check(themes.join(',') === 'light/light,dark/dark,system/dark', `theme switch: Light, Dark, System (${themes.join(', ')})`);
 
-  await ev(`document.getElementById('btn-units-toggle').click()`);
+  await ev(`document.querySelector('#units-switch [data-units="imperial"]').click()`);
   await sleep(500);
   check((await ev(`document.querySelector('.hold-elev .hold-unit').textContent`)) === 'MOA', 'imperial units: solution in MOA');
   check((await ev(`document.querySelector('.solution-range').textContent`)).includes('yd'), 'imperial units: distance in yards');
-  await ev(`document.getElementById('btn-units-toggle').click()`);
+  await ev(`document.querySelector('#units-switch [data-units="metric"]').click()`);
   await sleep(500);
+
+  // The search button (clicked like a person would) opens the palette
+  const btn = await ev(`(() => { const b = document.getElementById('btn-cmd-palette-trigger').getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`);
+  for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, x: btn.x, y: btn.y, button: 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: 1 });
+  await sleep(400);
+  check(await ev(`!!document.querySelector('dialog.lg-palette[open]')`), 'clicking Search opens the command palette');
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await sleep(400);
 
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'k', code: 'KeyK', modifiers: MOD, windowsVirtualKeyCode: 75 });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'k', code: 'KeyK', modifiers: MOD, windowsVirtualKeyCode: 75 });
@@ -284,7 +293,7 @@ try {
   await ev(`document.querySelector('[data-series]').click()`);
   await sleep(300);
   check((await ev(`document.querySelector('[data-series]').getAttribute('aria-pressed')`)) !== before, 'compare models: series toggle works');
-  await ev(`document.getElementById('btn-theme-toggle').click()`);
+  await ev(`document.querySelector('#theme-switch [data-theme-set="light"]').click()`);
   await sleep(600);
   check((await ev(`document.querySelectorAll('.lab-table tbody tr').length`)) === lab.rows, 'compare models survives a theme change (it used to go blank)');
 

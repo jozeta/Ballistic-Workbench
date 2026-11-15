@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="description" content="Offline ballistics calculator for precision rifle shooters: trajectories, reticle holds, truing and printable DOPE cards." />
   <meta name="theme-color" content="#141619" media="(prefers-color-scheme: dark)" />
@@ -23,45 +23,45 @@
   <a class="skip-link" href="#app-main-content">Skip to content</a>
   <svg class="app-art" aria-hidden="true" focusable="false"><use href="./assets/art.svg#backdrop"/></svg>
 
-  <header class="app-header">
-    <a class="brand-section" href="#workspace" aria-label="Ballistic Workbench, go to Solver">
-      <svg class="brand-logo-icon" aria-hidden="true"><use href="./assets/icons.svg#crosshair"/></svg>
-      <span class="brand-title">Ballistic <span>Workbench</span></span>
-    </a>
+  <div class="lg-app">
+    <nav class="lg-sidebar app-sidebar" aria-label="Main">
+      <a class="lg-brand" href="#workspace"><span class="lg-mark"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#crosshair"/></svg></span><span class="brand-text">Ballistic Workbench</span></a>
 
-    <nav class="nav-links" aria-label="Main">
-      <a href="#workspace" class="nav-link active" data-view="workspace" aria-current="page"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#crosshair"/></svg><span>Solver</span></a>
-      <a href="#solverLab" class="nav-link" data-view="solverLab"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#chart"/></svg><span>Compare models</span></a>
-      <a href="#dopeStudio" class="nav-link" data-view="dopeStudio"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#file"/></svg><span>DOPE cards</span></a>
-      <a href="#tools" class="nav-link" data-view="tools"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#ruler"/></svg><span>Tools</span></a>
-      <a href="#libraryManager" class="nav-link" data-view="libraryManager"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#box"/></svg><span>Library</span></a>
+      <button id="btn-cmd-palette-trigger" class="lg-btn sidebar-search" type="button" aria-label="Search commands">
+        <svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#search"/></svg><span class="sidebar-search-text">Search</span><span class="lg-kbd" id="palette-kbd">⌘K</span>
+      </button>
+
+      <div class="lg-nav app-nav">
+        <p class="lg-label nav-group">Shoot</p>
+        <a href="#workspace" class="nav-link" data-view="workspace" aria-current="page"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#crosshair"/></svg><span>Solver</span></a>
+        <a href="#dopeStudio" class="nav-link" data-view="dopeStudio"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#card"/></svg><span>DOPE cards</span></a>
+        <p class="lg-label nav-group">Analyse</p>
+        <a href="#solverLab" class="nav-link" data-view="solverLab"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#compare"/></svg><span>Compare models</span></a>
+        <a href="#tools" class="nav-link" data-view="tools"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#ruler"/></svg><span>Tools</span></a>
+        <p class="lg-label nav-group">Data</p>
+        <a href="#libraryManager" class="nav-link" data-view="libraryManager"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#box"/></svg><span>Library</span></a>
+      </div>
+
+      <div class="sidebar-settings">
+        <p class="lg-label nav-group">Units</p>
+        <div class="lg-tabs sidebar-switch" role="tablist" aria-label="Units" id="units-switch">
+          <button class="lg-tab" role="tab" type="button" data-units="metric" aria-selected="true">Metric</button>
+          <button class="lg-tab" role="tab" type="button" data-units="imperial" aria-selected="false">Imperial</button>
+        </div>
+        <p class="lg-label nav-group">Theme</p>
+        <div class="lg-tabs sidebar-switch" role="tablist" aria-label="Theme" id="theme-switch">
+          <button class="lg-tab" role="tab" type="button" data-theme-set="system" aria-selected="true">System</button>
+          <button class="lg-tab" role="tab" type="button" data-theme-set="dark" aria-selected="false">Dark</button>
+          <button class="lg-tab" role="tab" type="button" data-theme-set="light" aria-selected="false">Light</button>
+        </div>
+        <p class="sidebar-version lg-small lg-muted">Version <span id="app-version" class="lg-mono"></span></p>
+      </div>
     </nav>
 
-    <div class="header-actions">
-      <button id="btn-units-toggle" class="btn-units-toggle" type="button" title="Switch units: metric (m, MRAD) or imperial (yd, MOA)">
-        <span class="unit-badge">SI</span> Metric
-      </button>
-
-      <button id="btn-theme-toggle" class="btn-theme-toggle" type="button" title="Theme: follow system, light or dark">
-        <svg class="lg-icon" aria-hidden="true"><use id="theme-toggle-icon" href="./assets/icons.svg#contrast"/></svg>
-        <span id="theme-toggle-label">System</span>
-      </button>
-
-      <button id="btn-cmd-palette-trigger" class="btn-cmd-palette" type="button" title="Search commands (⌘K / Ctrl+K)" aria-label="Search commands">
-        <svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#search"/></svg><span class="cmd-palette-text">Search</span>
-        <kbd class="kbd-shortcut">⌘K</kbd>
-      </button>
-    </div>
-  </header>
-
-  <main id="app-main-content" tabindex="-1">
-    <!-- Populated by the router in src/ui/app.js -->
-  </main>
-
-  <!-- APP FOOTER (version read from manifest.json) -->
-  <footer class="app-footer">
-    Ballistic Workbench <span id="app-version" class="app-version"></span>
-  </footer>
+    <main class="lg-main" id="app-main-content" tabindex="-1">
+      <!-- Populated by the router in src/ui/app.js -->
+    </main>
+  </div>
 
   <!-- MAIN APPLICATION MODULE SCRIPT -->
   <script src="./vendor/lada-glass/2.2.0/lada-glass.js" defer></script>

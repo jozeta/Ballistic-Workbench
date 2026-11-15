@@ -13,8 +13,8 @@
 
 @media print {
   /* App chrome and anything marked screen-only */
-  .app-header,
-  .app-footer,
+  .app-sidebar,
+  .app-art,
   .app-art,
   .skip-link,
   .no-print,
