@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg">
 <!-- Line-art graphics for Ballistic Workbench (Låda Glass style: thin strokes in currentColor, so the
-     colour comes from --lg-art and works in both themes). -->
+     colour comes from the lg-art token and works in both themes). -->
 <symbol id="backdrop" viewBox="0 0 400 400" fill="none" stroke="currentColor" stroke-linecap="round">
   <g stroke-width="1.2">
     <circle cx="300" cy="300" r="40"/>

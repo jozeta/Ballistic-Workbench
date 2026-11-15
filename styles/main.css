@@ -397,7 +397,13 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
   .app-nav .nav-link span { display: none; }
   .sidebar-switch .lg-tab { padding-left: 4px; padding-right: 4px; }
 }
-@media (max-width: 1240px) {
+/* Mid widths (tablets, small laptops): two columns with a narrower setup, reticle and turret stacked */
+@media (max-width: 1400px) {
+  .solver-layout { grid-template-columns: minmax(280px, 320px) minmax(0, 1fr); }
+  .reticle-turret-split { grid-template-columns: minmax(0, 1fr); }
+  .turret-knob-container { border-left: 0; border-top: 1px solid var(--lg-line); }
+}
+@media (max-width: 1023px) {
   .solver-layout { grid-template-columns: minmax(0, 1fr); }
   /* One column: answer first, then the inputs, then the details (reticle, chart, table) */
   .solver-result { display: contents; }
@@ -469,7 +475,7 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .help-btn:hover, .help-btn[aria-expanded="true"] { color: var(--lg-accent); background: color-mix(in srgb, var(--lg-accent) 14%, transparent); }
 .help-btn:focus-visible { outline: 2px solid var(--lg-accent); outline-offset: 1px; }
 @media (pointer: coarse) {
-  .help-btn { width: 32px; height: 32px; margin: -7px -7px -7px -3px; }
+  .help-btn { width: 44px; height: 44px; margin: -13px -13px -13px -9px; }
 }
 .help-pop { width: min(340px, calc(100vw - 16px)); display: grid; gap: var(--lg-space-s); font-size: 13px; line-height: 1.5; }
 .help-pop[data-lg-open] { display: grid; }
@@ -482,3 +488,21 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .help-tip { display: flex; gap: 6px; align-items: flex-start; color: var(--lg-muted); }
 .help-tip .lg-icon { width: 15px; height: 15px; flex: none; margin-top: 2px; color: var(--lg-warn-text); }
 .help-guide { justify-self: start; padding-left: 0; }
+
+/* Range table: wind direction tag; phone tab bars share the width instead of being cut off */
+.dir-tag { margin-left: 3px; font-size: 10px; font-weight: 650; color: var(--lg-muted); }
+.solver-header { margin-bottom: var(--lg-space-xs); }
+@media (max-width: 600px) {
+  .result-tabs { display: flex; width: 100%; }
+  .result-tabs .lg-tab { flex: 1 1 0; justify-content: center; padding-left: 4px; padding-right: 4px; font-size: 12px; white-space: normal; text-align: center; }
+  .result-tabs .lg-tab .lg-icon { display: none; }
+  .chart-metric { display: flex; flex-wrap: wrap; width: 100%; }
+  .chart-metric .lg-tab { flex: 1 1 auto; justify-content: center; }
+}
+
+/* Sidebar switches are radio groups styled like Låda tabs */
+.sidebar-switch .lg-tab[aria-checked="true"] {
+  color: var(--lg-text);
+  background: linear-gradient(180deg, var(--lg-glass-fill-top), var(--lg-glass-fill-bottom)), var(--lg-glass-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .18), inset 0 0 0 1px var(--lg-glass-edge);
+}

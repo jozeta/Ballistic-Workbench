@@ -31,6 +31,7 @@ function ensurePopover() {
   pop.id = 'help-pop';
   pop.setAttribute('role', 'dialog');
   pop.setAttribute('aria-modal', 'false');
+  pop.tabIndex = -1;
   pop.addEventListener('pointerenter', () => clearTimeout(hideTimer));
   pop.addEventListener('pointerleave', () => {
     if (!pinned) scheduleHide();
@@ -169,6 +170,11 @@ function attachToControl(root, key, control) {
     return;
   }
   const label = control.labels?.[0] || root.querySelector(`label[for="${CSS.escape(control.id)}"]`);
+  // A label only screen readers see (toolbar selects): put the button right after the control
+  if (label && label.classList.contains('lg-sr-only')) {
+    if (once(control, key)) control.after(makeButton(key, label.textContent));
+    return;
+  }
   if (label && !label.contains(control)) {
     if (once(label, key)) besideLabel(label, makeButton(key, label.textContent));
     return;
@@ -271,7 +277,11 @@ export function initHelp(root) {
     if (!btn) return;
     e.preventDefault();
     if (current === btn && pinned) hide();
-    else show(btn, true);
+    else {
+      show(btn, true);
+      // Opened from the keyboard (Enter/Space): move focus into the box so its link is the next Tab
+      if (e.detail === 0) pop?.focus();
+    }
   });
   // Close on outside click, Esc, scroll or view change
   document.addEventListener('pointerdown', (e) => {
@@ -286,7 +296,18 @@ export function initHelp(root) {
       btn.focus();
     }
   });
-  window.addEventListener('scroll', () => current && !pinned && hide(), { passive: true });
+  // A pinned box follows its button while scrolling; it closes when the button scrolls out of view
+  // or disappears (the view re-rendered)
+  const follow = () => {
+    if (!current) return;
+    if (!current.isConnected) return hide();
+    if (!pinned) return hide();
+    const r = current.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > window.innerHeight) return hide();
+    place(current);
+  };
+  window.addEventListener('scroll', follow, { passive: true, capture: true });
+  new MutationObserver(() => current && !current.isConnected && hide()).observe(document.body, { childList: true, subtree: true });
   window.addEventListener('resize', () => current && place(current));
   window.addEventListener('hashchange', hide);
 }

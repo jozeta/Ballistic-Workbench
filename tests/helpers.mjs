@@ -58,4 +58,19 @@ const { sanitizeTarget } = await import('../src/core/sanitize.js');
 const migrated = sanitizeTarget({ targetShape: 'nato-e', targetSizeWidthCm: 45, targetSizeHeightCm: 75, distanceM: 600 }, { distanceM: 600, targetSizeWidthCm: 45, targetSizeHeightCm: 75, targetShape: 'ipsc', targetSpeedKmh: 0, targetDirectionDeg: 90 });
 check(migrated.targetSizeWidthCm === 50 && migrated.targetSizeHeightCm === 100, 'a NATO E target stored with the old IPSC size gets 50 × 100 cm');
 
+// --- the solution at an exact distance does not depend on the table step ---
+const { interpolateAt } = await import('../src/core/trajectory.js');
+const { DEFAULT_PROFILES: DP } = await import('../src/data/defaultProfiles.js');
+const calmEnv = { temperatureC: 15, pressureHpa: 1013.25, humidityPercent: 0, altitudeM: 0, windSpeedMs: 0, windDirectionDeg: 90, windZones: [], inclinationDeg: 0, cantDeg: 0, latitudeDeg: 45, shootingAzimuthDeg: 0 };
+const solveStep = (stepM) => solveTrajectory({ profile: { ...structuredClone(DP[0]), zeroAngleRad: null }, environment: calmEnv, airDensity: 1.225, speedOfSound: 340.3, stepM, maxRangeM: 1200 }).trajectory;
+// The Solver solves a second time with the step on the target (workspace.js); check that's exact
+const exactAt = (d) => solveTrajectory({ profile: { ...structuredClone(DP[0]), zeroAngleRad: null }, environment: calmEnv, airDensity: 1.225, speedOfSound: 340.3, stepM: d, maxRangeM: d }).trajectory.find((p) => Math.abs(p.distanceM - d) < 1e-6);
+for (const d of [10, 37, 640]) {
+  const ref = solveStep(1).find((p) => Math.abs(p.distanceM - d) < 1e-6).elevationMrad;
+  const got = exactAt(d)?.elevationMrad;
+  check(got !== undefined && Math.abs(got - ref) < 0.005, `exact solve at ${d} m matches a 1 m table (${got?.toFixed(3)} / ${ref.toFixed(3)} MRAD)`);
+}
+// The interpolation fallback recomputes angles from drop: close within a 10 m table
+check(Math.abs(interpolateAt(solveStep(10), 645).elevationMrad - exactAt(645).elevationMrad) < 0.01, 'interpolated angle at 645 m within 0.01 MRAD (10 m table)');
+
 if (failed) process.exit(1);

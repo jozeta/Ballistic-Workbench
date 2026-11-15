@@ -86,6 +86,7 @@ export class StateStore {
       base.activeEnvironmentId = parsed.activeEnvironmentId;
     }
     if (!base.environments.some((e) => e.id === base.activeEnvironmentId)) base.activeEnvironmentId = base.environments[0].id;
+    this._syncAngleUnits(base);
     if (Array.isArray(parsed.customDopeRanges)) {
       base.customDopeRanges = parsed.customDopeRanges.filter((d) => Number.isFinite(d) && d > 0 && d <= 5000).slice(0, 200);
     }
@@ -126,6 +127,8 @@ export class StateStore {
   }
 
   notify(changedKey = null) {
+    // A rifle's scope may have changed (edit, add, import): keep the angle units in step
+    if (changedKey === 'profile' || changedKey === 'profiles' || changedKey === 'activeProfile' || changedKey === 'import') this._syncAngleUnits();
     this.save();
     for (const listener of this.subscribers) {
       try {
@@ -140,6 +143,27 @@ export class StateStore {
     return this.state;
   }
 
+  /**
+   * Angles (MRAD or MOA) follow the active rifle's scope, not the distance units: a mil scope shows
+   * MRAD even when distances are in yards. Clicks follow the scope too.
+   */
+  _syncAngleUnits(state = this.state) {
+    const profile = state.profiles?.find((p) => p.id === state.activeProfileId) || state.profiles?.[0];
+    const clickRad = profile?.optic?.clickValueRad;
+    const moa = /moa/i.test(profile?.optic?.clickName || '') || (Number.isFinite(clickRad) && Math.abs(clickRad * 3437.75 - Math.round(clickRad * 3437.75 * 8) / 8) < 1e-3 && !/mrad|mil/i.test(profile?.optic?.clickName || ''));
+    const unit = moa ? 'MOA' : 'MRAD';
+    state.displayUnits = { ...state.displayUnits, elevationAngle: unit, windageAngle: unit, clickName: profile?.optic?.clickName || (moa ? '1/4 MOA' : '0.1 MRAD') };
+  }
+
+  /**
+   * The algorithm to pass to the solver: modified point mass when chosen, otherwise point mass with
+   * the active bullet's own drag table (G1 or G7). The drag table always comes from the bullet.
+   */
+  solverAlgorithm() {
+    if (this.state.solverConfig.activeAlgorithm === 'MPM') return 'MPM';
+    return this.getActiveProfile()?.bullet?.dragModel === 'G1' ? 'G1' : 'G7';
+  }
+
   getActiveProfile() {
     return this.state.profiles.find((p) => p.id === this.state.activeProfileId) || this.state.profiles[0];
   }
@@ -152,6 +176,7 @@ export class StateStore {
     if (system !== 'metric' && system !== 'imperial') return;
     this.state.systemUnits = system;
     this.state.displayUnits = UnitConverter.getSystemDefaults(system);
+    this._syncAngleUnits();
     this.notify('units');
   }
 
@@ -167,7 +192,24 @@ export class StateStore {
   }
 
   updateActiveEnvironment(updates) {
+    // The built-in presets stay as they are: the first edit copies the preset into "Custom
+    // conditions" (one shared custom set) and edits that
+    if (DEFAULT_ENVIRONMENTS.some((d) => d.id === this.state.activeEnvironmentId)) {
+      const base = this.getActiveEnvironment();
+      const custom = { ...structuredClone(base), id: 'env-custom', name: `Custom (from ${base.name})`.slice(0, 120) };
+      const i = this.state.environments.findIndex((e) => e.id === 'env-custom');
+      if (i >= 0) this.state.environments[i] = custom;
+      else this.state.environments.push(custom);
+      this.state.activeEnvironmentId = 'env-custom';
+    }
     const env = this.getActiveEnvironment();
+    // Altitude without a new pressure: move the station pressure with the standard atmosphere, so
+    // a change of altitude changes the air (density comes from station pressure and temperature)
+    if ('altitudeM' in updates && !('pressureHpa' in updates) && Number.isFinite(env.altitudeM)) {
+      const ratio = (h) => Math.pow(1 - 2.25577e-5 * h, 5.25588);
+      const p = env.pressureHpa * (ratio(updates.altitudeM) / ratio(env.altitudeM));
+      if (Number.isFinite(p)) updates = { ...updates, pressureHpa: Math.round(p * 10) / 10 };
+    }
     // Editing the single wind speed/direction replaces any per-distance wind zones; otherwise the
     // zones would keep overriding what the user just entered.
     if (('windSpeedMs' in updates || 'windDirectionDeg' in updates) && !('windZones' in updates)) {
@@ -190,6 +232,7 @@ export class StateStore {
   setActiveProfile(profileId) {
     if (this.state.profiles.some((p) => p.id === profileId)) {
       this.state.activeProfileId = profileId;
+      this._syncAngleUnits();
       this.notify('activeProfile');
     }
   }

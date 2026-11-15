@@ -67,7 +67,7 @@ class BallisticWorkbenchApp {
   updateUnitsToggleLabel() {
     document.querySelectorAll('#units-switch [data-units]').forEach((tab) => {
       const on = tab.dataset.units === appState.state.systemUnits;
-      tab.setAttribute('aria-selected', String(on));
+      tab.setAttribute('aria-checked', String(on));
       tab.tabIndex = on ? 0 : -1;
     });
   }
@@ -98,7 +98,7 @@ class BallisticWorkbenchApp {
     for (const id of ['units-switch', 'theme-switch']) {
       document.getElementById(id)?.addEventListener('keydown', (e) => {
         if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-        const tabs = [...e.currentTarget.querySelectorAll('[role="tab"]')];
+        const tabs = [...e.currentTarget.querySelectorAll('[role="radio"]')];
         const i = tabs.indexOf(document.activeElement);
         const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
         next.focus();
@@ -126,7 +126,7 @@ class BallisticWorkbenchApp {
 
     document.querySelectorAll('#theme-switch [data-theme-set]').forEach((tab) => {
       const on = tab.dataset.themeSet === pref;
-      tab.setAttribute('aria-selected', String(on));
+      tab.setAttribute('aria-checked', String(on));
       tab.tabIndex = on ? 0 : -1;
     });
 
@@ -187,6 +187,8 @@ class BallisticWorkbenchApp {
     if (!viewContainer) return;
 
     // Update active nav link
+    const navLabel = document.querySelector(`.nav-link[data-view="${viewName}"] span`)?.textContent;
+    document.title = navLabel ? `${navLabel} · Ballistic Workbench` : 'Ballistic Workbench';
     document.querySelectorAll('.nav-link').forEach((link) => {
       const active = link.dataset.view === viewName;
       link.classList.toggle('active', active);
@@ -266,7 +268,7 @@ class BallisticWorkbenchApp {
     };
     return [
       { title: 'Go to Solver', category: 'Go to', keywords: ['workspace', 'command center', 'dope table', 'reticle'], action: () => this.switchView('workspace') },
-      { title: 'Go to Compare models', category: 'Go to', keywords: ['algorithm', 'lab', 'g1', 'g7', '4dof'], action: () => this.switchView('solverLab') },
+      { title: 'Go to Compare models', category: 'Go to', keywords: ['algorithm', 'lab', 'g1', 'g7', 'mpm'], action: () => this.switchView('solverLab') },
       { title: 'Go to DOPE cards', category: 'Go to', keywords: ['print', 'range card', 'wrist coach', 'scope cap'], action: () => this.switchView('dopeStudio') },
       { title: 'Go to Tools', category: 'Go to', keywords: ['chrono', 'truing', 'wez'], action: () => this.switchView('tools') },
       { title: 'Open the guide: from range day to DOPE chart', category: 'Go to', keywords: ['guide', 'how to', 'help', 'tutorial', 'steps', 'chronograph', 'sight height', 'zero'], action: () => this.switchView('guide') },
@@ -285,8 +287,7 @@ class BallisticWorkbenchApp {
       { title: 'Theme: light', category: 'Settings', keywords: ['sunlight', 'day', 'appearance'], action: () => this.applyTheme('light', true) },
       { title: 'Theme: dark', category: 'Settings', keywords: ['night', 'appearance'], action: () => this.applyTheme('dark', true) },
 
-      { title: 'Drag model: G7 (boat-tail)', category: 'Solver', keywords: ['algorithm'], action: () => appState.updateSolverConfig({ activeAlgorithm: 'G7' }) },
-      { title: 'Drag model: G1 (flat-base)', category: 'Solver', keywords: ['algorithm'], action: () => appState.updateSolverConfig({ activeAlgorithm: 'G1' }) },
+      { title: 'Model: point mass (drag model from the bullet)', category: 'Solver', keywords: ['algorithm', 'g7', 'g1'], action: () => appState.updateSolverConfig({ activeAlgorithm: 'G7' }) },
       { title: 'Model: modified point mass (MPM)', category: 'Solver', keywords: ['algorithm'], action: () => appState.updateSolverConfig({ activeAlgorithm: 'MPM' }) },
 
       ...appState.state.profiles.map((p) => ({

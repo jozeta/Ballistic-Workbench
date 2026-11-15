@@ -141,13 +141,6 @@ export const HELP = {
     tip: 'Make one profile per rifle and load; a new load needs its own muzzle velocity and BC.',
     guide: 'guide-enter',
   },
-  'target-range-slider': {
-    title: 'Target distance',
-    text: 'Drag to set the distance to the target. The firing solution, the reticle hold and the turret all follow it. The slider moves in steps of 25; type in the box next to it for an exact value.',
-    typical: 'Slider range: 50–1,500 m (50–1,600 yd).',
-    tip: 'Use a laser rangefinder: at 800 m a 20 m error moves the impact about 0.3 MRAD.',
-    guide: 'guide-solver',
-  },
   'target-range-input': {
     title: 'Target distance',
     text: 'The exact line-of-sight distance to the target, in the current distance unit. Enter what your rangefinder reads; the inclination field accounts for uphill and downhill shots.',

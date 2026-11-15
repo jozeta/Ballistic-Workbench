@@ -13,6 +13,7 @@ const STATIC_ASSETS = [
   './index.html',
   './manifest.json',
   './assets/art.svg',
+  './assets/favicon.svg',
   './assets/guide-art.svg',
   './assets/icons.svg',
   './src/canvas/charts.js',

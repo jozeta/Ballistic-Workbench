@@ -18,6 +18,8 @@ import { TARGETS, targetOf } from '../core/targets.js';
 import { icon } from './icons.js';
 import { bindNumber, rangeError, setFieldError, parseNumber } from './fields.js';
 
+const UI_PREFS_KEY = 'ballistic_workbench_solver_ui_v1';
+
 export class WorkspaceView {
   constructor(containerElement) {
     this.container = containerElement;
@@ -55,6 +57,7 @@ export class WorkspaceView {
     // Remembered across re-renders (unit or profile changes rebuild the view)
     this.openSections = new Set(['target', 'load', 'wind']);
     this.activePanel = 'reticle';
+    this._loadUiPrefs();
 
     this.render();
     this.initVisualizers();
@@ -62,6 +65,8 @@ export class WorkspaceView {
 
     // Subscribe to state updates
     this.unsubscribe = appState.subscribe((state, changeKey) => {
+      // Table rows move with the units (round metres vs round yards): start the selection afresh
+      if (changeKey === 'units') this.selectedRanges = null;
       if (
         changeKey === 'units' ||
         changeKey === 'displayUnits' ||
@@ -191,10 +196,11 @@ export class WorkspaceView {
       environment: env,
       airDensity: atmos.densityKgM3,
       speedOfSound: atmos.speedOfSoundMs,
-      algorithm: config.activeAlgorithm,
-      stepM: config.stepM,
+      algorithm: appState.solverAlgorithm(),
+      // The step is in the display unit, so imperial rows land on round yards (25 yd = 22.86 m)
+      stepM: config.stepM * (dispUnits.distance === 'yd' ? 0.9144 : 1),
       // Always solve at least a little past the target, so the solution is never clipped
-      maxRangeM: Math.max(config.maxRangeM, Math.ceil((target.distanceM + config.stepM) / 100) * 100),
+      maxRangeM: Math.max(config.maxRangeM * (dispUnits.distance === 'yd' ? 0.9144 : 1) + 0.01, Math.ceil((target.distanceM + config.stepM) / 100) * 100),
       includeSpinDrift: config.includeSpinDrift,
       includeCoriolis: config.includeCoriolis,
       includeAerodynamicJump: config.includeAerodynamicJump,
@@ -205,9 +211,30 @@ export class WorkspaceView {
     // 3. The solution at the exact target distance (interpolated between table rows), with clicks
     //    from the optic's click value
     const clickRad = profile.optic?.clickValueRad || 0.0001;
-    const targetPoint = interpolateAt(solution.trajectory, target.distanceM);
+    // A second, small solve whose step lands exactly on the target: the table step must never change
+    // the answer (straight-line interpolation between table rows is off at short range)
+    let targetPoint = null;
+    if (target.distanceM >= 1) {
+      const exact = solveTrajectory({
+        profile,
+        environment: env,
+        airDensity: atmos.densityKgM3,
+        speedOfSound: atmos.speedOfSoundMs,
+        algorithm: appState.solverAlgorithm(),
+        stepM: target.distanceM,
+        maxRangeM: target.distanceM,
+        includeSpinDrift: config.includeSpinDrift,
+        includeCoriolis: config.includeCoriolis,
+        includeAerodynamicJump: config.includeAerodynamicJump,
+        targetHeightM: (target.targetSizeHeightCm || 50) / 100,
+      });
+      targetPoint = exact.trajectory.find((p) => Math.abs(p.distanceM - target.distanceM) < 1e-6) || null;
+    }
+    targetPoint = targetPoint ? { ...targetPoint } : interpolateAt(solution.trajectory, target.distanceM, env.cantDeg || 0);
     targetPoint.elevationClicks = Math.round(targetPoint.elevationRad / clickRad);
     targetPoint.windageClicks = Math.round(targetPoint.windageRad / clickRad);
+
+    this._syncControls(profile, env, config);
 
     // 4. Update Telemetry HUD
     this._updateTelemetryHud(solution, targetPoint, atmos, sysUnits, dispUnits);
@@ -317,7 +344,7 @@ export class WorkspaceView {
         <div><dt>${icon('speed')} Velocity</dt><dd>${Math.round(velVal)} ${isMetric ? 'm/s' : 'fps'} <span class="lg-badge lg-badge-${regimeClass}">Mach ${targetPoint.mach.toFixed(2)}</span></dd></div>
         <div><dt>${icon('clock')} Time of flight</dt><dd>${targetPoint.tofS.toFixed(2)} s</dd></div>
         <div><dt>${icon('energy')} Energy</dt><dd>${Math.round(energyVal)} ${isMetric ? 'J' : 'ft·lb'}</dd></div>
-        <div><dt>${icon('trajectory')} Supersonic to</dt><dd>${solution.telemetry.transonicRangeM >= solution.trajectory[solution.trajectory.length - 1].distanceM ? 'beyond ' : ''}${dist(solution.telemetry.transonicRangeM)} ${esc(dispUnits.distance)}</dd></div>
+        <div><dt>${icon('trajectory')} Supersonic to</dt><dd>${solution.telemetry.transonicRangeM <= 0 ? 'Subsonic from the muzzle' : `${solution.telemetry.transonicRangeM >= solution.trajectory[solution.trajectory.length - 1].distanceM ? 'beyond ' : ''}${dist(solution.telemetry.transonicRangeM)} ${esc(dispUnits.distance)}`}</dd></div>
       </dl>
     `;
 
@@ -342,18 +369,19 @@ export class WorkspaceView {
     const x = (p) => f.dist(p.distanceM);
     const fmtN = (d) => (v) => Number(v).toLocaleString('en-US', { maximumFractionDigits: d });
     const metrics = {
-      drop: { title: `Drop below line of sight (${u.lin})`, series: [{ name: 'Drop', points: rows.map((p) => [x(p), Number(f.lin(p.dropM).toFixed(1))]) }], d: 0 },
+      drop: { title: `Drop below line of sight (${u.lin})`, unit: u.lin, series: [{ name: 'Drop', points: rows.map((p) => [x(p), Number(f.lin(p.dropM).toFixed(1))]) }], d: 0 },
       velocity: {
         title: `Velocity (${u.vel})`,
+        unit: u.vel,
         series: [
           { name: 'Velocity', points: rows.map((p) => [x(p), Math.round(f.vel(p.velocityMs))]) },
           { name: 'Speed of sound', points: rows.map((p) => [x(p), Math.round(f.vel(p.mach > 0 ? p.velocityMs / p.mach : 0))]) },
         ],
         d: 0,
       },
-      wind: { title: `Wind drift (${u.lin})`, series: [{ name: 'Wind drift', points: rows.map((p) => [x(p), Number(f.lin(Math.abs(p.driftM)).toFixed(1))]) }], d: 0 },
-      tof: { title: 'Time of flight (s)', series: [{ name: 'Time of flight', points: rows.map((p) => [x(p), Number(p.tofS.toFixed(3))]) }], d: 2 },
-      energy: { title: `Energy (${u.energy})`, series: [{ name: 'Energy', points: rows.map((p) => [x(p), Math.round(f.energy(p.energyJ))]) }], d: 0, area: true },
+      wind: { title: `Wind drift (${u.lin})`, unit: u.lin, series: [{ name: 'Wind drift', points: rows.map((p) => [x(p), Number(f.lin(Math.abs(p.driftM)).toFixed(1))]) }], d: 0 },
+      tof: { title: 'Time of flight (s)', unit: 's', series: [{ name: 'Time of flight', points: rows.map((p) => [x(p), Number(p.tofS.toFixed(3))]) }], d: 2 },
+      energy: { title: `Energy (${u.energy})`, unit: u.energy, series: [{ name: 'Energy', points: rows.map((p) => [x(p), Math.round(f.energy(p.energyJ))]) }], d: 0, area: true },
     };
     const m = metrics[this.chartMetric] || metrics.drop;
     const title = this.container.querySelector('#chart-title');
@@ -367,7 +395,7 @@ export class WorkspaceView {
       series: m.series,
       area: !!m.area,
       x: { type: 'linear', format: (v) => `${fmtN(0)(v)} ${u.dist}` },
-      y: { format: fmtN(m.d) },
+      y: { format: (v) => `${fmtN(m.d)(v)} ${m.unit}` },
     };
     if (this.chart && this.chart.host === host) this.chart.update(data);
     else {
@@ -410,8 +438,14 @@ export class WorkspaceView {
     const rows = trajectory.filter((p) => p.distanceM > 0);
 
     // First solve: tick every 100 m. Afterwards keep the user's choice, pruned to rows that exist.
+    if (this.selectedRanges === null && this._savedRanges) {
+      // Restore the saved choice (matched to this table's rows within 1 cm)
+      const saved = this._savedRanges;
+      this._savedRanges = null;
+      this.selectedRanges = new Set(rows.filter((p) => saved.some((d) => Math.abs(d - p.distanceM) < 0.01)).map((p) => p.distanceM));
+    }
     if (this.selectedRanges === null) {
-      this.selectedRanges = new Set(rows.filter((p) => p.distanceM % 100 === 0).map((p) => p.distanceM));
+      this.selectedRanges = new Set(rows.filter((p) => f.dist(p.distanceM) % 100 === 0).map((p) => p.distanceM));
     } else {
       const present = new Set(rows.map((p) => p.distanceM));
       this.selectedRanges = new Set([...this.selectedRanges].filter((d) => present.has(d)));
@@ -454,7 +488,7 @@ export class WorkspaceView {
         const dist = f.dist(p.distanceM);
         const elevClicks = Math.round(p.elevationRad / clickRad);
         const windClicks = Math.round(p.windageRad / clickRad);
-        const machClass = p.mach >= 1.2 ? 'badge-ok' : p.mach >= 1.0 ? 'badge-warn' : 'badge-bad';
+        const machClass = p.mach >= 1.2 ? 'lg-badge-ok' : p.mach >= 1.0 ? 'lg-badge-warn' : 'lg-badge-bad';
         const cells = [
           `<th scope="row"><label class="check-inline"><input type="checkbox" class="lg-check chk-range-select" data-dist="${p.distanceM}" ${this.selectedRanges.has(p.distanceM) ? 'checked' : ''} aria-label="Include ${dist} ${u.dist} on DOPE cards" /> ${dist}</label>${isZero ? '<span class="row-tag row-tag-zero">Zero</span>' : ''}${isTarget ? '<span class="row-tag row-tag-target">Target</span>' : ''}</th>`,
         ];
@@ -462,10 +496,13 @@ export class WorkspaceView {
         if (cols.has('elevation')) cells.push(`<td class="num-strong">${signed(f.ang(p, 'elevation'), 2)}</td>`);
         if (cols.has('elevClicks')) cells.push(`<td>${elevClicks === 0 ? 0 : elevClicks}</td>`);
         if (cols.has('drift')) cells.push(`<td>${signed(f.lin(Math.abs(p.driftM)), 1)}</td>`);
-        if (cols.has('wind')) cells.push(`<td>${signed(Math.abs(f.ang(p, 'windage')), 2)}</td>`);
+        if (cols.has('wind')) {
+          const w = f.ang(p, 'windage');
+          cells.push(`<td>${signed(Math.abs(w), 2)}${Math.abs(w) >= 0.005 ? `<span class="dir-tag">${w > 0 ? 'R' : 'L'}</span>` : ''}</td>`);
+        }
         if (cols.has('windClicks')) cells.push(`<td>${Math.abs(windClicks)}</td>`);
         if (cols.has('velocity')) cells.push(`<td>${Math.round(f.vel(p.velocityMs))}</td>`);
-        if (cols.has('mach')) cells.push(`<td><span class="badge ${machClass}">${p.mach.toFixed(2)}</span></td>`);
+        if (cols.has('mach')) cells.push(`<td><span class="lg-badge ${machClass}">${p.mach.toFixed(2)}</span></td>`);
         if (cols.has('energy')) cells.push(`<td>${Math.round(f.energy(p.energyJ))}</td>`);
         if (cols.has('tof')) cells.push(`<td>${p.tofS.toFixed(3)}</td>`);
         if (cols.has('danger')) cells.push(`<td>${f.dist(p.dangerSpaceM)}</td>`);
@@ -497,6 +534,7 @@ export class WorkspaceView {
 
   _updateSelectedRangesCount() {
     const n = this.selectedRanges?.size || 0;
+    this._saveUiPrefs();
     const countEl = this.container.querySelector('#selected-ranges-count');
     if (countEl) countEl.textContent = `${n}`;
     const btn = this.container.querySelector('#btn-send-to-dope');
@@ -557,9 +595,76 @@ export class WorkspaceView {
     if (recompute) this.recompute();
   }
 
+  /**
+   * Keeps the setup summaries and controls in step with the state after every change, including
+   * changes made elsewhere (wind clock drag, command palette). Fields being edited are left alone.
+   */
+  _syncControls(profile, env, config) {
+    const isImp = appState.state.systemUnits === 'imperial';
+    const q = (sel) => this.container.querySelector(sel);
+    const setText = (sel, text) => {
+      const e = q(sel);
+      if (e && e.textContent !== text) e.textContent = text;
+    };
+    const setVal = (sel, val) => {
+      const e = q(sel);
+      if (e && document.activeElement !== e && e.getAttribute('aria-invalid') !== 'true' && e.value !== String(val)) e.value = String(val);
+    };
+    const mv = Math.round(isImp ? profile.muzzleVelocityMs * 3.28084 : profile.muzzleVelocityMs);
+    const temp = isImp ? Math.round((env.temperatureC * 9) / 5 + 32) : Number(env.temperatureC.toFixed(1));
+    const press = isImp ? (env.pressureHpa * 0.02953).toFixed(2) : Number(env.pressureHpa.toFixed(1));
+    const wind = isImp ? Number((env.windSpeedMs * 2.23694).toFixed(1)) : Number(env.windSpeedMs.toFixed(1));
+    const dir = Math.round(env.windDirectionDeg);
+    setText('#sum-load', `${mv} ${isImp ? 'fps' : 'm/s'}`);
+    setText('#sum-atmos', `${temp} ${isImp ? '°F' : '°C'} · ${press} ${isImp ? 'inHg' : 'hPa'}`);
+    setText('#sum-wind', `${wind} ${isImp ? 'mph' : 'm/s'} · from ${dir}°`);
+    setText('#sum-angle', `${env.inclinationDeg || 0}° · ${env.cantDeg || 0}°`);
+    setVal('#wind-dir-input', dir);
+    setVal('#wind-speed-input', wind);
+    setVal('#algorithm-select', config.activeAlgorithm === 'MPM' ? 'MPM' : 'G7');
+    setVal('#step-select', config.stepM);
+    const t = appState.state.target;
+    const toUnit = (cm) => (isImp ? (cm / 2.54).toFixed(1) : String(Math.round(cm)));
+    setVal('#target-w-input', toUnit(t.targetSizeWidthCm));
+    setVal('#target-h-input', toUnit(t.targetSizeHeightCm));
+  }
+
+  /**
+   * View preferences that should survive reloads and view switches: the open tab, the open setup
+   * sections and the ranges ticked for DOPE cards (per unit system, as display distances).
+   */
+  _loadUiPrefs() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(UI_PREFS_KEY) || '{}');
+      if (['reticle', 'chart', 'table'].includes(raw.panel)) this.activePanel = raw.panel;
+      if (Array.isArray(raw.sections)) this.openSections = new Set(raw.sections.filter((x) => typeof x === 'string').slice(0, 10));
+      if (['drop', 'velocity', 'wind', 'tof', 'energy'].includes(raw.metric)) this.chartMetric = raw.metric;
+      const ranges = raw.ranges?.[appState.state.systemUnits];
+      if (Array.isArray(ranges)) {
+        const toM = appState.state.systemUnits === 'imperial' ? 0.9144 : 1;
+        this._savedRanges = ranges.filter((d) => Number.isFinite(d) && d > 0 && d < 10000).slice(0, 400).map((d) => d * toM);
+      }
+    } catch {
+      // Unreadable or blocked storage: keep the defaults
+    }
+  }
+
+  _saveUiPrefs() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(UI_PREFS_KEY) || '{}');
+      const toDisp = appState.state.systemUnits === 'imperial' ? 1 / 0.9144 : 1;
+      const ranges = { ...(raw.ranges || {}) };
+      if (this.selectedRanges) ranges[appState.state.systemUnits] = [...this.selectedRanges].map((d) => Math.round(d * toDisp * 100) / 100);
+      localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ panel: this.activePanel, sections: [...this.openSections], metric: this.chartMetric, ranges }));
+    } catch {
+      // Not saved; fine for this session
+    }
+  }
+
   /** Shows one of the result panels (reticle, chart, table); the choice survives re-renders. */
   _showResultPanel(name) {
     this.activePanel = name;
+    this._saveUiPrefs();
     this.container.querySelectorAll('.result-tabs .lg-tab').forEach((tab) => {
       const on = tab.dataset.panel === name;
       tab.setAttribute('aria-selected', String(on));
@@ -605,10 +710,15 @@ export class WorkspaceView {
 
     // eslint-disable-next-line no-unsanitized/property -- reviewed: profile/env names go through esc(); the rest are numbers and constants
     this.container.innerHTML = `
+      <header class="lg-header view-header solver-header">
+        <div>
+          <h1>Solver</h1>
+          <p>Set the rifle, distance and conditions; the firing solution shows what to dial and hold.</p>
+        </div>
+      </header>
       <div class="solver-layout">
         <!-- SETUP: everything that drives the solution -->
-        <section class="solver-setup" aria-labelledby="setup-heading">
-          <h1 id="setup-heading" class="lg-sr-only">Setup</h1>
+        <section class="solver-setup" aria-label="Setup">
 
           <div class="setup-rifle lg-card">
             <label class="field-label" for="profile-select">${icon('rifle')} Rifle</label>
@@ -649,7 +759,7 @@ export class WorkspaceView {
           </details>
 
           <details class="setup-section lg-card" data-section="load" ${sec('load')}>
-            <summary>${icon('bullet')}<span>Load and rifle</span><span class="section-summary">${mvDisp} ${mvUnit}</span></summary>
+            <summary>${icon('bullet')}<span>Load and rifle</span><span class="section-summary" id="sum-load">${mvDisp} ${mvUnit}</span></summary>
             <div class="section-body">
               <div class="field-grid-2">
                 <div>
@@ -674,8 +784,7 @@ export class WorkspaceView {
                 <div class="field-span-2">
                   <label class="field-label" for="algorithm-select">Solver model</label>
                   <select id="algorithm-select" class="lg-select">
-                    <option value="G7" ${config.activeAlgorithm === 'G7' ? 'selected' : ''}>Point mass, G7 drag</option>
-                    <option value="G1" ${config.activeAlgorithm === 'G1' ? 'selected' : ''}>Point mass, G1 drag</option>
+                    <option value="G7" ${config.activeAlgorithm !== 'MPM' ? 'selected' : ''}>Point mass (uses the drag model above)</option>
                     <option value="MPM" ${config.activeAlgorithm === 'MPM' ? 'selected' : ''}>Modified point mass (adds spin drift, jump, Coriolis)</option>
                   </select>
                 </div>
@@ -696,7 +805,7 @@ export class WorkspaceView {
           </details>
 
           <details class="setup-section lg-card" data-section="atmosphere" ${sec('atmosphere')}>
-            <summary>${icon('thermometer')}<span>Atmosphere</span><span class="section-summary">${tempDisp} ${tempUnit} · ${pressDisp} ${pressUnit}</span></summary>
+            <summary>${icon('thermometer')}<span>Atmosphere</span><span class="section-summary" id="sum-atmos">${tempDisp} ${tempUnit} · ${pressDisp} ${pressUnit}</span></summary>
             <div class="section-body">
               <label class="field-label" for="env-select">Preset</label>
               <select id="env-select" class="lg-select">${envOptions}</select>
@@ -723,7 +832,7 @@ export class WorkspaceView {
           </details>
 
           <details class="setup-section lg-card" data-section="wind" ${sec('wind')}>
-            <summary>${icon('wind')}<span>Wind</span><span class="section-summary">${windSpeedDisp} ${windSpeedUnit} · ${env.windDirectionDeg}°</span></summary>
+            <summary>${icon('wind')}<span>Wind</span><span class="section-summary" id="sum-wind">${windSpeedDisp} ${windSpeedUnit} · ${env.windDirectionDeg}°</span></summary>
             <div class="section-body">
               <div class="wind-clock-wrapper">
                 <canvas id="wind-clock-canvas" width="200" height="200" aria-label="Wind direction"></canvas>
@@ -742,7 +851,7 @@ export class WorkspaceView {
           </details>
 
           <details class="setup-section lg-card" data-section="angle" ${sec('angle')}>
-            <summary>${icon('altitude')}<span>Shot angle and cant</span><span class="section-summary">${env.inclinationDeg || 0}° · ${env.cantDeg || 0}°</span></summary>
+            <summary>${icon('altitude')}<span>Shot angle and cant</span><span class="section-summary" id="sum-angle">${env.inclinationDeg || 0}° · ${env.cantDeg || 0}°</span></summary>
             <div class="section-body">
               <div class="field-grid-2">
                 <div>
@@ -843,7 +952,7 @@ export class WorkspaceView {
             <div class="panel-toolbar">
               <label class="field-inline" for="step-select">Every
                 <select id="step-select" class="lg-select lg-select-sm">
-                  ${[10, 25, 50, 100].map((v) => `<option value="${v}" ${config.stepM === v ? 'selected' : ''}>${v} m</option>`).join('')}
+                  ${[10, 25, 50, 100].map((v) => `<option value="${v}" ${config.stepM === v ? 'selected' : ''}>${v} ${isImp ? 'yd' : 'm'}</option>`).join('')}
                 </select>
               </label>
               <details class="column-visibility-dropdown" id="col-picker-details">
@@ -921,6 +1030,7 @@ export class WorkspaceView {
       d.addEventListener('toggle', () => {
         if (d.open) this.openSections.add(d.dataset.section);
         else this.openSections.delete(d.dataset.section);
+        this._saveUiPrefs();
       });
     });
 
@@ -1082,6 +1192,7 @@ export class WorkspaceView {
       const tab = e.target.closest('[data-metric]');
       if (!tab) return;
       this.chartMetric = tab.dataset.metric;
+      this._saveUiPrefs();
       this.container.querySelectorAll('.chart-metric [data-metric]').forEach((b) => b.setAttribute('aria-selected', String(b === tab)));
       if (this.activeSolution) this._renderChart(this.activeSolution, appState.state.target.distanceM);
     });

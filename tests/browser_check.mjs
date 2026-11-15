@@ -156,13 +156,13 @@ try {
   for (const pref of ['light', 'dark', 'system']) {
     await ev(`document.querySelector('#theme-switch [data-theme-set="${pref}"]').click()`);
     await sleep(300);
-    themes.push(await ev(`[document.querySelector('#theme-switch [aria-selected="true"]').dataset.themeSet, document.documentElement.getAttribute('data-theme')].join('/')`));
+    themes.push(await ev(`[document.querySelector('#theme-switch [aria-checked="true"]').dataset.themeSet, document.documentElement.getAttribute('data-theme')].join('/')`));
   }
   check(themes.join(',') === 'light/light,dark/dark,system/dark', `theme switch: Light, Dark, System (${themes.join(', ')})`);
 
   await ev(`document.querySelector('#units-switch [data-units="imperial"]').click()`);
   await sleep(500);
-  check((await ev(`document.querySelector('.hold-elev .hold-unit').textContent`)) === 'MOA', 'imperial units: solution in MOA');
+  check((await ev(`document.querySelector('.hold-elev .hold-unit').textContent`)) === 'MRAD', 'imperial units with an MRAD scope: angles stay in MRAD (they follow the scope)');
   check((await ev(`document.querySelector('.solution-range').textContent`)).includes('yd'), 'imperial units: distance in yards');
   await ev(`document.querySelector('#units-switch [data-units="metric"]').click()`);
   await sleep(500);
