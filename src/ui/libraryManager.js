@@ -2,17 +2,20 @@
  * Ballistic Workbench - Library view.
  * Three tabs:
  *   Rifles       saved rifles: use, edit, duplicate, delete (with undo), new rifle
- *   Bullets      searchable bullet list, filtered to the rifle's bullet diameter by default;
- *                "Use" puts a bullet in the current rifle (keeps its trued muzzle velocity unless
- *                the user opts in to the factory velocity), with undo
+ *   Bullets      searchable bullet list, filtered to the chosen rifle's bullet diameter by default;
+ *                "For rifle" picks which rifle "Use" puts a bullet in (it doesn't change the rifle
+ *                used in the Solver); "Use" keeps the rifle's trued muzzle velocity unless the
+ *                user opts in to the factory velocity, with undo
  *   Add a bullet custom bullet form with a live Miller stability check against the rifle's twist
- * Backups: Export… / Import… (JSON, max 2 MB, validated by appState.importJSON).
+ * Backups: Export… / Import… (JSON, max 2 MB, validated by appState.importJSON). The file is read
+ * here first to report what it actually holds; a file with nothing to import changes nothing.
+ * Undo shows as a bar at the top of the tab panel (in the page flow, so it never covers a card).
  */
 
 import { appState } from '../core/state.js';
 import { esc } from '../core/escape.js';
 import { UnitConverter } from '../core/units.js';
-import { MAX_IMPORT_BYTES } from '../core/sanitize.js';
+import { MAX_IMPORT_BYTES, sanitizeBullets } from '../core/sanitize.js';
 import { calculateStability, PROJECTILES } from '../data/projectiles.js';
 import { RifleBuilderModal } from './rifleBuilderModal.js';
 import { icon } from './icons.js';
@@ -33,6 +36,33 @@ const G1_PER_G7 = 1.95;
 /** Diameter key for grouping bullets that fit the same bore, e.g. "0.308". */
 const diaKey = (d) => (Number.isFinite(Number(d)) ? Number(d).toFixed(3) : '');
 const fmtDia = (key) => `${key.replace(/^0/, '')} in`;
+const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const newId = (prefix) => `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+
+/** "Name", "Name (copy)" or "Name (3)" → the next free "Name (n)". */
+function copyName(name, taken) {
+  const base = String(name || 'Rifle').replace(/(\s\((copy|\d+)\))+$/i, '').trim() || 'Rifle';
+  for (let n = 2; ; n++) {
+    const candidate = `${base.slice(0, 190)} (${n})`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+/** What a parsed backup file holds that appState.importJSON would take. */
+function describeImport(parsed) {
+  const out = { rifles: 0, atmospheres: 0, bullets: 0, settings: [] };
+  if (!isObj(parsed)) return out;
+  if (Array.isArray(parsed.profiles)) out.rifles = parsed.profiles.filter(isObj).length;
+  if (Array.isArray(parsed.environments)) out.atmospheres = parsed.environments.filter(isObj).length;
+  if (Array.isArray(parsed.projectilesLibrary)) {
+    out.bullets = sanitizeBullets(parsed.projectilesLibrary.filter((b) => isObj(b) && !FACTORY_IDS.has(b.id))).length;
+  }
+  if (parsed.systemUnits === 'metric' || parsed.systemUnits === 'imperial') out.settings.push(`${parsed.systemUnits} units`);
+  if (isObj(parsed.solverConfig)) out.settings.push('solver settings');
+  if (isObj(parsed.target)) out.settings.push('target');
+  return out;
+}
 
 export class LibraryManagerView {
   constructor(containerElement) {
@@ -41,8 +71,9 @@ export class LibraryManagerView {
     this.searchQuery = '';
     this.caliberFilter = null; // null = follow the rifle's bullet diameter; 'all' or a diameter key
     this.useFactoryMv = false;
-    this.undo = null; // { message, run, timer }
-    this.draft = null; // values typed in "Add a bullet", kept across re-renders
+    this.undo = null; // { message, run, timer, focus }
+    this.draft = null; // values typed in "Add a bullet", kept across re-renders (with the units they were typed in)
+    this.rifleId = null; // rifle the Bullets tab works on (null = the rifle in use)
 
     this._onClick = (e) => this._handleClick(e);
     this.container.addEventListener('click', this._onClick);
@@ -71,6 +102,11 @@ export class LibraryManagerView {
   }
 
   // ---- units ----------------------------------------------------------------------------------
+
+  /** The rifle the Bullets and Add a bullet tabs work on. */
+  _rifle() {
+    return (this.rifleId && appState.state.profiles.find((p) => p.id === this.rifleId)) || appState.getActiveProfile();
+  }
 
   _units() {
     const isImp = appState.state.systemUnits === 'imperial';
@@ -122,12 +158,12 @@ export class LibraryManagerView {
               aria-selected="${this.activeTab === t.id}" tabindex="${this.activeTab === t.id ? '0' : '-1'}">${icon(t.icon)} ${t.label}</button>`).join('')}
         </div>
 
-        <div class="library-panel" role="tabpanel" id="lib-panel" aria-labelledby="lib-tab-${this.activeTab}">
-          ${panel}
+        <div class="library-undo lg-alert lg-alert-info" id="library-undo" role="status" aria-live="polite" ${this.undo ? '' : 'hidden'}>
+          ${this.undo ? this._undoInner() : ''}
         </div>
 
-        <div class="library-undo lg-glass" id="library-undo" role="status" aria-live="polite" ${this.undo ? '' : 'hidden'}>
-          ${this.undo ? this._undoInner() : ''}
+        <div class="library-panel" role="tabpanel" id="lib-panel" aria-labelledby="lib-tab-${this.activeTab}">
+          ${panel}
         </div>
       </section>
     `;
@@ -142,10 +178,18 @@ export class LibraryManagerView {
     return `<span>${esc(this.undo.message)}</span><button type="button" class="lg-btn" data-action="undo">${icon('arrow-left')} Undo</button>`;
   }
 
-  _showUndo(message, run) {
+  /** focus: selector to focus after the undo ran (the page re-renders, so the Undo button goes). */
+  _showUndo(message, run, focus = null) {
     if (this.undo?.timer) clearTimeout(this.undo.timer);
-    this.undo = { message, run, timer: setTimeout(() => this._clearUndo(), UNDO_MS) };
+    this.undo = { message, run, focus, timer: setTimeout(() => this._expireUndo(), UNDO_MS) };
     this._paintUndo();
+  }
+
+  /** The bar times out: keep keyboard focus in the page if it was on Undo. */
+  _expireUndo() {
+    const hadFocus = this.container.querySelector('#library-undo')?.contains(document.activeElement);
+    this._clearUndo();
+    if (hadFocus) this.container.querySelector('#lib-panel [data-action], #lib-panel input, #lib-panel select')?.focus();
   }
 
   _clearUndo() {
@@ -191,7 +235,7 @@ export class LibraryManagerView {
             <dt>Zero</dt><dd>${zero}</dd>
             <dt>Barrel twist</dt><dd>1 in ${Number(p.twistRateIn).toFixed(2).replace(/\.?0+$/, '')} in</dd>
             <dt>Sight height</dt><dd>${sh} ${u.sh}</dd>
-            <dt>Scope</dt><dd>${esc(p.optic?.model)}${p.optic?.clickName ? ` · ${esc(p.optic.clickName)} clicks` : ''}</dd>
+            <dt>Scope</dt><dd>${p.optic?.model ? esc(p.optic.model) : '<span aria-hidden="true">—</span><span class="lg-sr-only">No model</span>'}${p.optic?.clickName ? ` · ${esc(p.optic.clickName)} clicks` : ''}</dd>
           </dl>
           <div class="rifle-card-actions">
             ${isActive
@@ -223,9 +267,9 @@ export class LibraryManagerView {
     const src = this._findProfile(id);
     if (!src) return;
     const copy = structuredClone(src);
-    copy.id = `profile-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    copy.name = `${src.name} (copy)`.slice(0, 200);
     const list = appState.state.profiles;
+    copy.id = newId('profile');
+    copy.name = copyName(src.name, new Set(list.map((p) => p.name)));
     list.splice(list.indexOf(src) + 1, 0, copy);
     appState.notify('profiles');
     toast('Rifle duplicated', 'ok', copy.name);
@@ -246,14 +290,22 @@ export class LibraryManagerView {
       appState.state.profiles.splice(Math.min(index, appState.state.profiles.length), 0, p);
       if (wasActive) appState.state.activeProfileId = p.id;
       appState.notify('profiles');
-    });
+    }, `[data-rifle="${CSS.escape(p.id)}"] .rifle-main-action`);
     appState.notify('profiles');
     this._focusUndo();
   }
 
   /** The dialog's opener was re-rendered: put focus on its replacement once the dialog has closed. */
-  _refocus(selector) {
-    requestAnimationFrame(() => this.container.querySelector(selector)?.focus());
+  _refocus(...selectors) {
+    requestAnimationFrame(() => {
+      for (const sel of selectors) {
+        const el = this.container.querySelector(sel);
+        if (el) {
+          el.focus();
+          return;
+        }
+      }
+    });
   }
 
   /** After an action removes the focused button, keep keyboard users next to the way back. */
@@ -276,7 +328,7 @@ export class LibraryManagerView {
 
   _effectiveFilter() {
     if (this.caliberFilter) return this.caliberFilter;
-    const key = diaKey(appState.getActiveProfile()?.bullet?.diameterIn);
+    const key = diaKey(this._rifle()?.bullet?.diameterIn);
     return appState.state.projectilesLibrary.some((b) => diaKey(b.diameterIn) === key) ? key : 'all';
   }
 
@@ -292,7 +344,8 @@ export class LibraryManagerView {
   }
 
   renderBullets() {
-    const profile = appState.getActiveProfile();
+    const profile = this._rifle();
+    const inSolver = profile.id === appState.state.activeProfileId;
     const filter = this._effectiveFilter();
     const groups = this._diameterGroups();
     const options = groups.map(([key, cals]) => {
@@ -307,7 +360,7 @@ export class LibraryManagerView {
           <div class="bullet-control bullet-control-rifle">
             <label class="field-label" for="lib-rifle-select">For rifle</label>
             <select id="lib-rifle-select" class="lg-select">
-              ${appState.state.profiles.map((p) => `<option value="${esc(p.id)}" ${p.id === profile.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+              ${appState.state.profiles.map((p) => `<option value="${esc(p.id)}" ${p.id === profile.id ? 'selected' : ''}>${esc(p.name)}${p.id === appState.state.activeProfileId ? ' (in the Solver)' : ''}</option>`).join('')}
             </select>
           </div>
           <div class="bullet-control bullet-control-search">
@@ -331,7 +384,7 @@ export class LibraryManagerView {
             Also set the factory muzzle velocity
           </label>
           <p class="lg-small bullet-count" id="bullet-count" aria-live="polite"></p>
-          <p class="lg-small lg-muted" id="factory-mv-hint">"Use" puts the bullet in ${esc(profile.name)} and keeps its muzzle velocity (${this._velocity(profile.muzzleVelocityMs)}) unless this is ticked.</p>
+          <p class="lg-small lg-muted" id="factory-mv-hint">"Use" puts the bullet in ${esc(profile.name)} and keeps its muzzle velocity (${this._velocity(profile.muzzleVelocityMs)}) unless this is ticked.${inSolver ? '' : ' The Solver keeps using its own rifle.'}</p>
         </div>
       </div>
       <div id="projectiles-table-wrapper">${this.renderBulletTable()}</div>
@@ -339,7 +392,7 @@ export class LibraryManagerView {
   }
 
   renderBulletTable() {
-    const profile = appState.getActiveProfile();
+    const profile = this._rifle();
     const list = this._filteredBullets();
     const inUseId = profile?.bullet?.id;
     const rifleName = esc(profile?.name || 'your rifle');
@@ -432,15 +485,18 @@ export class LibraryManagerView {
     this.container.querySelector('#use-factory-mv')?.addEventListener('change', (e) => {
       this.useFactoryMv = e.target.checked;
     });
+    // Chooses the rifle for this list only; the Solver's rifle stays as it is
     this.container.querySelector('#lib-rifle-select')?.addEventListener('change', (e) => {
       this.caliberFilter = null; // follow the newly chosen rifle
-      appState.setActiveProfile(e.target.value);
+      this.rifleId = e.target.value;
+      this.render();
+      this.container.querySelector('#lib-rifle-select')?.focus();
     });
   }
 
   _useBullet(id) {
     const bullet = appState.state.projectilesLibrary.find((b) => b.id === id);
-    const profile = appState.getActiveProfile();
+    const profile = this._rifle();
     if (!bullet || !profile) return;
 
     const before = { bullet: structuredClone(profile.bullet), mv: profile.muzzleVelocityMs, zero: profile.zeroAngleRad };
@@ -476,7 +532,7 @@ export class LibraryManagerView {
       p.muzzleVelocityMs = before.mv;
       p.zeroAngleRad = before.zero ?? null;
       appState.notify('profile');
-    });
+    }, `[data-action="use-bullet"][data-id="${CSS.escape(bullet.id)}"]`);
     appState.notify('profile');
     this._focusUndo();
   }
@@ -489,7 +545,7 @@ export class LibraryManagerView {
     this._showUndo(`Deleted ${removed.name}.`, () => {
       appState.state.projectilesLibrary.splice(Math.min(index, appState.state.projectilesLibrary.length), 0, removed);
       appState.notify('projectiles');
-    });
+    }, `[data-action="delete-bullet"][data-id="${CSS.escape(removed.id)}"]`);
     appState.notify('projectiles');
     this._focusUndo();
   }
@@ -513,11 +569,29 @@ export class LibraryManagerView {
     };
   }
 
+  /** A draft typed in other units (the units were switched mid-entry) is converted, not reinterpreted. */
+  _draftInUnits(f) {
+    const d = { ...(this.draft || {}) };
+    const u = d.units;
+    if (!u) return d;
+    const conv = (key, from, to, toSI, fromSI, decimals) => {
+      if (from === to || d[key] === undefined || String(d[key]).trim() === '') return;
+      const n = parseNumber(d[key]);
+      if (Number.isFinite(n)) d[key] = String(Number(fromSI(toSI(n, from), to).toFixed(decimals)));
+    };
+    const inch = (v, unit) => (unit === 'mm' ? v / 25.4 : v);
+    const fromInch = (v, unit) => (unit === 'mm' ? v * 25.4 : v);
+    conv('dia', u.dia, f.diaUnit, inch, fromInch, f.diaUnit === 'mm' ? 2 : 3);
+    conv('len', u.len, f.lenUnit, inch, fromInch, f.lenUnit === 'mm' ? 2 : 3);
+    conv('mv', u.vel, f.velUnit, (v, unit) => UnitConverter.toSI(v, unit), (v, unit) => UnitConverter.fromSI(v, unit), 1);
+    return d;
+  }
+
   renderAdd() {
     const f = this._addFields();
-    const d = this.draft || {};
+    const d = this._draftInUnits(f);
     const v = (key, def = '') => esc(d[key] ?? def);
-    const profile = appState.getActiveProfile();
+    const profile = this._rifle();
 
     return `
       <div class="add-bullet-layout">
@@ -602,6 +676,7 @@ export class LibraryManagerView {
     this.draft = {
       name: q('cust-name'), mfg: q('cust-mfg'), caliber: q('cust-caliber'), weight: q('cust-weight'), dia: q('cust-dia'),
       len: q('cust-len'), model: q('cust-drag-model'), g7: q('cust-bc-g7'), g1: q('cust-bc-g1'), mv: q('cust-mv'),
+      units: { dia: this.addUnits?.diaUnit, len: this.addUnits?.lenUnit, vel: this.addUnits?.velUnit },
     };
   }
 
@@ -634,7 +709,7 @@ export class LibraryManagerView {
       hud.textContent = 'Enter weight, diameter and length to see the stability.';
       return;
     }
-    const profile = appState.getActiveProfile();
+    const profile = this._rifle();
     const diaIn = this._inches(dia, f.diaUnit);
     const lenIn = this._inches(len, f.lenUnit);
     const res = calculateStability(wt, diaIn, lenIn, profile.twistRateIn, profile.muzzleVelocityMs / 0.3048);
@@ -657,6 +732,7 @@ export class LibraryManagerView {
   }
 
   _bindAdd() {
+    this.addUnits = this._addFields(); // the units the fields are shown in, for the draft
     ['cust-weight', 'cust-dia', 'cust-len'].forEach((id) => {
       const el = this.container.querySelector(`#${id}`);
       bindNumber(el, () => this._updateStability());
@@ -718,7 +794,7 @@ export class LibraryManagerView {
     const diaIn = this._inches(dia, f.diaUnit);
     const mvMs = mv === null ? null : UnitConverter.toSI(mv, f.velUnit);
     const bullet = {
-      id: `custom-${Date.now().toString(36)}`,
+      id: newId('custom'),
       isCustom: true,
       name: name.slice(0, 120),
       manufacturer: this.container.querySelector('#cust-mfg').value.trim().slice(0, 80) || 'Custom',
@@ -741,6 +817,7 @@ export class LibraryManagerView {
     this.caliberFilter = diaKey(bullet.diameterIn);
     toast('Bullet saved', 'ok', `${bullet.name} is in the bullet list. Press "Use" to put it in your rifle.`);
     appState.addCustomBullet(bullet); // re-renders through the subscription
+    this._refocus(`[data-action="use-bullet"][data-id="${CSS.escape(bullet.id)}"]`, '#proj-search');
   }
 
   // ---- tabs, events, backup -------------------------------------------------------------------
@@ -814,9 +891,13 @@ export class LibraryManagerView {
         break;
       case 'undo': {
         const run = this.undo?.run;
+        const focus = this.undo?.focus;
         this._clearUndo();
         run?.();
         toast('Undone', 'info');
+        // The page re-rendered: focus what came back (or the first tab when it's gone)
+        const target = (focus && this.container.querySelector(focus)) || this.container.querySelector(`#lib-tab-${this.activeTab}`);
+        target?.focus();
         break;
       }
       case 'clear-search': {
@@ -877,28 +958,42 @@ export class LibraryManagerView {
       reader.onerror = () => toast("Couldn't import", 'bad', 'The file could not be read.');
       reader.onload = () => {
         const text = typeof reader.result === 'string' ? reader.result : '';
-        let ids = [];
+        let parsed = null;
         try {
-          const parsed = JSON.parse(text);
-          if (Array.isArray(parsed?.projectilesLibrary)) ids = parsed.projectilesLibrary.map((b) => b?.id).filter((x) => typeof x === 'string' && !FACTORY_IDS.has(x));
+          parsed = JSON.parse(text);
         } catch {
-          // importJSON reports it
+          parsed = null;
+        }
+        if (!isObj(parsed)) {
+          toast("Couldn't import", 'bad', "The file isn't a Ballistic Workbench backup.");
+          return;
+        }
+        const found = describeImport(parsed);
+        if (!found.rifles && !found.atmospheres && !found.bullets && !found.settings.length) {
+          toast('Nothing to import', 'info', 'The file has no rifles, atmospheres, bullets or settings, so nothing was changed.');
+          return;
         }
         const before = JSON.parse(appState.exportJSON()); // for undo
         if (!appState.importJSON(text)) {
           toast("Couldn't import", 'bad', "The file isn't a Ballistic Workbench backup.");
           return;
         }
-        this._showUndo('Backup imported. Your previous rifles and settings were replaced.', () => {
+        const items = [
+          found.rifles ? plural(found.rifles, 'rifle', 'rifles') : '',
+          found.atmospheres ? plural(found.atmospheres, 'atmosphere', 'atmospheres') : '',
+          found.bullets ? plural(found.bullets, 'bullet', 'bullets') : '',
+          ...found.settings,
+        ].filter(Boolean);
+        const list = items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}` : items[0];
+        const replaced = [found.rifles ? 'rifles' : '', found.atmospheres ? 'atmospheres' : ''].filter(Boolean).join(' and ');
+        this._showUndo(`Backup imported.${replaced ? ` Your previous ${replaced} were replaced.` : ''}`, () => {
           const state = appState.state;
           for (const k of Object.keys(state)) if (!(k in before)) delete state[k];
           Object.assign(state, before);
           appState.notify('import');
-        });
-        const rifles = appState.state.profiles.length;
-        const idSet = new Set(ids);
-        const bullets = appState.state.projectilesLibrary.filter((b) => idSet.has(b.id)).length;
-        toast('Backup imported', 'ok', `Imported ${rifles} ${rifles === 1 ? 'rifle' : 'rifles'} and ${bullets} ${bullets === 1 ? 'bullet' : 'bullets'}.`);
+        }, '[data-action="import"]');
+        toast('Backup imported', 'ok', `Imported ${list}.`);
+        this._focusUndo();
       };
       reader.readAsText(file);
     });

@@ -6,7 +6,10 @@
  *
  * A native <dialog> opened through LadaGlass.modal (focus trap, Esc, backdrop click, focus goes
  * back to the button that opened it), with a showModal() fallback. Every number is validated
- * against its min/max; Save is blocked with inline messages instead of swapping in defaults.
+ * against its min/max (the same ranges an imported backup is held to, so any saved or imported rifle
+ * can be opened and saved again); Save is blocked with inline messages instead of swapping in
+ * defaults. Esc, the backdrop, Close and Cancel ask before throwing away changes; a backdrop click
+ * right after opening (the second click of a double click) is ignored. Save runs once per opening.
  * The dialog closes when the user switches view.
  */
 
@@ -37,6 +40,26 @@ const RETICLES = [
   { id: 'German #4', name: 'German #4 (no hold marks)', unit: 'any' },
 ];
 const G1_PER_G7 = 1.95;
+// A backdrop click this soon after opening is the second click of a double click on the opener
+const BACKDROP_GRACE_MS = 400;
+
+/** Unique enough ids: time plus a random part, so two saves in the same millisecond never collide. */
+const newId = (prefix) => `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+
+/** A readable click name for any click value, e.g. 0.0002 rad → "0.2 MRAD", 1/2 MOA → "1/2 MOA". */
+function clickFromRad(rad) {
+  const known = CLICKS.find((c) => Math.abs(c.rad - rad) < 1e-7);
+  if (known) return known;
+  const moa = rad / MOA;
+  const eighths = Math.round(moa * 8);
+  if (eighths > 0 && Math.abs(moa * 8 - eighths) < 0.01) {
+    const g = (a, b) => (b ? g(b, a % b) : a);
+    const d = g(eighths, 8);
+    const name = eighths % 8 === 0 ? `${eighths / 8} MOA` : `${eighths / d}/${8 / d} MOA`;
+    return { id: 'current', name, rad, unit: 'MOA' };
+  }
+  return { id: 'current', name: `${Number((rad * 1000).toFixed(3))} MRAD`, rad, unit: 'MRAD' };
+}
 
 export class RifleBuilderModal {
   constructor(onSaved = null) {
@@ -58,14 +81,15 @@ export class RifleBuilderModal {
     return { vel, dist, sh, dia, len };
   }
 
+  /** [min, max, step] per field, in the display unit. Same ranges as an imported backup (src/core/sanitize.js). */
   _limits() {
     const u = this._units();
     return {
-      mv: u.vel === 'fps' ? [600, 4500, 1] : [180, 1400, 0.1],
-      sh: u.sh === 'in' ? [0.4, 6, 0.01] : [1, 15, 0.1],
-      zero: u.dist === 'yd' ? [25, 1000, 1] : [25, 1000, 1],
-      dia: u.dia === 'mm' ? [4.32, 25.4, 0.01] : [0.17, 1, 0.001],
-      len: u.len === 'mm' ? [6.35, 101.6, 0.01] : [0.25, 4, 0.001],
+      mv: u.vel === 'fps' ? [164, 6562, 1] : [50, 2000, 0.1],
+      sh: u.sh === 'in' ? [0, 19.7, 0.01] : [0, 50, 0.1],
+      zero: u.dist === 'yd' ? [11, 1094, 1] : [10, 1000, 1],
+      dia: u.dia === 'mm' ? [2.54, 25.4, 0.01] : [0.1, 1, 0.001],
+      len: u.len === 'mm' ? [2.54, 101.6, 0.01] : [0.1, 4, 0.001],
     };
   }
 
@@ -94,7 +118,10 @@ export class RifleBuilderModal {
     const mvMs = p ? p.muzzleVelocityMs : 825;
     const shM = p ? p.sightHeightM : 0.048;
     const zeroM = p ? p.zeroDistanceM : u.dist === 'yd' ? 91.44 : 100;
-    const click = CLICKS.find((c) => Math.abs(c.rad - (p?.optic?.clickValueRad ?? (u.vel === 'fps' ? MOA * 0.25 : 0.0001))) < 1e-7) || CLICKS[0];
+    // A stored click value that isn't in the list (imported or older rifle) is kept as its own option
+    const storedRad = Number(p?.optic?.clickValueRad);
+    const click = clickFromRad(storedRad > 0 ? storedRad : u.vel === 'fps' ? MOA * 0.25 : 0.0001);
+    this.clicks = click.id === 'current' ? [click, ...CLICKS] : CLICKS;
     const reticleId = p?.optic?.reticle || (click.unit === 'MOA' ? 'EBR-2C MOA' : 'EBR-8 MRAD');
 
     const round = (v, step) => {
@@ -127,17 +154,18 @@ export class RifleBuilderModal {
     const v = (x) => esc(x ?? '');
 
     const html = `
-      <dialog class="lg-modal lg-modal-lg rifle-dialog" aria-labelledby="rf-title" aria-describedby="rf-subtitle">
+      <dialog class="lg-modal lg-modal-lg rifle-dialog" aria-labelledby="rf-title" aria-describedby="rf-subtitle" data-lg-static>
         <form id="rifle-builder-form" class="rifle-dialog-form" novalidate>
           <div class="rifle-dialog-head">
             <div class="rifle-dialog-heading">
               <h2 class="lg-modal-title" id="rf-title">${title}</h2>
               <p class="lg-muted rifle-dialog-sub" id="rf-subtitle">${editing ? esc(p.name) : 'Rifle, bullet and scope. The new rifle is used in the Solver.'}</p>
             </div>
-            <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon rifle-dialog-close" data-lg-close value="" data-close aria-label="Close">${icon('x')}</button>
+            <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon rifle-dialog-close" data-close aria-label="Close">${icon('x')}</button>
           </div>
 
           <div class="lg-modal-body rifle-dialog-body">
+            <p class="lg-alert lg-alert-warn rf-attention" id="rf-attention" role="alert" hidden></p>
             <fieldset class="rf-section">
               <legend class="lg-label">${icon('rifle')} Rifle</legend>
               <div class="field-grid-2">
@@ -162,7 +190,7 @@ export class RifleBuilderModal {
                 </div>
                 <div>
                   <label class="field-label" for="rf-twist">Barrel twist (1 in … in)</label>
-                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-twist" class="lg-input" min="5" max="20" step="0.25" value="${p ? p.twistRateIn : 8}" />
+                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-twist" class="lg-input" min="3" max="40" step="0.25" value="${p ? p.twistRateIn : 8}" />
                 </div>
                 <div>
                   <label class="field-label" for="rf-twist-dir">Twist direction</label>
@@ -199,7 +227,7 @@ export class RifleBuilderModal {
                 </div>
                 <div>
                   <label class="field-label" for="rf-weight">Weight (gr)</label>
-                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-weight" class="lg-input rf-bullet-field" min="15" max="1500" step="0.1" value="${p ? b.weightGr : 140}" />
+                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-weight" class="lg-input rf-bullet-field" min="1" max="2000" step="0.1" value="${p ? b.weightGr : 140}" />
                 </div>
                 <div>
                   <label class="field-label" for="rf-dia">Diameter (${u.dia})</label>
@@ -218,7 +246,7 @@ export class RifleBuilderModal {
                 </div>
                 <div>
                   <label class="field-label" for="rf-bc" id="rf-bc-label"><abbr title="Ballistic coefficient">BC</abbr> (${dm})</label>
-                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-bc" class="lg-input rf-bullet-field" min="0.05" max="${dm === 'G1' ? 2 : 1.5}" step="0.001" value="${bcVal}" aria-describedby="rf-bc-hint" />
+                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-bc" class="lg-input rf-bullet-field" min="0.01" max="${dm === 'G1' ? 2 : 1.5}" step="0.001" value="${bcVal}" aria-describedby="rf-bc-hint" />
                 </div>
               </div>
               <p class="field-hint" id="rf-bc-hint">Picked from the list, both G1 and G7 values come with the bullet. For your own bullet the other one is estimated.</p>
@@ -234,7 +262,7 @@ export class RifleBuilderModal {
                 <div>
                   <label class="field-label" for="rf-click-value">Click value</label>
                   <select id="rf-click-value" class="lg-select">
-                    ${CLICKS.map((c) => `<option value="${c.id}" ${c.id === click.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+                    ${this.clicks.map((c) => `<option value="${c.id}" ${c.id === click.id ? 'selected' : ''}>${esc(c.name)}${c.id === 'current' ? ' (current)' : ''}</option>`).join('')}
                   </select>
                 </div>
                 <div>
@@ -255,7 +283,7 @@ export class RifleBuilderModal {
                   <span class="field-label" id="rf-mag-label">Magnification (lowest to highest)</span>
                   <div class="rf-mag-row">
                     <label class="lg-sr-only" for="rf-mag-min">Lowest magnification</label>
-                    <input type="text" inputmode="numeric" autocomplete="off" id="rf-mag-min" class="lg-input" min="1" max="60" step="1" value="${p?.optic?.minMagnification ?? 5}" aria-describedby="rf-mag-label" />
+                    <input type="text" inputmode="numeric" autocomplete="off" id="rf-mag-min" class="lg-input" min="1" max="100" step="1" value="${p?.optic?.minMagnification ?? 5}" aria-describedby="rf-mag-label" />
                     <span class="rf-mag-sep">to</span>
                     <label class="lg-sr-only" for="rf-mag-max">Highest magnification</label>
                     <input type="text" inputmode="numeric" autocomplete="off" id="rf-mag-max" class="lg-input" min="1" max="100" step="1" value="${p?.optic?.maxMagnification ?? 25}" aria-describedby="rf-mag-label" />
@@ -265,9 +293,14 @@ export class RifleBuilderModal {
             </fieldset>
           </div>
 
-          <div class="lg-modal-actions">
-            <button type="button" class="lg-btn" data-lg-close value="" data-close>Cancel</button>
+          <div class="lg-modal-actions rf-actions" id="rf-actions">
+            <button type="button" class="lg-btn" data-close>Cancel</button>
             <button type="submit" class="lg-btn lg-btn-primary">${icon('save')} ${editing ? 'Save changes' : 'Save rifle'}</button>
+          </div>
+          <div class="lg-modal-actions rf-discard" id="rf-discard" hidden>
+            <p class="rf-discard-text" id="rf-discard-text">${editing ? 'Discard your changes to this rifle?' : 'Discard this new rifle?'}</p>
+            <button type="button" class="lg-btn" data-keep>Keep editing</button>
+            <button type="button" class="lg-btn lg-btn-danger" data-discard aria-describedby="rf-discard-text">Discard</button>
           </div>
         </form>
       </dialog>
@@ -281,6 +314,8 @@ export class RifleBuilderModal {
     this.trigger = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     this.libBullet = libBullet || null;
     this.mvTouched = editing;
+    this._saving = false;
+    this._saved = null;
     // Fields shown rounded in the display unit: an unchanged field keeps its exact stored value,
     // so opening and saving a rifle never nudges e.g. a 100 m zero to 99.67 m in yards
     this.initial = { mv: [mvDisp, mvMs], sh: [shDisp, shM], zero: [zeroDisp, zeroM], dia: [diaDisp, diaIn], len: [lenDisp, lenIn] };
@@ -288,6 +323,8 @@ export class RifleBuilderModal {
     this._bind();
     this._syncReticles();
     this._updateMvHint();
+    if (editing) this._markStoredProblems();
+    this.snapshot = this._serialize();
 
     // onSaved runs once the dialog is fully closed, so the caller can move focus back into the page
     // (while the close animation runs, the page behind the modal is still inert)
@@ -298,7 +335,18 @@ export class RifleBuilderModal {
       this.dialog = null;
       const saved = this._saved;
       this._saved = null;
-      if (saved) this.onSaved?.(saved);
+      const trigger = this.trigger;
+      if (saved) {
+        if (this.onSaved) this.onSaved(saved);
+        else toast('Rifle saved', 'ok', editing ? saved.name : `${saved.name} is now selected in the Solver.`);
+      }
+      // The opener may have been re-rendered while the dialog was open: focus its replacement
+      requestAnimationFrame(() => {
+        const lost = !document.activeElement || document.activeElement === document.body;
+        if (!lost) return;
+        const next = trigger?.isConnected ? trigger : trigger?.id ? document.getElementById(trigger.id) : null;
+        next?.focus?.();
+      });
     };
     if (typeof LadaGlass !== 'undefined' && LadaGlass.overlay?.open) {
       LadaGlass.overlay.open(this.dialog, { trigger: this.trigger, modal: true, onClose: onClosed });
@@ -307,11 +355,9 @@ export class RifleBuilderModal {
         onClosed();
         this.trigger?.focus?.();
       });
-      this.dialog.addEventListener('click', (e) => {
-        if (e.target.closest('[data-close]')) this.close();
-      });
       this.dialog.showModal();
     }
+    this.openedAt = performance.now();
     window.addEventListener('hashchange', this._onHash);
     window.addEventListener('navigate-view', this._onHash);
     this.dialog.querySelector('#rf-name')?.focus();
@@ -334,8 +380,55 @@ export class RifleBuilderModal {
     return this.dialog?.querySelector(sel);
   }
 
+  /** Every field's value, to tell whether the form was changed. */
+  _serialize() {
+    return [...(this.dialog?.querySelectorAll('input, select') || [])].map((el) => `${el.id}=${el.value}`).join('&');
+  }
+
+  _dirty() {
+    return !!this.dialog && this._serialize() !== this.snapshot;
+  }
+
+  /** Esc, backdrop, Close and Cancel: close at once when nothing changed, else ask first (inline). */
+  _requestClose() {
+    if (!this.dialog || this._saving) return;
+    if (!this._dirty()) {
+      this.close();
+      return;
+    }
+    this._showDiscard(true);
+  }
+
+  _showDiscard(show) {
+    const ask = this._q('#rf-discard');
+    const actions = this._q('#rf-actions');
+    if (!ask || !actions) return;
+    ask.hidden = !show;
+    actions.hidden = show;
+    this._q(show ? '[data-keep]' : 'button[type="submit"]')?.focus();
+  }
+
+  /** Values of an older or imported rifle that are outside the ranges are marked when the dialog opens. */
+  _markStoredProblems() {
+    const bad = [];
+    this.dialog.querySelectorAll('input[inputmode]').forEach((input) => {
+      if (Number.isNaN(this._num(input))) bad.push(this.dialog.querySelector(`label[for="${input.id}"]`)?.textContent.trim() || input.id);
+    });
+    const min = parseNumber(this._q('#rf-mag-min').value);
+    const max = parseNumber(this._q('#rf-mag-max').value);
+    if (Number.isFinite(min) && Number.isFinite(max) && min > max) {
+      setFieldError(this._q('#rf-mag-max'), 'Must be at least the lowest magnification');
+      bad.push('Highest magnification');
+    }
+    const box = this._q('#rf-attention');
+    if (!box) return;
+    box.hidden = !bad.length;
+    box.textContent = bad.length ? `Check ${bad.length === 1 ? 'this field' : 'these fields'} before saving: ${bad.join(', ')}.` : '';
+  }
+
   _click() {
-    return CLICKS.find((c) => c.id === this._q('#rf-click-value')?.value) || CLICKS[0];
+    const list = this.clicks || CLICKS;
+    return list.find((c) => c.id === this._q('#rf-click-value')?.value) || list[0];
   }
 
   /** Keep the reticle consistent with the click unit: hide reticles in the other unit. */
@@ -381,6 +474,41 @@ export class RifleBuilderModal {
     d.querySelector('#rifle-builder-form').addEventListener('submit', (e) => {
       e.preventDefault();
       this._save();
+    });
+
+    // Closing: Close/Cancel, Esc and the backdrop all go through _requestClose (asks when changed)
+    d.addEventListener('click', (e) => {
+      if (e.target.closest?.('[data-close]')) this._requestClose();
+      else if (e.target.closest?.('[data-keep]')) this._showDiscard(false);
+      else if (e.target.closest?.('[data-discard]')) this.close();
+    });
+    const outside = (e) => {
+      if (e.target !== d) return false;
+      const r = d.getBoundingClientRect();
+      return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+    };
+    let downOutside = false;
+    d.addEventListener('pointerdown', (e) => {
+      downOutside = outside(e);
+    });
+    d.addEventListener('click', (e) => {
+      const hit = downOutside && outside(e);
+      downOutside = false;
+      if (!hit || performance.now() - (this.openedAt || 0) < BACKDROP_GRACE_MS) return;
+      this._requestClose();
+    });
+    d.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || e.isComposing) return;
+      e.preventDefault(); // the Låda overlay and the browser leave it to us
+      this._escAt = performance.now();
+      if (!this._q('#rf-discard')?.hidden) this._showDiscard(false);
+      else this._requestClose();
+    });
+    // Other close requests (e.g. the Android back gesture) arrive as "cancel"
+    d.addEventListener('cancel', (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (performance.now() - (this._escAt || 0) > 150) this._requestClose();
     });
 
     // Live validation for every number field
@@ -459,6 +587,7 @@ export class RifleBuilderModal {
 
   _save() {
     const d = this.dialog;
+    if (!d || this._saving) return; // a double click on Save saves once
     const u = this._units();
     const text = (id) => this._q(`#${id}`).value.trim();
     const num = (id) => this._num(this._q(`#${id}`));
@@ -483,6 +612,7 @@ export class RifleBuilderModal {
       return;
     }
 
+    this._saving = true;
     const dragModel = this._q('#rf-drag-model').value === 'G1' ? 'G1' : 'G7';
     const lib = this.libBullet;
     let bullet;
@@ -496,12 +626,19 @@ export class RifleBuilderModal {
         // The user may have typed a different BC for the chosen model (e.g. a trued one)
         dragModel,
       };
+      const typedG7 = dragModel === 'G7' && Math.abs(values.bc - bullet.bcG7) > 1e-9;
       if (dragModel === 'G1') bullet.bcG1 = values.bc;
       else bullet.bcG7 = values.bc;
+      if (lib.bcG7Estimated && !typedG7) bullet.bcG7Estimated = true;
+      // A BC that differs from the library's makes it the user's own bullet
+      if (Math.abs(values.bc - (dragModel === 'G1' ? g1 : g7)) > 0.0005) bullet.id = newId('bullet');
     } else {
-      const sameAsBefore = this.profile && this.profile.bullet && this.profile.bullet.name === text('rf-bullet-name');
+      // Keep the id of the rifle's own bullet when only its values were edited, but never a library
+      // bullet's id for values that differ from that library bullet
+      const prev = this.profile?.bullet;
+      const sameAsBefore = prev && prev.name === text('rf-bullet-name') && !(appState.state.projectilesLibrary || []).some((x) => x.id === prev.id);
       bullet = {
-        id: sameAsBefore ? this.profile.bullet.id : `bullet-${Date.now().toString(36)}`,
+        id: sameAsBefore ? prev.id : newId('bullet'),
         name: text('rf-bullet-name').slice(0, 120),
         weightGr: values.weight,
         diameterIn: this.initial.dia[0] === values.dia ? this.initial.dia[1] : this._toIn(values.dia, u.dia),
@@ -509,6 +646,8 @@ export class RifleBuilderModal {
         bcG1: dragModel === 'G1' ? values.bc : Number((values.bc * G1_PER_G7).toFixed(3)),
         bcG7: dragModel === 'G7' ? values.bc : Number((values.bc / G1_PER_G7).toFixed(3)),
         dragModel,
+        // Only one BC was entered: the G7 one is estimated when the G1 one was typed
+        ...(dragModel === 'G1' ? { bcG7Estimated: true } : {}),
       };
     }
 
@@ -534,7 +673,7 @@ export class RifleBuilderModal {
       twistDirection: this._q('#rf-twist-dir').value === 'left' ? 'left' : 'right',
       optic: {
         ...opticBase,
-        model: text('rf-optic-model').slice(0, 120) || 'Scope',
+        model: text('rf-optic-model').slice(0, 120), // empty stays empty (shown as a dash)
         focalPlane: this._q('#rf-focal-plane').value === 'SFP' ? 'SFP' : 'FFP',
         reticle: this._q('#rf-reticle').value,
         clickValueRad: click.rad,
@@ -559,7 +698,7 @@ export class RifleBuilderModal {
       this.close();
     } else {
       saved = {
-        id: `profile-${Date.now().toString(36)}`,
+        id: newId('profile'),
         powderTempSensitivity: 0.9,
         powderRefTempC: 15,
         rifleWeightKg: 6.5,
