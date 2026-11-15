@@ -227,9 +227,8 @@ export class StateStore {
       this.state = this._mergeValidated(this.state, parsed);
       this.notify('import');
       return true;
-    } catch (e) {
-      console.warn('Import failed: not valid JSON', e);
-      return false;
+    } catch {
+      return false; // not JSON: the caller tells the user
     }
   }
 }
