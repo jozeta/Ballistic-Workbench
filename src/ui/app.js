@@ -239,6 +239,7 @@ class BallisticWorkbenchApp {
       if (d.tool) v?.setTool?.(d.tool);
       if (d.panel) v?._showResultPanel?.(d.panel);
       if (d.format) v?.setFormat?.(d.format);
+      if (d.tab) v?.setTab?.(d.tab);
       if (d.anchor) v?.showSection?.(d.anchor);
       document.getElementById('app-main-content')?.focus({ preventScroll: true });
       window.scrollTo({ top: 0 });

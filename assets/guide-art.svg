@@ -1,0 +1,712 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+<!-- Guide illustrations for Ballistic Workbench (Låda Glass line art). Every symbol is 240 × 160.
+     Paint comes from the <svg class="guide-art"> that uses the symbol (styles/views/guide.css), so
+     the art follows the theme with no colours in this file:
+       stroke="currentColor"            ink lines (CSS color)
+       no stroke attribute, fill="none" accent lines (inherits CSS stroke = accent)
+       stroke="none", no fill attribute accent fills (inherits CSS fill = accent)
+       fill="currentColor" + opacity    soft surfaces and text -->
+
+<!-- 1 Plan: checklist, measured distances, weather -->
+<symbol id="plan" viewBox="0 0 240 160">
+  <rect x="24" y="24" width="72" height="112" rx="6" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <rect x="24" y="24" width="72" height="112" rx="6"/>
+    <path d="M46 24v-6h28v6"/>
+    <rect x="34" y="44" width="10" height="10" rx="2"/>
+    <rect x="34" y="66" width="10" height="10" rx="2"/>
+    <rect x="34" y="88" width="10" height="10" rx="2"/>
+    <rect x="34" y="110" width="10" height="10" rx="2"/>
+    <path d="M52 49h34M52 71h30M52 93h34M52 115h22"/>
+    <path d="M108 132h120"/>
+    <path d="M128 132v-24M158 132v-30M188 132v-36M218 132v-42"/>
+    <path d="M128 140v-3M158 140v-3M188 140v-3M218 140v-3"/>
+    <circle cx="196" cy="34" r="8"/>
+    <path d="M196 20v-4M196 52v-4M182 34h-4M214 34h-4M186 24l-3-3M206 24l3-3M186 44l-3 3M206 44l3 3"/>
+  </g>
+  <g fill="none">
+    <path d="M36 49l2.5 2.5L43 46M36 71l2.5 2.5L43 68M36 93l2.5 2.5L43 90"/>
+    <path d="M112 126C138 92 176 84 218 92" stroke-dasharray="3 5"/>
+  </g>
+  <g stroke="none">
+    <path d="M128 108l12 4-12 4zM158 102l12 4-12 4zM188 96l12 4-12 4zM218 90l12 4-12 4z"/>
+  </g>
+</symbol>
+
+<!-- 2 Equipment: chronograph, rangefinder, weather meter, calipers, level, notebook -->
+<symbol id="equipment" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <rect x="16" y="24" width="56" height="34" rx="6"/>
+    <rect x="24" y="31" width="22" height="20" rx="3"/>
+    <path d="M54 34h10M54 41h10M54 48h6"/>
+    <path d="M30 58l-6 16M58 58l6 16M44 58v16"/>
+    <rect x="92" y="26" width="56" height="30" rx="8"/>
+    <circle cx="136" cy="41" r="8"/>
+    <path d="M92 41h-6M104 26v-5h12v5"/>
+    <rect x="178" y="14" width="30" height="62" rx="12"/>
+    <circle cx="193" cy="31" r="9"/>
+    <rect x="184" y="48" width="18" height="12" rx="2"/>
+    <path d="M187 68h12"/>
+    <path d="M16 100h68v8H16zM20 108v26l6-6v-20M56 108v26l6-6v-20M52 96v16h14V96z"/>
+    <rect x="96" y="110" width="58" height="16" rx="3"/>
+    <rect x="114" y="114" width="22" height="8" rx="4"/>
+    <rect x="180" y="92" width="44" height="56" rx="4"/>
+    <path d="M176 102h8M176 116h8M176 130h8M188 106h28M188 116h28M188 126h20"/>
+  </g>
+  <g fill="none">
+    <path d="M136 37v8M132 41h8"/>
+    <path d="M193 25v12M187 31h12"/>
+    <path d="M30 103h4M40 103h4M48 103h2M70 103h2"/>
+  </g>
+  <g stroke="none">
+    <circle cx="125" cy="118" r="2.6"/>
+    <circle cx="35" cy="41" r="2.4"/>
+  </g>
+</symbol>
+
+<!-- 3a Sight height: rear view of scope tube over the bolt body, with dimensions -->
+<symbol id="sight-height" viewBox="0 0 240 160">
+  <circle cx="104" cy="44" r="28" fill="currentColor" opacity=".06" stroke="none"/>
+  <circle cx="104" cy="122" r="16" fill="currentColor" opacity=".06" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <circle cx="104" cy="44" r="28"/>
+    <path d="M70 44a34 34 0 0 1 68 0M70 44v6h-6M138 44v6h6"/>
+    <path d="M64 50h80M78 50l-6 36h64l-6-36"/>
+    <path d="M62 86h84v8H62z"/>
+    <circle cx="104" cy="122" r="16"/>
+    <circle cx="104" cy="122" r="25" stroke-dasharray="2 4" opacity=".6"/>
+    <path d="M97 44h14M104 37v14M98 122h12M104 116v12"/>
+    <path d="M30 16h50M30 138h56M34 16v122M30 20l4-4 4 4M30 134l4 4 4-4"/>
+    <path d="M150 72h26M150 106h26M170 72v34M166 76l4-4 4 4M166 102l4 4 4-4"/>
+  </g>
+  <g fill="none">
+    <path d="M132 44h76M120 122h88" stroke-dasharray="3 4"/>
+    <path d="M202 44v78M198 48l4-4 4 4M198 118l4 4 4-4"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="12" font-weight="600">
+    <text x="16" y="82">T</text>
+    <text x="180" y="93">G</text>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="10" opacity=".85">
+    <text x="146" y="22">scope tube</text>
+    <text x="134" y="150">bolt body</text>
+  </g>
+  <g stroke="none" font-size="13" font-weight="700">
+    <text x="211" y="88">H</text>
+    <circle cx="104" cy="44" r="2.4"/>
+    <circle cx="104" cy="122" r="2.4"/>
+  </g>
+</symbol>
+
+<!-- 3b Twist: cleaning rod with a flag, turned one full turn between two marks -->
+<symbol id="twist" viewBox="0 0 240 160">
+  <rect x="112" y="50" width="118" height="40" rx="4" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <path d="M112 50h118v40H112z"/>
+    <path d="M132 50l-14 40M158 50l-14 40M184 50l-14 40M210 50l-14 40M230 56l-12 34" opacity=".5"/>
+    <rect x="8" y="62" width="16" height="16" rx="3"/>
+    <path d="M24 70h88"/>
+    <path d="M112 70h84" stroke-dasharray="4 4"/>
+    <circle cx="200" cy="70" r="5"/>
+    <path d="M36 104v14M100 104v14M36 111h64"/>
+  </g>
+  <g fill="none">
+    <path d="M60 70V38l18 6-18 6"/>
+    <path d="M16 52a8 18 0 1 0 8 30"/>
+    <path d="M24 77l0 6-6-1"/>
+    <path d="M36 62v16M100 62v16"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="11">
+    <text x="40" y="136">1 full turn</text>
+    <text x="150" y="42">bore</text>
+  </g>
+</symbol>
+
+<!-- 3c Click value: tall-target test, plumb line, two groups a known dial apart -->
+<symbol id="click-value" viewBox="0 0 240 160">
+  <rect x="66" y="8" width="84" height="144" rx="3" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <rect x="66" y="8" width="84" height="144" rx="3"/>
+    <path d="M108 14v132"/>
+    <path d="M104 24h8M104 44h8M104 64h8M104 84h8M104 104h8M104 124h8" opacity=".6"/>
+    <path d="M98 132h20M108 122v20"/>
+    <path d="M166 4v124"/>
+    <path d="M166 128l-5 7 5 9 5-9z"/>
+    <circle cx="32" cy="80" r="18"/>
+    <path d="M32 62v6M50 80h-6M14 80h6M32 98v-6"/>
+  </g>
+  <g fill="none">
+    <path d="M196 132V30M192 34l4-4 4 4M192 128l4 4 4-4"/>
+    <path d="M186 132h18M186 30h18" stroke-dasharray="2 3"/>
+    <path d="M18 66a20 20 0 0 1 28 0M42 62l4 4-5 2"/>
+  </g>
+  <g stroke="none">
+    <circle cx="106" cy="130" r="2.6"/><circle cx="111" cy="133" r="2.6"/><circle cx="108" cy="128" r="2.6"/>
+    <circle cx="106" cy="31" r="2.6"/><circle cx="111" cy="34" r="2.6"/><circle cx="109" cy="29" r="2.6"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="10">
+    <text x="204" y="84">dial</text>
+    <text x="172" y="152">plumb</text>
+  </g>
+</symbol>
+
+<!-- 3d Cant: reticle lined up with a plumb line while the action sits level -->
+<symbol id="cant" viewBox="0 0 240 160">
+  <circle cx="120" cy="64" r="44" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <circle cx="120" cy="64" r="44"/>
+    <path d="M76 64h30M134 64h30M120 20v30M120 78v30"/>
+    <path d="M112 64h16M120 56v16" opacity=".6"/>
+    <rect x="44" y="84" width="22" height="12" rx="6"/>
+    <path d="M66 90h10"/>
+    <path d="M84 116h72v18H84z"/>
+    <rect x="94" y="108" width="52" height="8" rx="2"/>
+    <path d="M58 26a68 68 0 0 0-8 22M182 26a68 68 0 0 1 8 22M50 48l0-7 6 3M190 48l0-7-6 3"/>
+  </g>
+  <g fill="none">
+    <path d="M120 4v140" stroke-dasharray="3 4"/>
+    <path d="M120 144l-5 6 5 8 5-8z"/>
+  </g>
+  <g stroke="none">
+    <circle cx="55" cy="90" r="3"/>
+    <rect x="116" y="110" width="8" height="4" rx="2"/>
+  </g>
+</symbol>
+
+<!-- 4 Bullet: profile with length and diameter, boat-tail and ogive -->
+<symbol id="bullet" viewBox="0 0 240 160">
+  <path d="M28 58l20-8h72c45 0 70 12 86 20-16 8-41 20-86 20H48l-20-8z" fill="currentColor" opacity=".06" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <path d="M28 58l20-8h72c45 0 70 12 86 20-16 8-41 20-86 20H48l-20-8z"/>
+    <path d="M48 50v40M120 50v40" stroke-dasharray="2 4"/>
+    <path d="M28 98v26M206 76v48"/>
+    <path d="M62 50V30M62 90v20"/>
+  </g>
+  <g fill="none">
+    <path d="M28 118h178M32 114l-4 4 4 4M202 114l4 4-4 4"/>
+    <path d="M70 50v40M66 54l4-4 4 4M66 86l4 4 4-4"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="10">
+    <text x="22" y="46">boat-tail</text>
+    <text x="150" y="46">ogive</text>
+    <text x="78" y="74">Ø</text>
+    <text x="104" y="140">length</text>
+  </g>
+</symbol>
+
+<!-- 5 Zero: group off the aim point, the correction, and the turret set to 0 -->
+<symbol id="zero" viewBox="0 0 240 160">
+  <rect x="30" y="22" width="108" height="108" rx="4" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <rect x="30" y="22" width="108" height="108" rx="4"/>
+    <path d="M30 49h108M30 103h108M57 22v108M111 22v108" opacity=".35"/>
+    <path d="M70 76h28M84 62v28"/>
+    <circle cx="84" cy="76" r="8"/>
+    <circle cx="190" cy="76" r="30"/>
+    <circle cx="190" cy="76" r="20"/>
+    <path d="M190 40v6M211 55l-4 4M226 76h-6M169 55l4 4M154 76h6M211 97l-4-4M169 97l4-4"/>
+  </g>
+  <g fill="none">
+    <path d="M116 108L92 84M92 94V84h10"/>
+    <path d="M190 30v18"/>
+  </g>
+  <g stroke="none">
+    <circle cx="116" cy="106" r="3"/><circle cx="122" cy="111" r="3"/><circle cx="113" cy="114" r="3"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="12" font-weight="600">
+    <text x="186" y="81">0</text>
+  </g>
+</symbol>
+
+<!-- 6 Chronograph: Doppler unit beside the muzzle, beam downrange, readings -->
+<symbol id="chrono" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <path d="M8 60h104v8H8z"/>
+    <path d="M8 56h40v16H8z" opacity=".6"/>
+    <rect x="64" y="94" width="40" height="26" rx="5"/>
+    <rect x="96" y="98" width="6" height="18" rx="2"/>
+    <path d="M74 120l-8 22M94 120l8 22M84 120v22"/>
+    <rect x="164" y="14" width="64" height="42" rx="5"/>
+    <path d="M172 46h48" opacity=".5"/>
+    <path d="M112 64v18M104 82h8" stroke-dasharray="2 3"/>
+  </g>
+  <g fill="none">
+    <path d="M112 107c10-6 10-18 0-24M120 112c16-10 16-30 0-40M128 117c22-14 22-42 0-56" stroke-dasharray="3 4"/>
+    <path d="M118 64h110" stroke-dasharray="1 7" stroke-width="3"/>
+  </g>
+  <g stroke="none">
+    <rect x="176" y="30" width="5" height="16" rx="1"/>
+    <rect x="186" y="24" width="5" height="22" rx="1"/>
+    <rect x="196" y="33" width="5" height="13" rx="1"/>
+    <rect x="206" y="27" width="5" height="19" rx="1"/>
+  </g>
+</symbol>
+
+<!-- 7 Enter: the rifle dialog with fields and a save button -->
+<symbol id="enter" viewBox="0 0 240 160">
+  <rect x="28" y="16" width="184" height="128" rx="8" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <rect x="28" y="16" width="184" height="128" rx="8"/>
+    <path d="M28 34h184"/>
+    <path d="M40 25h.01M48 25h.01M56 25h.01" stroke-width="3"/>
+    <path d="M42 46h28M42 74h28M42 102h28M128 46h28M128 74h28M128 102h28" opacity=".55"/>
+    <rect x="42" y="52" width="72" height="12" rx="3"/>
+    <rect x="42" y="80" width="72" height="12" rx="3"/>
+    <rect x="42" y="108" width="72" height="12" rx="3"/>
+    <rect x="128" y="52" width="72" height="12" rx="3"/>
+    <rect x="128" y="80" width="72" height="12" rx="3"/>
+    <rect x="124" y="124" width="36" height="12" rx="4"/>
+  </g>
+  <g fill="none">
+    <rect x="164" y="124" width="36" height="12" rx="4"/>
+    <path d="M48 58h30M134 86h22"/>
+  </g>
+</symbol>
+
+<!-- 8 Shoot: known distances, plates, and the arcs to them -->
+<symbol id="shoot" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <path d="M6 136h228"/>
+    <path d="M10 126h34l4-3h8M24 126l-6 10M30 126l4 10"/>
+    <path d="M82 136v-18M126 136v-24M172 136v-30M218 136v-36"/>
+    <path d="M82 144v-3M126 144v-3M172 144v-3M218 144v-3"/>
+    <path d="M56 123C66 112 74 110 80 112" stroke-dasharray="3 4"/>
+    <path d="M56 123C80 92 104 90 124 104" stroke-dasharray="3 4"/>
+    <path d="M56 123C96 70 140 66 170 96" stroke-dasharray="3 4"/>
+  </g>
+  <g fill="none">
+    <path d="M56 123C104 40 180 34 216 86"/>
+  </g>
+  <g fill="currentColor" stroke="none" opacity=".75">
+    <circle cx="82" cy="114" r="4"/>
+    <circle cx="126" cy="106" r="5"/>
+    <circle cx="172" cy="98" r="6"/>
+  </g>
+  <g stroke="none">
+    <circle cx="218" cy="90" r="7"/>
+  </g>
+</symbol>
+
+<!-- 9 True: the model against measured elevations; MV zone and drag zone -->
+<symbol id="true" viewBox="0 0 240 160">
+  <rect x="104" y="18" width="48" height="114" fill="currentColor" opacity=".05" stroke="none"/>
+  <rect x="172" y="18" width="48" height="114" fill="currentColor" opacity=".09" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <path d="M28 14v118h196"/>
+    <path d="M28 130C90 120 150 92 220 30" stroke-dasharray="4 4"/>
+  </g>
+  <g fill="none">
+    <path d="M28 130C92 119 154 88 220 18"/>
+    <path d="M206 42v-10M202 36l4-4 4 4"/>
+  </g>
+  <g stroke="none">
+    <circle cx="80" cy="123" r="3.2"/>
+    <circle cx="128" cy="105" r="3.2"/>
+    <circle cx="196" cy="45" r="3.2"/>
+    <circle cx="214" cy="25" r="3.2"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="10">
+    <text x="114" y="148">MV</text>
+    <text x="184" y="148">drag</text>
+    <text x="34" y="26">elevation</text>
+  </g>
+</symbol>
+
+<!-- 10 DOPE chart: a printed table, a scope cap insert and the 50 mm scale bar -->
+<symbol id="dope" viewBox="0 0 240 160">
+  <rect x="18" y="16" width="100" height="128" rx="4" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <rect x="18" y="16" width="100" height="128" rx="4"/>
+    <path d="M18 34h100M50 16v128M84 16v128" />
+    <path d="M18 52h100M18 70h100M18 88h100M18 106h100M18 124h100" opacity=".45"/>
+    <circle cx="180" cy="62" r="36"/>
+    <circle cx="180" cy="62" r="20"/>
+    <path d="M180 26v6M216 62h-6M144 62h6M180 98v-6M205 37l-4 4M155 37l4 4M205 87l-4-4M155 87l4-4"/>
+    <path d="M146 132h68M146 126v12M163 129v6M180 126v12M197 129v6M214 126v12"/>
+  </g>
+  <g fill="none">
+    <circle cx="180" cy="62" r="44" stroke-dasharray="2 4"/>
+    <path d="M24 25h20M56 25h22M90 25h22"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="10">
+    <text x="166" y="152">50 mm</text>
+  </g>
+</symbol>
+
+<!-- 11 Maintain: seasons, re-checks and a backup -->
+<symbol id="maintain" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <rect x="20" y="30" width="80" height="90" rx="6"/>
+    <path d="M20 50h80M40 22v14M80 22v14"/>
+    <path d="M32 64h10M54 64h10M76 64h10M32 82h10M54 82h10M76 82h10M32 100h10M54 100h10" opacity=".6"/>
+    <path d="M204 30v58a12 12 0 1 1-12 0V30a6 6 0 0 1 12 0z"/>
+    <path d="M198 64v34"/>
+    <path d="M128 112h44v28h-44zM150 96v26M142 114l8 8 8-8"/>
+  </g>
+  <g fill="none">
+    <path d="M124 56a26 26 0 0 1 48-8M176 64a26 26 0 0 1-48 8"/>
+    <path d="M172 38v10h-10M128 82V72h10"/>
+    <rect x="73" y="93" width="16" height="14" rx="2"/>
+  </g>
+  <g stroke="none">
+    <circle cx="198" cy="100" r="7"/>
+  </g>
+</symbol>
+
+<!-- Part 2: Solver layout -->
+<symbol id="solver" viewBox="0 0 240 160">
+  <g fill="currentColor" stroke="none" opacity=".05">
+    <rect x="16" y="16" width="72" height="128" rx="6"/>
+    <rect x="98" y="16" width="126" height="56" rx="6"/>
+  </g>
+  <g fill="none" stroke="currentColor">
+    <rect x="16" y="16" width="72" height="128" rx="6"/>
+    <path d="M16 40h72M16 64h72M16 88h72M16 112h72"/>
+    <path d="M26 28h36M26 52h28M26 76h32M26 100h24M26 124h30" opacity=".55"/>
+    <path d="M76 50l4 4 4-4M76 74l4 4 4-4M76 98l4 4 4-4M76 122l4 4 4-4" opacity=".55"/>
+    <rect x="98" y="16" width="126" height="56" rx="6"/>
+    <path d="M110 30h40M170 30h40" opacity=".55"/>
+    <path d="M98 80h126M98 80v64h126V80"/>
+    <path d="M106 90h28M142 90h28M178 90h28" opacity=".55"/>
+  </g>
+  <g fill="none">
+    <path d="M110 44h40M110 56h24M170 44h34M170 56h22" stroke-width="3"/>
+    <path d="M106 134C136 124 170 108 214 100"/>
+  </g>
+</symbol>
+
+<!-- Part 2: reticle and turret -->
+<symbol id="reticle" viewBox="0 0 240 160">
+  <circle cx="92" cy="80" r="64" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <circle cx="92" cy="80" r="64"/>
+    <path d="M28 80h52M104 80h52M92 16v52M92 92v52"/>
+    <path d="M72 76v8M112 76v8M60 77v6M124 77v6M88 96h8M88 108h8M88 120h8M89 102h6M89 114h6" />
+    <circle cx="196" cy="80" r="28"/>
+    <circle cx="196" cy="80" r="18"/>
+    <path d="M196 46v6M224 80h-6M168 80h6"/>
+  </g>
+  <g fill="none">
+    <path d="M196 40v18"/>
+    <path d="M180 112a28 28 0 0 0 32 0M208 116l4-4-6-1"/>
+  </g>
+  <g stroke="none">
+    <circle cx="101" cy="108" r="4"/>
+  </g>
+</symbol>
+
+<!-- Part 2: trajectory chart -->
+<symbol id="chart" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <path d="M30 14v118h196"/>
+    <path d="M30 104h196M30 76h196M30 48h196" opacity=".25"/>
+    <path d="M30 70C90 74 150 84 220 112" stroke-dasharray="4 4"/>
+    <path d="M150 132v-4M90 132v-4M210 132v-4"/>
+  </g>
+  <g fill="none">
+    <path d="M30 22C90 26 150 46 220 98"/>
+  </g>
+  <g stroke="none">
+    <circle cx="160" cy="58" r="4"/>
+  </g>
+</symbol>
+
+<!-- Part 2: range table with ticked rows -->
+<symbol id="table" viewBox="0 0 240 160">
+  <rect x="16" y="16" width="160" height="128" rx="5" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <rect x="16" y="16" width="160" height="128" rx="5"/>
+    <path d="M16 36h160M16 57h160M16 78h160M16 99h160M16 120h160" opacity=".45"/>
+    <path d="M46 16v128"/>
+    <rect x="25" y="62" width="11" height="11" rx="2"/>
+    <rect x="25" y="104" width="11" height="11" rx="2"/>
+    <path d="M58 26h30M100 26h30M142 26h24M58 47h22M100 47h26M142 47h18M58 68h26M100 68h22M142 68h20M58 89h24M100 89h28M142 89h16M58 110h30M100 110h20M142 110h22M58 131h22M100 131h26M142 131h18" opacity=".55"/>
+    <rect x="192" y="58" width="36" height="46" rx="4"/>
+    <path d="M198 70h24M198 80h24M198 90h16" opacity=".55"/>
+  </g>
+  <g fill="none">
+    <rect x="25" y="41" width="11" height="11" rx="2"/>
+    <rect x="25" y="83" width="11" height="11" rx="2"/>
+    <rect x="25" y="125" width="11" height="11" rx="2"/>
+    <path d="M27.5 46.5l2 2 4-4.5M27.5 88.5l2 2 4-4.5M27.5 130.5l2 2 4-4.5"/>
+    <path d="M178 80h12M186 76l4 4-4 4"/>
+  </g>
+</symbol>
+
+<!-- Part 2: compare models -->
+<symbol id="compare" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <path d="M30 14v118h196"/>
+    <path d="M30 120C100 112 160 86 220 40" stroke-dasharray="4 4"/>
+    <path d="M30 120C100 110 160 80 220 26" stroke-dasharray="1 5" stroke-width="2.4"/>
+    <path d="M30 104h196M30 76h196M30 48h196" opacity=".2"/>
+  </g>
+  <g fill="none">
+    <path d="M30 120C100 108 160 74 220 14"/>
+  </g>
+</symbol>
+
+<!-- Part 2: the six DOPE card formats -->
+<symbol id="formats" viewBox="0 0 240 160">
+  <g fill="currentColor" stroke="none" opacity=".05">
+    <circle cx="44" cy="46" r="28"/>
+    <rect x="94" y="16" width="44" height="60" rx="3"/>
+    <rect x="160" y="16" width="64" height="88" rx="2"/>
+  </g>
+  <g fill="none" stroke="currentColor">
+    <circle cx="44" cy="46" r="28"/>
+    <circle cx="44" cy="46" r="14"/>
+    <rect x="94" y="16" width="44" height="60" rx="3"/>
+    <path d="M94 28h44M94 40h44M94 52h44M94 64h44M110 16v60" opacity=".45"/>
+    <rect x="160" y="16" width="64" height="88" rx="2"/>
+    <path d="M168 28h48M168 40h48M168 52h48M168 64h40M168 76h44M168 88h32" opacity=".45"/>
+    <rect x="16" y="96" width="122" height="18" rx="2"/>
+    <path d="M36 96v18M56 96v18M76 96v18M96 96v18M116 96v18" opacity=".45"/>
+    <rect x="16" y="126" width="122" height="18" rx="2"/>
+    <path d="M28 126v6M40 126v9M52 126v6M64 126v9M76 126v6M88 126v9M100 126v6M112 126v9M124 126v6" opacity=".6"/>
+    <rect x="160" y="114" width="64" height="30" rx="2"/>
+  </g>
+  <g fill="none">
+    <path d="M168 122h8M168 130h8M168 138h8M182 122h34M182 130h28M182 138h32"/>
+    <path d="M44 18v8"/>
+  </g>
+</symbol>
+
+<!-- Part 2: stage card -->
+<symbol id="stage" viewBox="0 0 240 160">
+  <rect x="20" y="14" width="96" height="132" rx="4" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <rect x="20" y="14" width="96" height="132" rx="4"/>
+    <path d="M20 34h96"/>
+    <path d="M30 24h44" stroke-width="2.6"/>
+    <circle cx="36" cy="50" r="7"/><circle cx="36" cy="74" r="7"/><circle cx="36" cy="98" r="7"/><circle cx="36" cy="122" r="7"/>
+    <path d="M50 50h54M50 74h48M50 98h54M50 122h42" opacity=".55"/>
+    <path d="M140 140v-58h28v58M140 104h28M136 82h36"/>
+    <path d="M136 140h96"/>
+    <path d="M196 140v-30M222 140v-40"/>
+    <path d="M190 96h12v14h-12zM216 82h12v18h-12z"/>
+  </g>
+  <g fill="none">
+    <path d="M168 92C186 76 200 76 210 84" stroke-dasharray="3 4"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="9" font-weight="600">
+    <text x="33.5" y="53">1</text><text x="33.5" y="77">2</text><text x="33.5" y="101">3</text><text x="33.5" y="125">4</text>
+  </g>
+</symbol>
+
+<!-- Part 2: printing at true size -->
+<symbol id="printing" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <path d="M50 62V20h84v42"/>
+    <path d="M50 108H34a8 8 0 0 1-8-8V70a8 8 0 0 1 8-8h116a8 8 0 0 1 8 8v30a8 8 0 0 1-8 8h-16"/>
+    <rect x="50" y="90" width="84" height="54" rx="2"/>
+    <path d="M62 104h60M62 116h48M62 128h54" opacity=".5"/>
+    <path d="M140 76h.01" stroke-width="4"/>
+  </g>
+  <g fill="none">
+    <path d="M168 120h60M168 112v16M183 116v8M198 112v16M213 116v8M228 112v16"/>
+    <path d="M180 84l-8 8M172 84l8 8M192 88h32" stroke-dasharray="3 3"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="10">
+    <text x="184" y="144">50 mm</text>
+  </g>
+</symbol>
+
+<!-- Part 2: hit probability -->
+<symbol id="wez" viewBox="0 0 240 160">
+  <rect x="80" y="30" width="80" height="100" rx="4" fill="currentColor" opacity=".06" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <rect x="80" y="30" width="80" height="100" rx="4"/>
+    <circle cx="120" cy="80" r="62" stroke-dasharray="2 5"/>
+  </g>
+  <g fill="none">
+    <circle cx="120" cy="80" r="28"/>
+  </g>
+  <g stroke="none">
+    <circle cx="112" cy="74" r="2.4"/><circle cx="126" cy="84" r="2.4"/><circle cx="118" cy="92" r="2.4"/><circle cx="132" cy="70" r="2.4"/>
+    <circle cx="104" cy="88" r="2.4"/><circle cx="122" cy="62" r="2.4"/><circle cx="138" cy="96" r="2.4"/><circle cx="96" cy="66" r="2.4"/>
+    <circle cx="146" cy="80" r="2.4"/><circle cx="114" cy="104" r="2.4"/>
+  </g>
+  <g fill="currentColor" stroke="none">
+    <circle cx="70" cy="50" r="2.4"/><circle cx="172" cy="118" r="2.4"/><circle cx="176" cy="60" r="2.4"/><circle cx="66" cy="112" r="2.4"/>
+  </g>
+</symbol>
+
+<!-- Part 2: group analysis -->
+<symbol id="group" viewBox="0 0 240 160">
+  <rect x="50" y="10" width="140" height="140" rx="4" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <rect x="50" y="10" width="140" height="140" rx="4"/>
+    <path d="M50 45h140M50 115h140M85 10v140M155 10v140" opacity=".3"/>
+    <path d="M108 80h24M120 68v24"/>
+    <circle cx="120" cy="80" r="6"/>
+    <circle cx="138" cy="58" r="4"/><circle cx="150" cy="66" r="4"/><circle cx="144" cy="48" r="4"/><circle cx="132" cy="64" r="4"/><circle cx="156" cy="52" r="4"/>
+  </g>
+  <g fill="none">
+    <ellipse cx="144" cy="57" rx="20" ry="13" transform="rotate(-20 144 57)"/>
+    <path d="M140 57h8M144 53v8"/>
+    <path d="M140 62L124 76"/>
+  </g>
+</symbol>
+
+<!-- Part 2: chronograph statistics -->
+<symbol id="chrono-stats" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <path d="M24 80h196"/>
+    <path d="M24 44h196M24 116h196" stroke-dasharray="3 5" opacity=".55"/>
+  </g>
+  <g stroke="none">
+    <rect x="34" y="62" width="12" height="18" rx="2"/>
+    <rect x="58" y="80" width="12" height="10" rx="2"/>
+    <rect x="82" y="72" width="12" height="8" rx="2"/>
+    <rect x="106" y="80" width="12" height="24" rx="2"/>
+    <rect x="130" y="54" width="12" height="26" rx="2"/>
+    <rect x="154" y="80" width="12" height="6" rx="2"/>
+    <rect x="178" y="68" width="12" height="12" rx="2"/>
+    <rect x="202" y="80" width="12" height="16" rx="2"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="10">
+    <text x="24" y="36">+SD</text>
+    <text x="24" y="132">−SD</text>
+  </g>
+</symbol>
+
+<!-- Part 2: range estimation with the reticle -->
+<symbol id="milling" viewBox="0 0 240 160">
+  <circle cx="120" cy="80" r="66" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <circle cx="120" cy="80" r="66"/>
+    <path d="M54 80h132M120 14v132"/>
+    <path d="M116 40h8M116 50h8M116 60h8M116 70h8M116 90h8M116 100h8M116 110h8M116 120h8"/>
+    <path d="M144 56h22v44h-22zM150 56v-8h10v8"/>
+  </g>
+  <g fill="none">
+    <path d="M176 48v52M172 48h8M172 100h8"/>
+    <path d="M144 48h22M144 100h22" stroke-dasharray="2 3"/>
+  </g>
+</symbol>
+
+<!-- Part 2: recoil -->
+<symbol id="recoil" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <path d="M60 84h120l6-6h30v8h-26l-10 10H104l-12 22H70l6-22H60z"/>
+    <rect x="98" y="60" width="48" height="12" rx="6"/>
+    <path d="M110 72v12M134 72v12"/>
+  </g>
+  <g fill="none">
+    <path d="M52 92H14M24 82l-10 10 10 10"/>
+    <path d="M226 82h-4M230 76h-4M230 88h-4" />
+  </g>
+</symbol>
+
+<!-- Part 2: library of rifles and bullets -->
+<symbol id="library" viewBox="0 0 240 160">
+  <g fill="currentColor" stroke="none" opacity=".05">
+    <rect x="16" y="20" width="128" height="52" rx="6"/>
+    <rect x="16" y="86" width="128" height="52" rx="6"/>
+  </g>
+  <g fill="none" stroke="currentColor">
+    <rect x="16" y="20" width="128" height="52" rx="6"/>
+    <rect x="16" y="86" width="128" height="52" rx="6"/>
+    <path d="M28 50h60l3-3h14v4h-12l-4 5H50l-5 9h-9l3-9H28z"/>
+    <path d="M28 108h60M28 120h40" opacity=".55"/>
+    <path d="M168 136v-48c0-16 6-28 14-34 8 6 14 18 14 34v48zM168 112h28"/>
+    <path d="M208 136v-36c0-12 5-21 11-26 6 5 11 14 11 26v36zM208 118h22" opacity=".6"/>
+  </g>
+  <g fill="none">
+    <path d="M28 34h44" stroke-width="2.6"/>
+    <path d="M120 112l4 4 8-9"/>
+  </g>
+</symbol>
+
+<!-- Part 2: bullet stability -->
+<symbol id="stability" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <path d="M20 66l14-6h60c34 0 52 10 64 16-12 6-30 16-64 16H34l-14-6z"/>
+    <path d="M44 48a14 32 0 1 0 0 56" stroke-dasharray="3 4"/>
+    <path d="M168 120a40 40 0 0 1 64 0" opacity=".5"/>
+  </g>
+  <g fill="none">
+    <path d="M38 44l6 4-6 4"/>
+    <path d="M200 112l18-22"/>
+    <path d="M178 104a28 28 0 0 1 44 0"/>
+  </g>
+  <g stroke="none">
+    <circle cx="200" cy="112" r="4"/>
+  </g>
+</symbol>
+
+<!-- Part 2: backup file -->
+<symbol id="backup" viewBox="0 0 240 160">
+  <rect x="84" y="20" width="72" height="96" rx="4" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <path d="M136 20H88a4 4 0 0 0-4 4v88a4 4 0 0 0 4 4h64a4 4 0 0 0 4-4V40z"/>
+    <path d="M136 20v20h20"/>
+    <path d="M98 64h44M98 76h44M98 88h30" opacity=".55"/>
+    <path d="M36 132h168"/>
+  </g>
+  <g fill="none">
+    <path d="M52 104V60M42 94l10 10 10-10"/>
+    <path d="M188 60v44M178 70l10-10 10 10"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="11" font-weight="600">
+    <text x="104" y="52">.json</text>
+  </g>
+</symbol>
+
+<!-- Part 2: units and theme -->
+<symbol id="settings" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <rect x="24" y="36" width="192" height="32" rx="9"/>
+    <rect x="24" y="96" width="192" height="32" rx="9"/>
+    <path d="M120 40v24M88 100v24M152 100v24" opacity=".35"/>
+    <circle cx="120" cy="112" r="6"/>
+    <path d="M120 101v3M120 120v3M109 112h3M128 112h3"/>
+    <path d="M190 106a7 7 0 1 0 6 10 6 6 0 0 1-6-10z"/>
+    <path d="M50 112h20" opacity=".55"/>
+  </g>
+  <g fill="none">
+    <rect x="28" y="40" width="88" height="24" rx="6"/>
+    <rect x="28" y="100" width="56" height="24" rx="6"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="11" font-weight="600">
+    <text x="58" y="56">m · MRAD</text>
+    <text x="148" y="56" opacity=".7">yd · MOA</text>
+  </g>
+</symbol>
+
+<!-- Part 2: command palette -->
+<symbol id="palette" viewBox="0 0 240 160">
+  <rect x="24" y="30" width="192" height="100" rx="10" fill="currentColor" opacity=".05" stroke="none"/>
+  <g fill="none" stroke="currentColor">
+    <rect x="24" y="30" width="192" height="100" rx="10"/>
+    <path d="M24 58h192"/>
+    <circle cx="42" cy="44" r="6"/><path d="M47 49l4 4"/>
+    <path d="M60 44h60" opacity=".55"/>
+    <rect x="172" y="36" width="34" height="16" rx="4"/>
+    <path d="M40 76h90M40 96h70M40 116h80" opacity=".55"/>
+  </g>
+  <g fill="none">
+    <rect x="32" y="66" width="176" height="20" rx="5"/>
+  </g>
+  <g fill="currentColor" stroke="none" font-size="10" font-weight="600">
+    <text x="177" y="48">⌘ K</text>
+  </g>
+</symbol>
+
+<!-- Part 2: offline app -->
+<symbol id="offline" viewBox="0 0 240 160">
+  <g fill="none" stroke="currentColor">
+    <rect x="40" y="18" width="64" height="124" rx="10"/>
+    <path d="M62 26h20"/>
+    <rect x="50" y="40" width="44" height="34" rx="4"/>
+    <path d="M52 86h40M52 98h32M52 110h36" opacity=".55"/>
+    <path d="M150 92h50a18 18 0 0 0 2-36 26 26 0 0 0-50-4 20 20 0 0 0-2 40z"/>
+  </g>
+  <g fill="none">
+    <path d="M144 36l64 64"/>
+    <circle cx="72" cy="57" r="9"/>
+    <path d="M68 57l3 3 5-6"/>
+  </g>
+</symbol>
+</svg>
