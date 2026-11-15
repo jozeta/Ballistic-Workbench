@@ -50,14 +50,14 @@ const STAGE_SIZES = [
 ];
 
 const WIND_DIRECTIONS = [
-  { deg: 90, label: 'From right (3 o’clock, 90°)' },
-  { deg: 45, label: 'Quartering from right (1:30, 45°)' },
-  { deg: 135, label: 'Quartering from behind right (4:30, 135°)' },
-  { deg: 0, label: 'Headwind (12 o’clock, 0°)' },
-  { deg: 180, label: 'Tailwind (6 o’clock, 180°)' },
-  { deg: 315, label: 'Quartering from left (10:30, 315°)' },
-  { deg: 225, label: 'Quartering from behind left (7:30, 225°)' },
-  { deg: 270, label: 'From left (9 o’clock, 270°)' },
+  { deg: 90, label: 'From the right (3:00)' },
+  { deg: 45, label: 'Front right (1:30)' },
+  { deg: 135, label: 'Rear right (4:30)' },
+  { deg: 0, label: 'Headwind (12:00)' },
+  { deg: 180, label: 'Tailwind (6:00)' },
+  { deg: 315, label: 'Front left (10:30)' },
+  { deg: 225, label: 'Rear left (7:30)' },
+  { deg: 270, label: 'From the left (9:00)' },
 ];
 
 const SCOPE_CAP_PRESETS = [
@@ -143,6 +143,9 @@ function pickSubset(list, max) {
   for (let i = 0; i < max; i++) out.push(list[Math.round((i * (list.length - 1)) / (max - 1))]);
   return [...new Set(out)];
 }
+
+/** "1 shot", "2 shots". */
+const plural = (n, word) => `${n} ${n === 1 ? word : `${word}s`}`;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const deepClone = (o) => JSON.parse(JSON.stringify(o));
@@ -421,7 +424,7 @@ export class DopeStudioView {
 
   loadPreset(presetKey) {
     if (!this.presets[presetKey]) return;
-    this._remember(`Loaded the “${this.presetLabels[presetKey] || presetKey}” preset.`);
+    this._remember(`Loaded the “${this.presetLabels[presetKey] || presetKey}” preset.`, 'settings');
     this.prsStage = deepClone(this.presets[presetKey]);
     this._saveStageState();
     this.render();
@@ -1334,8 +1337,8 @@ export class DopeStudioView {
             </div>
             <ul class="tactical-pills-row">
               <li class="tactical-pill">${s.timeLimitSec} s</li>
-              <li class="tactical-pill">${s.totalRounds} shots</li>
-              <li class="tactical-pill">${s.targetCount} targets</li>
+              <li class="tactical-pill">${plural(s.totalRounds, 'shot')}</li>
+              <li class="tactical-pill">${plural(s.targetCount, 'target')}</li>
               <li class="tactical-pill">${s.pace} s per shot</li>
               <li class="tactical-pill">Wind ${s.lull} / ${s.base} / ${s.gust} ${u.wind} from ${clockLabel(s.dir)}</li>
             </ul>
@@ -1407,36 +1410,66 @@ export class DopeStudioView {
 
   // ---- settings column --------------------------------------------------------------------------
 
+  /** A Låda notice. tone: info | warn. text is trusted markup (constants and numbers only). */
+  _alert(tone, text, { id = '', hidden = false } = {}) {
+    return `<div class="lg-alert lg-alert-${tone} dope-alert"${id ? ` id="${id}"` : ''} role="status"${hidden ? ' hidden' : ''}>${icon(tone === 'warn' ? 'alert' : 'info')}<p>${text}</p></div>`;
+  }
+
+  /** The undo notice after a destructive stage change, shown where the change was made. */
+  _undoHtml(where) {
+    if (!this._undo || this._undo.where !== where) return '';
+    return `
+      <div class="lg-alert lg-alert-info dope-undo" role="status">
+        ${icon('info')}
+        <p>${esc(this._undo.label)}</p>
+        <button type="button" class="lg-btn" id="btn-undo-${where}" data-action="undo">${icon('refresh')} Undo</button>
+      </div>`;
+  }
+
+  /** A number field with − / + buttons (Låda stepper). The error line sits after the stepper. */
+  _stepper(id, attrs, value, label) {
+    return `
+      <div class="lg-stepper dope-stepper">
+        <button type="button" id="${id}-dec" data-lg-step="-1" aria-label="Less: ${label}">${icon('minus')}</button>
+        <input type="number" id="${id}" ${attrs} value="${value}" />
+        <button type="button" id="${id}-inc" data-lg-step="1" aria-label="More: ${label}">${icon('plus')}</button>
+      </div>
+      <p class="field-error" id="${id}-error" role="alert" hidden></p>`;
+  }
+
   _rangeSourceHtml(ranges, u, skipped, extraNote = '') {
     const notes = [];
     if (ranges.shown.length < ranges.all.length) {
       notes.push(`This card has room for ${ranges.shown.length} distances, so it shows ${ranges.shown.length} of ${ranges.all.length}, spread evenly.`);
     }
-    if (skipped > 0) notes.push(`${skipped} ${skipped === 1 ? 'distance is' : 'distances are'} past the end of the trajectory and left out.`);
     if (extraNote) notes.push(extraNote);
     const first = ranges.all.length ? fmtInt(u.fromM(ranges.all[0])) : '—';
     const last = ranges.all.length ? fmtInt(u.fromM(ranges.all[ranges.all.length - 1])) : '—';
+    const count = `${ranges.all.length} ${ranges.all.length === 1 ? 'distance' : 'distances'}`;
     return `
-      <div class="dope-setting-block">
-        <h3 class="dope-block-title">${icon('list')} Distances</h3>
+      <div class="dope-block">
+        <h3 class="lg-label">Distances</h3>
         ${ranges.fromSolver
-          ? `<p class="dope-range-source">Using ${ranges.all.length} ${ranges.all.length === 1 ? 'distance' : 'distances'} from the Solver (${first}–${last} ${u.dist}). <button type="button" class="btn-link" data-action="use-default-ranges">Use defaults</button></p>`
-          : `<p class="dope-range-source">Default distances, ${first}–${last} ${u.dist}. To choose your own, tick rows in the Solver’s table and press <strong>Make DOPE card</strong>.</p>`}
+          ? `<p>${count} from the Solver, ${first}–${last} ${u.dist}.</p>
+             <button type="button" class="lg-btn dope-block-btn" id="btn-default-ranges" data-action="use-default-ranges">${icon('refresh')} Use the default distances</button>`
+          : `<p>Default distances, ${first}–${last} ${u.dist}.</p>
+             <p class="field-hint">To choose your own, tick rows in the Solver’s range table and press Make DOPE card.</p>`}
         ${notes.map((n) => `<p class="field-hint">${n}</p>`).join('')}
+        ${skipped > 0 ? this._alert('warn', `${skipped} ${skipped === 1 ? 'distance is' : 'distances are'} past the end of the trajectory and left out.`) : ''}
       </div>`;
   }
 
   _sourceHtml(dope, u) {
     const info = this._rifleInfo(dope, u);
     return `
-      <div class="dope-setting-block dope-source">
-        <h3 class="dope-block-title">${icon('rifle')} Data from</h3>
+      <div class="dope-block">
+        <h3 class="lg-label">Data from</h3>
         <dl class="dope-source-list">
           <div><dt>Rifle</dt><dd>${info.name}</dd></div>
           <div><dt>Conditions</dt><dd>${info.envName || '—'}</dd></div>
           <div><dt>Units</dt><dd>${u.dist}, ${u.elev}, wind in ${u.wind}</dd></div>
         </dl>
-        <p class="field-hint">Change the rifle, conditions or units in the <a href="#workspace">Solver</a> or the header.</p>
+        <p class="field-hint">Change the rifle and conditions in the <a href="#workspace">Solver</a>, and the units in the sidebar.</p>
       </div>`;
   }
 
@@ -1444,17 +1477,18 @@ export class DopeStudioView {
     const d = this.scopeCapDiameterMm;
     const isCustom = !SCOPE_CAP_PRESETS.some((p) => Math.abs(p.mm - d) < 0.05);
     return `
-      <div class="dope-setting-block">
+      <div class="dope-block">
+        <h3 class="lg-label">Size</h3>
         <div class="field-row">
-          <label class="field-label" for="scope-cap-preset-select">Cap size</label>
-          <select id="scope-cap-preset-select" class="form-select">
+          <label class="field-label" for="scope-cap-preset-select">Scope cap</label>
+          <select id="scope-cap-preset-select" class="lg-select">
             ${SCOPE_CAP_PRESETS.map((p) => `<option value="${p.mm}" ${Math.abs(p.mm - d) < 0.05 ? 'selected' : ''}>${p.label}</option>`).join('')}
             <option value="custom" ${isCustom ? 'selected' : ''}>Other size</option>
           </select>
         </div>
         <div class="field-row">
           <label class="field-label" for="scope-cap-diameter-input">Diameter (mm)</label>
-          <input type="number" inputmode="decimal" id="scope-cap-diameter-input" class="form-input" min="25" max="85" step="0.1" value="${d}" />
+          <input type="number" inputmode="decimal" id="scope-cap-diameter-input" class="lg-input" min="25" max="85" step="0.1" value="${d}" />
           <p class="field-hint">Measure the inside of the clear cap lid.</p>
         </div>
       </div>`;
@@ -1464,10 +1498,11 @@ export class DopeStudioView {
     const circ = this.turretCircumferenceMm;
     const isCustom = !TURRET_PRESETS.some((p) => Math.abs(p.circ - circ) < 0.05);
     return `
-      <div class="dope-setting-block">
+      <div class="dope-block">
+        <h3 class="lg-label">Size</h3>
         <div class="field-row">
-          <label class="field-label" for="turret-tape-preset-select">Turret size</label>
-          <select id="turret-tape-preset-select" class="form-select">
+          <label class="field-label" for="turret-tape-preset-select">Turret</label>
+          <select id="turret-tape-preset-select" class="lg-select">
             ${TURRET_PRESETS.map((p) => `<option value="${p.circ}" ${Math.abs(p.circ - circ) < 0.05 ? 'selected' : ''}>${p.label}</option>`).join('')}
             <option value="custom" ${isCustom ? 'selected' : ''}>Other size</option>
           </select>
@@ -1475,83 +1510,104 @@ export class DopeStudioView {
         <div class="field-grid-2">
           <div>
             <label class="field-label" for="tape-circ-input">Length around (mm)</label>
-            <input type="number" inputmode="decimal" id="tape-circ-input" class="form-input" min="60" max="180" step="0.1" value="${circ}" />
+            <input type="number" inputmode="decimal" id="tape-circ-input" class="lg-input" min="60" max="180" step="0.1" value="${circ}" />
           </div>
           <div>
             <label class="field-label" for="tape-height-input">Height (mm)</label>
-            <input type="number" inputmode="decimal" id="tape-height-input" class="form-input" min="8" max="25" step="0.5" value="${this.turretTapeHeightMm}" />
+            <input type="number" inputmode="decimal" id="tape-height-input" class="lg-input" min="8" max="25" step="0.5" value="${this.turretTapeHeightMm}" />
           </div>
           <div>
             <label class="field-label" for="tape-clicks-input">Clicks per turn</label>
-            <input type="number" inputmode="numeric" id="tape-clicks-input" class="form-input" min="40" max="200" step="1" value="${this.turretClicksPerTurn}" />
+            <input type="number" inputmode="numeric" id="tape-clicks-input" class="lg-input" min="40" max="200" step="1" value="${this.turretClicksPerTurn}" />
           </div>
         </div>
-        <p class="field-hint">Wrap a strip of paper around the turret and measure it for the exact length. Distance marks show hundreds (3 = 300).</p>
-        ${offTurn > 0 ? `<p class="field-hint dope-warn">${icon('alert')} ${offTurn} ${offTurn === 1 ? 'distance needs' : 'distances need'} more than one turn and ${offTurn === 1 ? 'is' : 'are'} left out.</p>` : ''}
+        <p class="field-hint">Wrap a strip of paper around the turret and measure it for the exact length. The distance marks show hundreds (3 = 300).</p>
+        ${offTurn > 0 ? this._alert('warn', `${offTurn} ${offTurn === 1 ? 'distance needs' : 'distances need'} more than one turn and ${offTurn === 1 ? 'is' : 'are'} left out.`) : ''}
       </div>`;
   }
 
   _stageSettings(u) {
     const stage = this.prsStage;
+    const s = this._stageSummary(stage, u);
     const windDir = num(stage.windDirectionDeg, 90);
     const known = WIND_DIRECTIONS.some((w) => w.deg === windDir);
+    const windMax = u.wind === 'mph' ? 80 : 35;
+    const windField = (key, label, ms) => `
+      <div>
+        <label class="field-label" for="input-wind-${key}">${label}</label>
+        <input type="number" inputmode="decimal" id="input-wind-${key}" class="lg-input" min="0" max="${windMax}" step="0.5" value="${fmtTrim(u.windFromMs(num(ms, 0)), 1)}" />
+      </div>`;
     return `
-      <div class="dope-setting-block">
+      <div class="dope-block">
+        <h3 class="lg-label">Stage</h3>
+        ${this._undoHtml('settings')}
         <div class="field-row">
-          <label class="field-label" for="stage-preset-select">Presets</label>
-          <select id="stage-preset-select" class="form-select">
-            <option value="" selected>Load a preset stage…</option>
+          <label class="field-label" for="stage-preset-select">Start from a preset</label>
+          <select id="stage-preset-select" class="lg-select">
+            <option value="" selected>Choose a preset…</option>
             ${Object.keys(this.presets).map((k) => `<option value="${k}">${esc(this.presetLabels[k] || k)}</option>`).join('')}
           </select>
         </div>
         <div class="field-row">
           <label class="field-label" for="input-stage-name">Stage name</label>
-          <input type="text" id="input-stage-name" class="form-input" maxlength="80" value="${esc(stage.name)}" />
-        </div>
-        <div class="field-grid-2">
-          <div>
-            <label class="field-label" for="input-stage-timer">Time limit (s)</label>
-            <input type="number" inputmode="numeric" id="input-stage-timer" class="form-input" min="10" max="600" step="5" value="${fmtInt(stage.timeLimitSec)}" />
-          </div>
-          <div>
-            <label class="field-label" for="input-wind-direction">Wind angle (°)</label>
-            <input type="number" inputmode="numeric" id="input-wind-direction" class="form-input" min="0" max="359" step="15" value="${fmtInt(windDir)}" />
-          </div>
+          <input type="text" id="input-stage-name" class="lg-input" maxlength="80" value="${esc(stage.name)}" />
         </div>
         <div class="field-row">
-          <label class="field-label" for="wind-dir-select">Wind from</label>
-          <select id="wind-dir-select" class="form-select">
-            ${WIND_DIRECTIONS.map((w) => `<option value="${w.deg}" ${w.deg === windDir ? 'selected' : ''}>${w.label}</option>`).join('')}
-            ${known ? '' : `<option value="custom" selected>${fmtInt(windDir)}° (${clockLabel(windDir)})</option>`}
-          </select>
+          <label class="field-label" for="input-stage-timer">Time limit (s)</label>
+          ${this._stepper('input-stage-timer', 'inputmode="numeric" min="10" max="600" step="5"', fmtInt(stage.timeLimitSec), 'time limit')}
         </div>
-        <fieldset class="dope-fieldset">
-          <legend class="field-label">Wind hold: lull / base / gust (${u.wind})</legend>
-          <div class="field-grid-3">
-            <div><label class="lg-sr-only" for="input-wind-lull">Lull wind (${u.wind})</label><input type="number" inputmode="decimal" id="input-wind-lull" class="form-input" min="0" max="${u.wind === 'mph' ? 80 : 35}" step="0.5" value="${fmtTrim(u.windFromMs(num(stage.windLullMs, 0)), 1)}" /></div>
-            <div><label class="lg-sr-only" for="input-wind-base">Base wind (${u.wind})</label><input type="number" inputmode="decimal" id="input-wind-base" class="form-input" min="0" max="${u.wind === 'mph' ? 80 : 35}" step="0.5" value="${fmtTrim(u.windFromMs(num(stage.windBaseMs, 0)), 1)}" /></div>
-            <div><label class="lg-sr-only" for="input-wind-gust">Gust wind (${u.wind})</label><input type="number" inputmode="decimal" id="input-wind-gust" class="form-input" min="0" max="${u.wind === 'mph' ? 80 : 35}" step="0.5" value="${fmtTrim(u.windFromMs(num(stage.windGustMs, 0)), 1)}" /></div>
-          </div>
-        </fieldset>
         <div class="field-row">
           <label class="field-label" for="input-stage-props">Positions, in order</label>
-          <input type="text" id="input-stage-props" class="form-input" maxlength="200" value="${esc(stage.propsDescription)}" placeholder="Tank trap (2), then barricade (3)" />
-          <div class="dope-chip-row" role="group" aria-label="Add a position">
-            ${['Tank trap', 'Cable spool', 'Barricade', 'Rooftop', 'Prone mat', 'Tires'].map((p) => `<button type="button" class="dope-chip" data-action="add-prop" data-value="${p}">${icon('plus')} ${p}</button>`).join('')}
+          <input type="text" id="input-stage-props" class="lg-input" maxlength="200" value="${esc(stage.propsDescription)}" placeholder="Tank trap (2), then barricade (3)" />
+          <div class="dope-quick-add" role="group" aria-label="Add a position">
+            ${['Tank trap', 'Cable spool', 'Barricade', 'Rooftop', 'Prone mat', 'Tires'].map((p) => `<button type="button" class="lg-btn lg-btn-ghost" data-action="add-prop" data-value="${p}">${icon('plus')} ${p}</button>`).join('')}
           </div>
         </div>
+        <div class="dope-targets-link">
+          <p>${plural(s.targetCount, 'target')}, ${plural(s.totalRounds, 'shot')}</p>
+          <button type="button" class="lg-btn lg-btn-ghost" data-action="goto-targets">${icon('edit')} Edit targets</button>
+        </div>
       </div>
-      <div class="dope-setting-block">
-        <h3 class="dope-block-title">${icon('card')} Card</h3>
-        <p class="field-label" id="stage-size-label">Size</p>
-        <div class="lg-segmented dope-segmented" role="group" aria-labelledby="stage-size-label">
-          ${STAGE_SIZES.map((sz) => `<button type="button" class="tab-btn" data-action="stage-orientation" data-value="${sz.id}" aria-pressed="${this.printOrientation === sz.id}" aria-label="${sz.label}"><span class="seg-main">${sz.short}</span><span class="seg-sub">${sz.sub}</span></button>`).join('')}
+      <div class="dope-block">
+        <h3 class="lg-label">Wind</h3>
+        <div class="dope-wind-dir">
+          <div>
+            <label class="field-label" for="wind-dir-select">Wind from</label>
+            <select id="wind-dir-select" class="lg-select">
+              ${WIND_DIRECTIONS.map((w) => `<option value="${w.deg}" ${w.deg === windDir ? 'selected' : ''}>${w.label}</option>`).join('')}
+              ${known ? '' : `<option value="custom" selected>Other (${clockLabel(windDir)})</option>`}
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="input-wind-direction">Angle (°)</label>
+            <input type="number" inputmode="numeric" id="input-wind-direction" class="lg-input" min="0" max="359" step="15" value="${fmtInt(windDir)}" />
+          </div>
         </div>
-        <p class="field-label dope-label-gap" id="stage-colour-label">Colour</p>
-        <div class="lg-segmented dope-segmented" role="group" aria-labelledby="stage-colour-label">
-          ${CARD_THEMES.map((t) => `<button type="button" class="tab-btn" data-action="card-theme" data-value="${t.id}" aria-pressed="${this.cardTheme === t.id}"><span class="swatch swatch-${t.id}" aria-hidden="true"></span>${t.label}</button>`).join('')}
-        </div>
-        <p class="field-hint dope-warn" id="stage-fit-warning" hidden>${icon('alert')} <span>The card is full and the last rows are cut off. Remove targets, or choose a bigger size.</span></p>
+        <fieldset class="dope-fieldset">
+          <legend class="field-label">Wind speed (${u.wind})</legend>
+          <div class="field-grid-3">
+            ${windField('lull', 'Lull', stage.windLullMs)}
+            ${windField('base', 'Base', stage.windBaseMs)}
+            ${windField('gust', 'Gust', stage.windGustMs)}
+          </div>
+        </fieldset>
+        <p class="field-hint">The card lists a wind hold for each of the three speeds.</p>
+      </div>
+      <div class="dope-block">
+        <h3 class="lg-label">Card</h3>
+        <fieldset class="dope-fieldset">
+          <legend class="field-label">Size</legend>
+          <div class="lg-segmented dope-segmented dope-segmented-size">
+            ${STAGE_SIZES.map((sz) => `<input type="radio" name="stage-size" id="stage-size-${sz.id}" value="${sz.id}" ${this.printOrientation === sz.id ? 'checked' : ''} /><label for="stage-size-${sz.id}"><span class="seg-main">${sz.short}</span><span class="seg-sub">${sz.sub}</span></label>`).join('')}
+          </div>
+        </fieldset>
+        <fieldset class="dope-fieldset">
+          <legend class="field-label">Colour</legend>
+          <div class="lg-segmented dope-segmented">
+            ${CARD_THEMES.map((t) => `<input type="radio" name="card-theme" id="card-theme-${t.id}" value="${t.id}" ${this.cardTheme === t.id ? 'checked' : ''} /><label for="card-theme-${t.id}"><span class="swatch swatch-${t.id}" aria-hidden="true"></span>${t.label}</label>`).join('')}
+          </div>
+        </fieldset>
+        ${this._alert('warn', 'The card is full and the last rows are cut off. Remove targets or choose a bigger size.', { id: 'stage-fit-warning', hidden: true })}
       </div>`;
   }
 
@@ -1562,20 +1618,22 @@ export class DopeStudioView {
     const s = this._stageSummary(stage, u);
     const n = stage.targets.length;
     return `
-      <section class="panel stage-targets no-print" aria-labelledby="stage-targets-heading">
-        <div class="panel-header">
-          <h2 id="stage-targets-heading">${icon('target')} Stage setup: targets in shooting order</h2>
-          <p class="stage-targets-stats">${s.targetCount} targets · ${s.totalRounds} shots · ${s.pace} s per shot · ${s.span}</p>
-        </div>
-        <div class="panel-body">
-          ${this._undo ? `<div class="dope-undo" role="status"><span>${esc(this._undo.label)}</span><button type="button" class="btn-secondary-sm" data-action="undo">${icon('refresh')} Undo</button></div>` : '<div class="dope-undo" role="status" hidden></div>'}
-          <ol class="target-editor-list">
-            ${stage.targets.map((t, idx) => this._targetEditorHtml(t, idx, n, u)).join('')}
-          </ol>
-          <div class="builder-actions-bottom">
-            <button type="button" class="btn-secondary-sm" id="btn-add-target" data-action="add-target">${icon('plus')} Add target</button>
-            <button type="button" class="btn-ghost-sm" id="btn-reset-stage" data-action="reset-stage">${icon('refresh')} Start over from the default stage</button>
+      <section class="lg-card stage-targets no-print" id="stage-targets" aria-labelledby="stage-targets-heading">
+        <div class="lg-header stage-targets-head">
+          <div>
+            <h2 class="lg-subtitle" id="stage-targets-heading" tabindex="-1">${icon('target')} Targets, in shooting order</h2>
+            <p class="lg-muted stage-targets-stats">${plural(s.targetCount, 'target')} · ${plural(s.totalRounds, 'shot')} · ${s.pace} s per shot · ${s.span}</p>
           </div>
+          <button type="button" class="lg-btn" id="btn-add-target-top" data-action="add-target" ${n >= 30 ? 'disabled' : ''}>${icon('plus')} Add target</button>
+        </div>
+        <p class="field-hint">Left / right places the target on the drawing: minus is left of centre, plus is right.</p>
+        ${this._undoHtml('editor')}
+        <ol class="target-list">
+          ${stage.targets.map((t, idx) => this._targetEditorHtml(t, idx, n, u)).join('')}
+        </ol>
+        <div class="lg-row stage-targets-foot">
+          <button type="button" class="lg-btn" id="btn-add-target" data-action="add-target" ${n >= 30 ? 'disabled' : ''}>${icon('plus')} Add target</button>
+          <button type="button" class="lg-btn lg-btn-ghost" id="btn-reset-stage" data-action="reset-stage">${icon('refresh')} Start over from the default stage</button>
         </div>
       </section>`;
   }
@@ -1583,57 +1641,32 @@ export class DopeStudioView {
   _targetEditorHtml(t, idx, n, u) {
     const id = (f) => `tgt-${idx}-${f}`;
     const tn = `T${idx + 1}`;
+    const sr = `<span class="lg-sr-only">${tn} </span>`;
     const maxDist = Math.round(u.fromM(2500));
     const maxSize = Math.round(u.fromCm(500));
     const maxOff = Math.round(u.fromM(100));
+    const field = (cls, key, label, control) => `<div class="tf tf-${cls}"><label class="field-label" for="${id(key)}">${sr}${label}</label>${control}</div>`;
     return `
-      <li class="target-editor" data-target-idx="${idx}">
-        <div class="target-editor-head">
-          <span class="tgt-num-badge">${tn}</span>
-          <label class="lg-sr-only" for="${id('name')}">${tn} name</label>
-          <input type="text" id="${id('name')}" class="form-input target-name-input" maxlength="60" data-target-field="name" value="${esc(t.name)}" />
-          <div class="target-editor-actions">
-            <button type="button" class="btn-secondary-sm btn-icon-only btn-move-up" data-action="target-up" data-idx="${idx}" aria-label="Move ${tn} up" title="Move up" ${idx === 0 ? 'disabled' : ''}>${icon('arrow-up')}</button>
-            <button type="button" class="btn-secondary-sm btn-icon-only btn-move-down" data-action="target-down" data-idx="${idx}" aria-label="Move ${tn} down" title="Move down" ${idx === n - 1 ? 'disabled' : ''}>${icon('arrow-down')}</button>
-            <button type="button" class="btn-secondary-sm btn-icon-only btn-clone-target" data-action="target-copy" data-idx="${idx}" aria-label="Duplicate ${tn}" title="Duplicate" ${n >= 30 ? 'disabled' : ''}>${icon('copy')}</button>
-            <button type="button" class="btn-secondary-sm btn-icon-only btn-delete-target btn-danger-sm" data-action="target-delete" data-idx="${idx}" aria-label="Remove ${tn}" title="Remove" ${n <= 1 ? 'disabled' : ''}>${icon('trash')}</button>
+      <li class="target-row" data-target-idx="${idx}">
+        <div class="target-row-head">
+          <span class="lg-badge target-num">${tn}</span>
+          ${field('name', 'name', 'Name', `<input type="text" id="${id('name')}" class="lg-input" maxlength="60" data-target-field="name" value="${esc(t.name)}" />`)}
+          <div class="target-row-actions" role="group" aria-label="${tn}">
+            <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon" id="${id('up')}" data-action="target-up" data-idx="${idx}" aria-label="Move ${tn} up" ${idx === 0 ? 'disabled' : ''}>${icon('arrow-up')}</button>
+            <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon" id="${id('down')}" data-action="target-down" data-idx="${idx}" aria-label="Move ${tn} down" ${idx === n - 1 ? 'disabled' : ''}>${icon('arrow-down')}</button>
+            <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon" id="${id('copy')}" data-action="target-copy" data-idx="${idx}" aria-label="Duplicate ${tn}" ${n >= 30 ? 'disabled' : ''}>${icon('copy')}</button>
+            <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon target-remove" id="${id('remove')}" data-action="target-delete" data-idx="${idx}" aria-label="Remove ${tn}" ${n <= 1 ? 'disabled' : ''}>${icon('trash')}</button>
           </div>
         </div>
-        <div class="target-editor-fields">
-          <div>
-            <label class="field-label" for="${id('shape')}">Shape</label>
-            <select id="${id('shape')}" class="form-select" data-target-field="shape">
-              ${Object.entries(SHAPES).map(([k, v]) => `<option value="${k}" ${t.shape === k ? 'selected' : ''}>${v}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <label class="field-label" for="${id('distanceM')}">Distance (${u.dist})</label>
-            <input type="number" inputmode="numeric" id="${id('distanceM')}" class="form-input" data-target-num="distanceM" min="${Math.ceil(u.fromM(10))}" max="${maxDist}" step="5" value="${fmtInt(u.fromM(num(t.distanceM, 300)))}" />
-          </div>
-          <div>
-            <label class="field-label" for="${id('widthCm')}">Width (${u.size})</label>
-            <input type="number" inputmode="decimal" id="${id('widthCm')}" class="form-input" data-target-num="widthCm" min="1" max="${maxSize}" step="1" value="${fmtTrim(u.fromCm(num(t.widthCm, 30)), 1)}" />
-          </div>
-          <div>
-            <label class="field-label" for="${id('heightCm')}">Height (${u.size})</label>
-            <input type="number" inputmode="decimal" id="${id('heightCm')}" class="form-input" data-target-num="heightCm" min="1" max="${maxSize}" step="1" value="${fmtTrim(u.fromCm(num(t.heightCm, num(t.widthCm, 30))), 1)}" />
-          </div>
-          <div>
-            <label class="field-label" for="${id('rounds')}">Shots</label>
-            <input type="number" inputmode="numeric" id="${id('rounds')}" class="form-input" data-target-num="rounds" min="1" max="20" step="1" value="${fmtInt(t.rounds)}" />
-          </div>
-          <div>
-            <label class="field-label" for="${id('offsetM')}" title="Where the target sits on the drawing: minus is left, plus is right">Side offset (${u.dist})</label>
-            <input type="number" inputmode="numeric" id="${id('offsetM')}" class="form-input" data-target-num="offsetM" min="${-maxOff}" max="${maxOff}" step="1" value="${fmtInt(u.fromM(num(t.offsetM, 0)))}" />
-          </div>
-          <div class="target-field-wide">
-            <label class="field-label" for="${id('prop')}">Position</label>
-            <input type="text" id="${id('prop')}" class="form-input" maxlength="60" data-target-field="prop" value="${esc(t.prop || '')}" placeholder="Barricade" />
-          </div>
-          <div class="target-field-wide">
-            <label class="field-label" for="${id('notes')}">Note</label>
-            <input type="text" id="${id('notes')}" class="form-input" maxlength="80" data-target-field="notes" value="${esc(t.notes || '')}" placeholder="Hold or order note" />
-          </div>
+        <div class="target-row-fields">
+          ${field('shape', 'shape', 'Shape', `<select id="${id('shape')}" class="lg-select" data-target-field="shape">${Object.entries(SHAPES).map(([k, v]) => `<option value="${k}" ${t.shape === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`)}
+          ${field('dist', 'distanceM', `Distance (${u.dist})`, `<input type="number" inputmode="numeric" id="${id('distanceM')}" class="lg-input" data-target-num="distanceM" min="${Math.ceil(u.fromM(10))}" max="${maxDist}" step="5" value="${fmtInt(u.fromM(num(t.distanceM, 300)))}" />`)}
+          ${field('shots', 'rounds', 'Shots', this._stepper(id('rounds'), 'inputmode="numeric" data-target-num="rounds" min="1" max="20" step="1"', fmtInt(t.rounds), `${tn} shots`))}
+          ${field('w', 'widthCm', `Width (${u.size})`, `<input type="number" inputmode="decimal" id="${id('widthCm')}" class="lg-input" data-target-num="widthCm" min="1" max="${maxSize}" step="1" value="${fmtTrim(u.fromCm(num(t.widthCm, 30)), 1)}" />`)}
+          ${field('h', 'heightCm', `Height (${u.size})`, `<input type="number" inputmode="decimal" id="${id('heightCm')}" class="lg-input" data-target-num="heightCm" min="1" max="${maxSize}" step="1" value="${fmtTrim(u.fromCm(num(t.heightCm, num(t.widthCm, 30))), 1)}" />`)}
+          ${field('off', 'offsetM', `Left / right (${u.dist})`, `<input type="number" inputmode="numeric" id="${id('offsetM')}" class="lg-input" data-target-num="offsetM" min="${-maxOff}" max="${maxOff}" step="1" value="${fmtInt(u.fromM(num(t.offsetM, 0)))}" />`)}
+          ${field('pos', 'prop', 'Position', `<input type="text" id="${id('prop')}" class="lg-input" maxlength="60" data-target-field="prop" value="${esc(t.prop || '')}" placeholder="Barricade" />`)}
+          ${field('note', 'notes', 'Note', `<input type="text" id="${id('notes')}" class="lg-input" maxlength="80" data-target-field="notes" value="${esc(t.notes || '')}" placeholder="Hold or order note" />`)}
         </div>
       </li>`;
   }
@@ -1663,7 +1696,7 @@ export class DopeStudioView {
       badge = (STAGE_SIZES.find((x) => x.id === this.printOrientation) || STAGE_SIZES[0]).label;
       cutHint = this.printOrientation === 'full-page'
         ? 'Prints on one A4 or Letter page.'
-        : 'Cut along the solid border and slide into a 3 × 5 in wrist sleeve.';
+        : 'Cut along the solid border and slide the card into a 3 × 5 in wrist sleeve.';
       this._stageTargets = data.targets;
     } else {
       const ranges = this._rangesFor(fmtDef, u);
@@ -1675,17 +1708,17 @@ export class DopeStudioView {
         case 'wrist-coach':
           paperHtml = this.renderWristCoach(rows, dope, u);
           badge = '3 × 5 in';
-          cutHint = 'Cut along the solid border and slide into a 3 × 5 in wrist sleeve.';
+          cutHint = 'Cut along the solid border and slide the card into a 3 × 5 in wrist sleeve.';
           break;
         case 'stock-tape':
           paperHtml = this.renderStockTape(rows, dope, u);
           badge = '180 × 32 mm';
-          cutHint = 'Cut along the dotted border and stick to the stock under clear tape.';
+          cutHint = 'Cut along the dashed border and stick the strip to the stock under clear tape.';
           break;
         case 'turret-tape': {
           paperHtml = this.renderTurretTape(rows, dope, u);
           badge = `${fmtTrim(this.turretCircumferenceMm, 1)} × ${fmtTrim(this.turretTapeHeightMm, 1)} mm`;
-          cutHint = 'Cut along the border, wrap around the elevation turret with ZERO at your zero mark, and cover with clear tape.';
+          cutHint = 'Cut along the border, wrap the strip around the elevation turret with ZERO at your zero mark, and cover it with clear tape.';
           settingsHtml = this._turretSettings(ranges.fromSolver ? this._turretOffTurn : 0);
           break;
         }
@@ -1699,7 +1732,7 @@ export class DopeStudioView {
         default:
           paperHtml = this.renderScopeCapSvg(rows, dope, u);
           badge = `Ø ${fmtTrim(this.scopeCapDiameterMm, 1)} mm`;
-          cutHint = `Cut along the dotted circle (Ø ${fmtTrim(this.scopeCapDiameterMm, 1)} mm) and place inside a clear flip-up scope cap.`;
+          cutHint = `Cut along the dotted circle (Ø ${fmtTrim(this.scopeCapDiameterMm, 1)} mm) and place the insert inside a clear flip-up scope cap.`;
           settingsHtml = this._scopeCapSettings();
           break;
       }
@@ -1709,42 +1742,36 @@ export class DopeStudioView {
 
     const tabs = FORMATS.map((f) => {
       const sel = f.id === fmtDef.id;
-      return `<button type="button" role="tab" id="dope-tab-${f.id}" class="dope-format btn-format ${sel ? 'active' : ''}" data-format="${f.id}" aria-selected="${sel}" aria-controls="dope-panel" tabindex="${sel ? '0' : '-1'}">
-          <span class="dope-format-icon">${icon(f.icon)}</span>
-          <span class="dope-format-text"><span class="dope-format-label">${f.label}</span><span class="dope-format-hint">${f.hint}</span></span>
-        </button>`;
+      return `<button type="button" role="tab" id="dope-tab-${f.id}" class="lg-tab" data-format="${f.id}" aria-selected="${sel}" aria-controls="dope-panel" tabindex="${sel ? '0' : '-1'}">${icon(f.icon)}<span>${f.label}</span></button>`;
     }).join('');
+    const vector = fmtDef.id === 'scope-cap' || fmtDef.id === 'turret-tape';
 
     // eslint-disable-next-line no-unsanitized/property -- reviewed: rifle/stage strings are esc()'d at source (_rifleInfo, stage fields); the rest are numbers and constants
     this.container.innerHTML = `
       <div class="dope-view">
-        <header class="view-header no-print">
+        <header class="lg-header view-header no-print">
           <div>
-            <h1>DOPE cards</h1>
-            <p>Print range cards for your scope cap, wrist, stock or a full page. <abbr title="Data On Previous Engagement">DOPE</abbr> is your elevation and wind holds for each distance.</p>
+            <h1 class="lg-title">DOPE cards</h1>
+            <p class="lg-muted">Print range cards for your scope cap, wrist, stock or a full page. <abbr title="Data On Previous Engagement">DOPE</abbr> is your elevation and wind holds for each distance.</p>
           </div>
         </header>
 
-        <div class="dope-formats no-print" role="tablist" aria-label="Card format">${tabs}</div>
+        <div class="lg-tabs dope-formats no-print" role="tablist" aria-label="Card format">${tabs}</div>
 
         <div class="dope-layout" id="dope-panel" role="tabpanel" aria-labelledby="dope-tab-${fmtDef.id}">
-          <section class="dope-settings panel no-print" aria-labelledby="dope-settings-heading">
-            <div class="panel-header">
-              <h2 id="dope-settings-heading">${icon(fmtDef.icon)} ${fmtDef.title}</h2>
-            </div>
-            <div class="panel-body">
-              <p class="dope-format-desc">${fmtDef.desc}</p>
-              ${settingsHtml}
-            </div>
+          <section class="lg-card dope-settings no-print" aria-labelledby="dope-settings-heading">
+            <h2 class="lg-subtitle dope-settings-title" id="dope-settings-heading">${icon(fmtDef.icon)} ${fmtDef.title}</h2>
+            <p class="lg-muted dope-format-desc">${fmtDef.desc}</p>
+            ${settingsHtml}
           </section>
 
-          <section class="dope-desk" aria-labelledby="dope-preview-heading">
-            <div class="desk-toolbar no-print">
-              <h2 id="dope-preview-heading" class="desk-title">Preview <span class="badge">${badge}</span></h2>
-              <div class="desk-actions">
-                <button type="button" class="btn-secondary-sm" data-action="copy-text" id="btn-copy-text">${icon('copy')} Copy as text</button>
-                <button type="button" class="btn-secondary-sm" data-action="save-image" id="btn-save-image">${icon('download')} Save image</button>
-                <button type="button" class="btn-primary-sm btn-print">${icon('print')} Print card</button>
+          <section class="lg-card dope-preview" aria-labelledby="dope-preview-heading">
+            <div class="dope-preview-head no-print">
+              <h2 class="lg-subtitle dope-preview-title" id="dope-preview-heading">Preview <span class="lg-chip lg-plain">${badge}</span></h2>
+              <div class="dope-actions">
+                <button type="button" class="lg-btn" data-action="copy-text" id="btn-copy-text">${icon('copy')} Copy as text</button>
+                <button type="button" class="lg-btn" data-action="save-image" id="btn-save-image">${icon('download')} ${vector ? 'Save SVG' : 'Save PNG'}</button>
+                <button type="button" class="lg-btn lg-btn-primary btn-print" id="btn-print">${icon('print')} Print</button>
               </div>
             </div>
             <div class="desk-surface">
@@ -1753,7 +1780,7 @@ export class DopeStudioView {
                 ${withRuler ? this._ruler() : ''}
               </div>
             </div>
-            <p class="dope-cut-hint no-print">${icon('info')} ${cutHint} Print at 100% scale (turn off “fit to page”).</p>
+            <p class="dope-cut-hint no-print">${icon('info')}<span>${cutHint} Print at 100% scale (turn off “fit to page”).</span></p>
           </section>
         </div>
         ${editorHtml}
@@ -1814,6 +1841,9 @@ export class DopeStudioView {
     area.style.setProperty('--preview-zoom', zoom.toFixed(3));
     // The scale bar is shown near true size, whatever the card's preview zoom
     area.style.setProperty('--ruler-zoom', (Math.min(zoom, 1.25) / zoom).toFixed(3));
+    // The settings column stays in view while scrolling, but only when it fits the window
+    const settings = this.container.querySelector('.dope-settings');
+    if (settings && typeof window !== 'undefined') settings.classList.toggle('is-sticky', settings.offsetHeight + 24 < window.innerHeight);
     this._checkStageFit();
   }
 
@@ -1824,6 +1854,8 @@ export class DopeStudioView {
       this._resizeObserver?.disconnect();
       this._resizeObserver = new ResizeObserver(() => this._fitPreview());
       this._resizeObserver.observe(desk);
+      const settings = this.container.querySelector('.dope-settings');
+      if (settings) this._resizeObserver.observe(settings);
     } else if (typeof window !== 'undefined' && !this._onWindowResize) {
       this._onWindowResize = () => this._fitPreview();
       window.addEventListener('resize', this._onWindowResize);
@@ -1898,8 +1930,9 @@ export class DopeStudioView {
 
   // ---- events -----------------------------------------------------------------------------------
 
-  _remember(label) {
-    this._undo = { label, stage: deepClone(this.prsStage) };
+  /** Keeps the stage before a destructive change; `where` is the place the undo notice shows. */
+  _remember(label, where = 'editor') {
+    this._undo = { label, where, stage: deepClone(this.prsStage) };
   }
 
   _handleClick(e) {
@@ -1925,12 +1958,12 @@ export class DopeStudioView {
         appState.notify('dopeRanges');
         toast('Using the default distances', 'ok');
         break;
-      case 'stage-orientation':
-        this.setPrintOrientation(btn.dataset.value);
+      case 'goto-targets': {
+        const heading = this.container.querySelector('#stage-targets-heading');
+        heading?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        heading?.focus({ preventScroll: true });
         break;
-      case 'card-theme':
-        this.setTheme(btn.dataset.value);
-        break;
+      }
       case 'add-prop': {
         const current = (stage.propsDescription || '').trim();
         const addition = `${btn.dataset.value.toLowerCase()} (2)`;
@@ -1948,8 +1981,10 @@ export class DopeStudioView {
         this._undo = null;
         this._saveStageState();
         this.render();
-        this.container.querySelector(`[data-action="${btn.dataset.action}"][data-idx="${j}"]:not([disabled])`)?.focus()
-          || this.container.querySelector(`#tgt-${j}-name`)?.focus();
+        // Keep focus on the same button of the moved target (or its other move button at the ends)
+        const dir = btn.dataset.action === 'target-up' ? 'up' : 'down';
+        const same = this.container.querySelector(`#tgt-${j}-${dir}`);
+        (same && !same.disabled ? same : this.container.querySelector(`#tgt-${j}-${dir === 'up' ? 'down' : 'up'}`))?.focus();
         break;
       }
       case 'target-copy': {
@@ -2007,10 +2042,12 @@ export class DopeStudioView {
         break;
       case 'undo':
         if (this._undo) {
+          const where = this._undo.where;
           this.prsStage = this._undo.stage;
           this._undo = null;
           this._saveStageState();
           this.render();
+          this.container.querySelector(where === 'settings' ? '#stage-preset-select' : '#stage-targets-heading')?.focus();
           toast('Undone', 'ok');
         }
         break;
@@ -2023,6 +2060,14 @@ export class DopeStudioView {
     const el = e.target;
     if (!el || !this.container.contains(el) || el.type === 'number') return;
     const stage = this.prsStage;
+    if (el.name === 'stage-size') {
+      this.setPrintOrientation(el.value);
+      return;
+    }
+    if (el.name === 'card-theme') {
+      this.setTheme(el.value);
+      return;
+    }
     switch (el.id) {
       case 'scope-cap-preset-select':
         if (el.value !== 'custom') {
@@ -2121,13 +2166,13 @@ export class DopeStudioView {
       const targets = this._stageTargets || [];
       const lines = [
         stage.name,
-        `Time ${s.timeLimitSec} s · ${s.totalRounds} shots · ${s.pace} s per shot`,
+        `Time ${s.timeLimitSec} s · ${plural(s.totalRounds, 'shot')} · ${s.pace} s per shot`,
         `Wind lull / base / gust: ${s.lull} / ${s.base} / ${s.gust} ${u.wind} from ${clockLabel(s.dir)} (${fmtInt(s.dir)}°)`,
       ];
       if (stage.propsDescription) lines.push(`Positions: ${stage.propsDescription}`);
       lines.push('');
       targets.forEach((t) => {
-        lines.push(`T${t.index} ${t.name}: ${t.displayDistance} ${t.displayDistUnit}, ${t.displayWidth} × ${t.displayHeight} ${t.displaySizeUnit}, ${t.rounds} shots${t.prop ? `, ${t.prop}` : ''}`);
+        lines.push(`T${t.index} ${t.name}: ${t.displayDistance} ${t.displayDistUnit}, ${t.displayWidth} × ${t.displayHeight} ${t.displaySizeUnit}, ${plural(Number(t.rounds), 'shot')}${t.prop ? `, ${t.prop}` : ''}`);
         lines.push(`   Elevation ${t.dialValue} ${t.dialUnit} (${fmtInt(t.clicks)} clicks) · wind ${t.holdDirLabel} ${t.lullHold} / ${t.baseHold} / ${t.gustHold} ${u.windAng}${t.notes ? ` · ${t.notes}` : ''}`);
       });
       return lines.join('\n');
@@ -2212,7 +2257,7 @@ export class DopeStudioView {
     if (this.activeFormat === 'prs-stage') {
       const s = this._stageSummary(this.prsStage, u);
       title = this.prsStage.name;
-      subtitle = `${s.timeLimitSec} s · ${s.totalRounds} shots · wind ${s.lull}/${s.base}/${s.gust} ${u.wind} from ${clockLabel(s.dir)} · ${profile.name}`;
+      subtitle = `${s.timeLimitSec} s · ${plural(s.totalRounds, 'shot')} · wind ${s.lull}/${s.base}/${s.gust} ${u.wind} from ${clockLabel(s.dir)} · ${profile.name}`;
       headers = ['Target', `Range ${u.dist}`, `Elev ${u.elev}`, 'Clicks', `Wind lull/base/gust ${u.windAng}`, 'Shots', 'Note'];
       rows = (this._stageTargets || []).map((t) => [`T${t.index} ${t.name}`, String(t.displayDistance), t.dialValue, fmtInt(t.clicks), `${t.holdDirLabel} ${t.lullHold} / ${t.baseHold} / ${t.gustHold}`, fmtInt(t.rounds), t.notes || '']);
       theme = this.cardTheme;

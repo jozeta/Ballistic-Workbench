@@ -15,7 +15,6 @@
   /* App chrome and anything marked screen-only */
   .app-sidebar,
   .app-art,
-  .app-art,
   .skip-link,
   .no-print,
   .lg-toaster,
@@ -36,6 +35,13 @@
   }
   body.lg-backdrop { background-image: none !important; }
 
+  /* The sidebar is hidden, so the app grid must not keep its sidebar column (the main area would
+     drop into that narrow column and shrink the cards) */
+  .lg-app {
+    display: block !important;
+    padding: 0 !important;
+  }
+
   #app-main-content {
     max-width: none !important;
     min-height: 0 !important;
@@ -43,10 +49,21 @@
     padding: 0 !important;
   }
 
-  /* DOPE cards: the desk becomes plain paper, the card prints at its true size */
+  /* DOPE cards: the preview card and its desk become plain paper, the card prints at its true size */
+  .dope-view,
   .dope-layout,
-  .dope-desk {
+  .dope-preview {
     display: block !important;
+    container-type: normal !important;
+  }
+  .dope-preview {
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
   .desk-surface {
     display: block !important;
