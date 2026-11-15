@@ -9,7 +9,9 @@ import { SolverLabView } from './solverLab.js';
 import { DopeStudioView } from './dopeStudio.js';
 import { ToolsView } from './tools.js';
 import { LibraryManagerView } from './libraryManager.js';
+import { GuideView } from './guide.js';
 
+const VIEWS = ['workspace', 'solverLab', 'dopeStudio', 'tools', 'libraryManager', 'guide'];
 const THEME_KEY = 'ballistic_theme_pref';
 const THEME_PREFS = ['system', 'light', 'dark'];
 
@@ -27,7 +29,7 @@ class BallisticWorkbenchApp {
     this.initPrintButtons();
 
     const initialHash = (typeof window !== 'undefined' ? window.location.hash.replace('#', '') : '') || 'workspace';
-    const validViews = ['workspace', 'solverLab', 'dopeStudio', 'tools', 'libraryManager'];
+    const validViews = VIEWS;
     this.switchView(validViews.includes(initialHash) ? initialHash : 'workspace');
 
     // Subscribe to unit changes to refresh header toggle label
@@ -203,6 +205,9 @@ class BallisticWorkbenchApp {
       case 'libraryManager':
         this.currentViewInstance = new LibraryManagerView(viewContainer);
         break;
+      case 'guide':
+        this.currentViewInstance = new GuideView(viewContainer);
+        break;
       case 'workspace':
       default:
         this.currentViewInstance = new WorkspaceView(viewContainer);
@@ -214,7 +219,7 @@ class BallisticWorkbenchApp {
     // Hash routing support #workspace, #solverLab, etc.
     window.addEventListener('hashchange', () => {
       const hash = window.location.hash.replace('#', '');
-      if (['workspace', 'solverLab', 'dopeStudio', 'tools', 'libraryManager'].includes(hash)) {
+      if (VIEWS.includes(hash)) {
         if (this.activeView !== hash) {
           this.switchView(hash);
         }
@@ -222,10 +227,18 @@ class BallisticWorkbenchApp {
     });
 
     // Custom view navigation event
+    // In-app links: dispatch new CustomEvent('navigate-view', { detail: { view, tool?, panel?, format? } })
+    // to open a view and, optionally, a tool (Tools), a result panel (Solver) or a card format (DOPE cards)
     window.addEventListener('navigate-view', (e) => {
-      if (e.detail && e.detail.view) {
-        this.switchView(e.detail.view);
-      }
+      const d = e.detail || {};
+      if (!VIEWS.includes(d.view)) return;
+      this.switchView(d.view);
+      const v = this.currentViewInstance;
+      if (d.tool) v?.setTool?.(d.tool);
+      if (d.panel) v?._showResultPanel?.(d.panel);
+      if (d.format) v?.setFormat?.(d.format);
+      document.getElementById('app-main-content')?.focus({ preventScroll: true });
+      window.scrollTo({ top: 0 });
     });
   }
 
@@ -252,6 +265,7 @@ class BallisticWorkbenchApp {
       { title: 'Go to Compare models', category: 'Go to', keywords: ['algorithm', 'lab', 'g1', 'g7', '4dof'], action: () => this.switchView('solverLab') },
       { title: 'Go to DOPE cards', category: 'Go to', keywords: ['print', 'range card', 'wrist coach', 'scope cap'], action: () => this.switchView('dopeStudio') },
       { title: 'Go to Tools', category: 'Go to', keywords: ['chrono', 'truing', 'wez'], action: () => this.switchView('tools') },
+      { title: 'Open the guide: from range day to DOPE chart', category: 'Go to', keywords: ['guide', 'how to', 'help', 'tutorial', 'steps', 'chronograph', 'sight height', 'zero'], action: () => this.switchView('guide') },
       { title: 'Go to Library', category: 'Go to', keywords: ['bullets', 'projectiles', 'rifles', 'profiles', 'import', 'export'], action: () => this.switchView('libraryManager') },
 
       { title: 'True muzzle velocity and drag', category: 'Tools', keywords: ['truing', 'calibrate', 'dsf'], action: openTool('truing') },
