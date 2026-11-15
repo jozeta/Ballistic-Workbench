@@ -3,49 +3,104 @@
  * Owned by src/ui/solverLab.js.
  */
 
-/* SOLVER LAB STYLES */
-.solver-lab-header, .dope-studio-header, .tools-header, .library-header {
+/* Legacy view headers still used by the DOPE cards and Tools views (kept until they move to .view-header) */
+.dope-studio-header, .tools-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 14px;
 }
+
+.lab-context {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--lg-text);
+  font-size: 13px;
+}
+.lab-context .lg-icon { width: 15px; height: 15px; color: var(--lg-muted); }
+
 .lab-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 14px;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
 }
-.lab-chart-panel {
-  min-height: 580px;
+
+/* Series colours: the same tokens the canvas reads through getPalette() */
+.lab-series-g7, .lab-model-g7 .lab-swatch { --series: var(--lg-accent); }
+.lab-series-g1, .lab-model-g1 .lab-swatch { --series: var(--lg-warn); }
+.lab-series-mpm, .lab-model-mpm .lab-swatch { --series: var(--lg-ok); }
+.lab-series-dof4, .lab-model-dof4 .lab-swatch { --series: var(--lg-accent-2); }
+.lab-swatch { width: 28px; height: 8px; flex: none; color: var(--series, var(--lg-accent)); }
+
+.lab-series-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 10px 16px 0;
 }
-.lab-chart-panel .chart-canvas-container,
+.lab-series { border: 1px solid var(--lg-line); }
+.lab-series[aria-pressed="false"] { opacity: .55; }
+.lab-series[aria-pressed="false"] .lab-swatch { color: var(--lg-muted); }
+
+.lab-mode .lg-tab[aria-pressed="true"] {
+  color: var(--lg-text);
+  background: linear-gradient(180deg, var(--lg-glass-fill-top), var(--lg-glass-fill-bottom)), var(--lg-glass-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .18), inset 0 0 0 1px var(--lg-glass-edge);
+}
+
+.lab-chart-panel { display: flex; flex-direction: column; }
+.lab-mode { max-width: 100%; overflow-x: auto; }
 .lab-chart-container {
-  min-height: 530px;
-  height: 530px;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 380px;
 }
 #solver-lab-canvas {
+  position: absolute;
+  top: 8px;
+  left: 4px;
   display: block;
-  width: 100%;
-  height: 100%;
+  width: calc(100% - 16px);
+  height: calc(100% - 8px);
 }
-.analysis-body {
-  padding: 12px;
+.lab-chart-hint { padding: 0 16px 14px; }
+
+.lab-about-body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding: 12px;
 }
-.analysis-card {
-  background-color: var(--bg-subcard);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 10px;
+.lab-model {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--lg-line);
+  border-radius: var(--lg-radius-control);
+  background: var(--lg-field);
 }
-.analysis-card h4 {
-  font-size: 12px;
-  margin-bottom: 4px;
-}
-.analysis-card p {
-  font-size: 11px;
-  color: var(--text-muted);
-}
+.lab-model-head { display: flex; align-items: center; gap: 8px; }
+.lab-model h3 { font-size: 13px; font-weight: 600; }
+.lab-model p { font-size: 13px; color: var(--lg-muted); line-height: 1.45; }
+.lab-model .badge { gap: 4px; }
+.lab-model .badge .lg-icon { width: 13px; height: 13px; }
 
+.lab-table-panel .panel-header .field-hint { margin: 0; }
+.lab-table td.lab-big { color: var(--lg-warn-text); font-weight: 600; }
+.lab-table th[scope="row"] { font-weight: 600; text-align: left; }
+
+@media (max-width: 1000px) {
+  .lab-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .lab-chart-container { min-height: 300px; }
+  #solver-lab-canvas { left: 0; width: calc(100% - 4px); }
+  .lab-series-bar { padding: 10px 12px 0; }
+  .lab-mode { flex-wrap: wrap; overflow: visible; }
+  .lab-chart-panel .panel-header { padding: 12px; }
+}

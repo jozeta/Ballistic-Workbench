@@ -13,7 +13,7 @@ const browser = {
   clearTimeout: 'readonly', setInterval: 'readonly', clearInterval: 'readonly', getComputedStyle: 'readonly',
   structuredClone: 'readonly', fetch: 'readonly', HTMLElement: 'readonly', Node: 'readonly', XMLSerializer: 'readonly',
   createImageBitmap: 'readonly', ImageData: 'readonly', devicePixelRatio: 'readonly', matchMedia: 'readonly',
-  LadaGlass: 'readonly', performance: 'readonly', crypto: 'readonly', DOMParser: 'readonly', getSelection: 'readonly',
+  LadaGlass: 'readonly', CSS: 'readonly', performance: 'readonly', crypto: 'readonly', DOMParser: 'readonly', getSelection: 'readonly',
 };
 
 export default [

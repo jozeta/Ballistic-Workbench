@@ -842,7 +842,7 @@ export class WorkspaceView {
     // Quick Add New Rifle Modal Trigger
     const quickAddBtn = this.container.querySelector('#btn-quick-add-rifle');
     quickAddBtn?.addEventListener('click', () => {
-      new RifleBuilderModal(() => this.refresh()).open();
+      new RifleBuilderModal().open(); // the 'profiles' change re-renders this view
     });
 
     // Target Range Slider

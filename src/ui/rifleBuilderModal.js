@@ -1,305 +1,548 @@
 /**
- * Ballistic Workbench - Rifle Profile Builder Modal
- * Provides interactive modal dialog to build, calibrate, and persist new rifle & optic rigs.
+ * Ballistic Workbench - rifle dialog (new rifle and edit rifle).
+ *
+ *   new RifleBuilderModal(onSaved).open()          new rifle; it becomes the rifle in use
+ *   new RifleBuilderModal(onSaved).open(profile)   edit that rifle in place (same id)
+ *
+ * A native <dialog> opened through LadaGlass.modal (focus trap, Esc, backdrop click, focus goes
+ * back to the button that opened it), with a showModal() fallback. Every number is validated
+ * against its min/max; Save is blocked with inline messages instead of swapping in defaults.
+ * The dialog closes when the user switches view.
  */
 
 import { appState } from '../core/state.js';
 import { esc } from '../core/escape.js';
 import { UnitConverter } from '../core/units.js';
+import { icon } from './icons.js';
+import { toast } from './notify.js';
+import { parseNumber, rangeError, setFieldError } from './fields.js';
+
+const MOA = Math.PI / 180 / 60;
+const CLICKS = [
+  { id: '0.1mrad', name: '0.1 MRAD', rad: 0.0001, unit: 'MRAD' },
+  { id: '0.05mrad', name: '0.05 MRAD', rad: 0.00005, unit: 'MRAD' },
+  { id: '0.25moa', name: '1/4 MOA', rad: MOA * 0.25, unit: 'MOA' },
+  { id: '0.125moa', name: '1/8 MOA', rad: MOA * 0.125, unit: 'MOA' },
+];
+// unit: which click unit the reticle's marks are in ('any' = plain crosshair without hash marks)
+const RETICLES = [
+  { id: 'EBR-8 MRAD', name: 'Vortex EBR-8', unit: 'MRAD' },
+  { id: 'Kahles SKMR4', name: 'Kahles SKMR4', unit: 'MRAD' },
+  { id: 'Leupold PR2-MIL', name: 'Leupold PR2-MIL', unit: 'MRAD' },
+  { id: 'Mil-XT', name: 'Nightforce Mil-XT', unit: 'MRAD' },
+  { id: 'Tremor3', name: 'Horus Tremor3', unit: 'MRAD' },
+  { id: 'Mil-Dot', name: 'Mil-Dot', unit: 'MRAD' },
+  { id: 'ACSS DMR', name: 'Primary Arms ACSS DMR', unit: 'MRAD' },
+  { id: 'EBR-2C MOA', name: 'Vortex EBR-2C MOA', unit: 'MOA' },
+  { id: 'German #4', name: 'German #4 (no hold marks)', unit: 'any' },
+];
+const G1_PER_G7 = 1.95;
 
 export class RifleBuilderModal {
   constructor(onSaved = null) {
     this.onSaved = onSaved;
-    this.modalEl = null;
+    this.dialog = null;
+    this.profile = null;
+    this._onHash = () => this.close();
   }
 
-  open() {
-    this.close(); // Clean up if existing
+  _units() {
     const isImp = appState.state.systemUnits === 'imperial';
+    const du = appState.state.displayUnits || {};
+    const vel = du.velocity === 'fps' || du.velocity === 'm/s' ? du.velocity : isImp ? 'fps' : 'm/s';
+    const dist = du.distance === 'yd' || du.distance === 'm' ? du.distance : isImp ? 'yd' : 'm';
+    const sh = du.sightHeight === 'in' || du.sightHeight === 'cm' ? du.sightHeight : isImp ? 'in' : 'cm';
+    return { vel, dist, sh };
+  }
+
+  _limits() {
+    const u = this._units();
+    return {
+      mv: u.vel === 'fps' ? [600, 4500, 1] : [180, 1400, 0.1],
+      sh: u.sh === 'in' ? [0.4, 6, 0.01] : [1, 15, 0.1],
+      zero: u.dist === 'yd' ? [25, 1000, 1] : [25, 1000, 1],
+    };
+  }
+
+  /** open() for a new rifle, open(profile) to edit that rifle. */
+  open(profile = null) {
+    this.close();
+    this.profile = profile && appState.state.profiles.includes(profile) ? profile : null;
+    const editing = !!this.profile;
+    const p = this.profile;
+    const u = this._units();
+    const lim = this._limits();
     const bullets = appState.state.projectilesLibrary || [];
 
-    const modalHtml = `
-      <div id="rifle-builder-modal-root" class="palette-modal open">
-        <div class="palette-backdrop" id="rf-modal-backdrop"></div>
-        <div class="rifle-modal-container">
-          <div class="rifle-modal-header">
+    // Starting values (edit: the rifle; new: a sensible 6.5 Creedmoor-like start)
+    const b = p?.bullet || {};
+    const libBullet = p ? bullets.find((x) => x.id === b.id) : null;
+    const mvMs = p ? p.muzzleVelocityMs : 825;
+    const shM = p ? p.sightHeightM : 0.048;
+    const zeroM = p ? p.zeroDistanceM : u.dist === 'yd' ? 91.44 : 100;
+    const click = CLICKS.find((c) => Math.abs(c.rad - (p?.optic?.clickValueRad ?? (u.vel === 'fps' ? MOA * 0.25 : 0.0001))) < 1e-7) || CLICKS[0];
+    const reticleId = p?.optic?.reticle || (click.unit === 'MOA' ? 'EBR-2C MOA' : 'EBR-8 MRAD');
+
+    const round = (v, step) => {
+      const d = String(step).includes('.') ? String(step).split('.')[1].length : 0;
+      return Number(v.toFixed(d));
+    };
+    const mvDisp = round(UnitConverter.fromSI(mvMs, u.vel), lim.mv[2]);
+    const shDisp = round(UnitConverter.fromSI(shM, u.sh), lim.sh[2]);
+    const zeroDisp = Math.round(UnitConverter.fromSI(zeroM, u.dist));
+
+    // Bullet options grouped by caliber
+    const groups = new Map();
+    for (const x of bullets) {
+      const key = x.caliber || 'Other';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(x);
+    }
+    const bulletOptions = [...groups.entries()].map(([cal, list]) => `
+      <optgroup label="${esc(cal)}">
+        ${list.map((x) => `<option value="${esc(x.id)}" ${libBullet && libBullet.id === x.id ? 'selected' : ''}>${esc(x.name)} (${Number(x.weightGr)} gr)</option>`).join('')}
+      </optgroup>`).join('');
+
+    const dm = b.dragModel === 'G1' ? 'G1' : 'G7';
+    const bcVal = p ? (dm === 'G1' ? b.bcG1 : b.bcG7) : 0.315;
+    const title = editing ? 'Edit rifle' : 'New rifle';
+    const v = (x) => esc(x ?? '');
+
+    const html = `
+      <dialog class="lg-modal lg-modal-lg rifle-dialog" aria-labelledby="rf-title" aria-describedby="rf-subtitle">
+        <form id="rifle-builder-form" class="rifle-dialog-form" novalidate>
+          <div class="rifle-dialog-head">
             <div>
-              <h3>➕ Rifle & Optic Profile Builder</h3>
-              <p class="subtitle">Configure a new rifle, optic turret, and match ammunition profile</p>
+              <h2 class="lg-modal-title" id="rf-title">${title}</h2>
+              <p class="rifle-dialog-sub" id="rf-subtitle">Rifle, scope and ammunition${editing ? ` for ${esc(p.name)}` : ''}</p>
             </div>
-            <button id="btn-close-rifle-modal" class="btn-close-x">✕</button>
+            <button type="button" class="btn-ghost-sm btn-icon-only" data-lg-close value="" data-close aria-label="Close">${icon('x')}</button>
           </div>
 
-          <form id="rifle-builder-form" class="rifle-modal-body">
-            <!-- SECTION 1: RIFLE IDENTIFICATION -->
-            <div class="modal-section-title">1. Rifle Platform</div>
-            <div class="field-grid-2">
-              <div>
-                <label>Rifle Name *</label>
-                <input type="text" id="rf-name" class="form-input" placeholder="e.g. Proof Research Elevation 6.5 PRC" required />
-              </div>
-              <div>
-                <label>Caliber *</label>
-                <input type="text" id="rf-caliber" class="form-input" placeholder="e.g. 6.5 Creedmoor / .264" required />
-              </div>
-            </div>
-            <div class="field-row mt-2">
-              <label>Description / Usage</label>
-              <input type="text" id="rf-desc" class="form-input" placeholder="e.g. PRS Competition Rig with Bartlein 26 inch barrel" />
-            </div>
-
-            <!-- SECTION 2: BARREL & BALLISTICS -->
-            <div class="modal-section-title mt-3">2. Barrel & Ammunition</div>
-            <div class="field-row">
-              <label>Match Projectile (Select from Database or Custom)</label>
-              <select id="rf-bullet-select" class="form-select">
-                <option value="custom">-- Custom Bullet Parameters --</option>
-                ${bullets.map((b) => `<option value="${esc(b.id)}">${esc(b.manufacturer)} - ${esc(b.name)} (${b.weightGr}gr, BC ${b.bcG7 || b.bcG1})</option>`).join('')}
-              </select>
-            </div>
-
-            <div class="field-grid-3 mt-2">
-              <div>
-                <label>Bullet Name</label>
-                <input type="text" id="rf-bullet-name" class="form-input" value="Custom Match Bullet" />
-              </div>
-              <div>
-                <label>Bullet Weight (gr) *</label>
-                <input type="number" id="rf-weight" class="form-input" min="20" max="1000" value="140" required />
-              </div>
-              <div>
-                <label>Diameter (in)</label>
-                <input type="number" id="rf-dia" class="form-input" step="0.001" value="0.264" />
-              </div>
-            </div>
-
-            <div class="field-grid-3 mt-2">
-              <div>
-                <label>Drag Model</label>
-                <select id="rf-drag-model" class="form-select">
-                  <option value="G7">G7 (Boat-tail)</option>
-                  <option value="G1">G1 (Flat-base)</option>
-                  <option value="DOPPLER">Doppler Radar</option>
-                </select>
-              </div>
-              <div>
-                <label>Ballistic Coeff (BC)</label>
-                <input type="number" id="rf-bc" class="form-input" step="0.001" value="0.320" />
-              </div>
-              <div>
-                <label>Muzzle Velocity (${isImp ? 'fps' : 'm/s'}) *</label>
-                <input type="number" id="rf-mv" class="form-input" value="${isImp ? 2750 : 838}" required />
-              </div>
-            </div>
-
-            <div class="field-grid-3 mt-2">
-              <div>
-                <label>Twist Rate (1:X")</label>
-                <input type="number" id="rf-twist" class="form-input" step="0.1" value="8.0" />
-              </div>
-              <div>
-                <label>Sight Height (${isImp ? 'in' : 'cm'})</label>
-                <input type="number" id="rf-sh" class="form-input" step="0.05" value="${isImp ? 1.85 : 4.7}" />
-              </div>
-              <div>
-                <label>Zero Range (${isImp ? 'yd' : 'm'})</label>
-                <input type="number" id="rf-zero" class="form-input" step="25" value="100" />
-              </div>
-            </div>
-
-            <!-- SECTION 3: OPTIC & TURRETS -->
-            <div class="modal-section-title mt-3">3. Optic & Turret Setup</div>
-            <div class="field-grid-2">
-              <div>
-                <label>Optic Model</label>
-                <input type="text" id="rf-optic-model" class="form-input" placeholder="e.g. Vortex Razor HD Gen III 6-36x56" value="Precision Match 5-25x56 FFP" />
-              </div>
-              <div>
-                <label>Focal Plane</label>
-                <select id="rf-focal-plane" class="form-select">
-                  <option value="FFP">FFP (First Focal Plane)</option>
-                  <option value="SFP">SFP (Second Focal Plane)</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="field-grid-3 mt-2">
-              <div>
-                <label>Reticle Graticule</label>
-                <select id="rf-reticle" class="form-select">
-                  <option value="EBR-8 MRAD">Vortex EBR-8 MRAD</option>
-                  <option value="Kahles SKMR4">Kahles SKMR4 (PRS)</option>
-                  <option value="Leupold PR2-MIL">Leupold PR2-MIL</option>
-                  <option value="Mil-XT">Nightforce Mil-XT</option>
-                  <option value="Tremor3">Horus Tremor3</option>
-                  <option value="Mil-Dot">USMC / Army Mil-Dot</option>
-                  <option value="EBR-2C MOA">Vortex EBR-2C MOA</option>
-                  <option value="German #4">German #4 Hunting</option>
-                  <option value="ACSS DMR">Primary Arms ACSS DMR</option>
-                </select>
-              </div>
-              <div>
-                <label>Turret Click Value</label>
-                <select id="rf-click-value" class="form-select">
-                  <option value="0.0001|0.1 MRAD">0.1 MRAD (1cm @ 100m)</option>
-                  <option value="0.0000727|1/4 MOA">1/4 MOA (0.26in @ 100yd)</option>
-                  <option value="0.0000363|1/8 MOA">1/8 MOA Target</option>
-                  <option value="0.00005|0.05 MRAD">0.05 MRAD ELR</option>
-                </select>
-              </div>
-              <div>
-                <label>Magnification (Min - Max)</label>
-                <div class="field-grid-2">
-                  <input type="number" id="rf-mag-min" class="form-input" value="5" min="1" max="50" placeholder="Min" />
-                  <input type="number" id="rf-mag-max" class="form-input" value="25" min="1" max="60" placeholder="Max" />
+          <div class="lg-modal-body rifle-dialog-body">
+            <fieldset class="rf-section">
+              <legend>${icon('rifle')} Rifle</legend>
+              <div class="field-grid-2">
+                <div>
+                  <label class="field-label" for="rf-name">Name</label>
+                  <input type="text" id="rf-name" class="form-input" maxlength="120" required placeholder="e.g. Tikka T3x 6.5 Creedmoor" value="${v(p?.name)}" />
+                </div>
+                <div>
+                  <label class="field-label" for="rf-caliber">Caliber</label>
+                  <input type="text" id="rf-caliber" class="form-input" maxlength="80" required placeholder="e.g. 6.5 Creedmoor" value="${v(p?.caliber)}" />
+                </div>
+                <div class="field-span-2">
+                  <label class="field-label" for="rf-desc">Notes (optional)</label>
+                  <input type="text" id="rf-desc" class="form-input" maxlength="200" placeholder="e.g. 26 in barrel, match load" value="${v(p?.description)}" />
                 </div>
               </div>
-            </div>
+              <div class="field-grid-3">
+                <div>
+                  <label class="field-label" for="rf-mv">Muzzle velocity (${u.vel})</label>
+                  <input type="number" inputmode="decimal" id="rf-mv" class="form-input" min="${lim.mv[0]}" max="${lim.mv[1]}" step="${lim.mv[2]}" value="${mvDisp}" required aria-describedby="rf-mv-hint" />
+                  <p class="field-hint" id="rf-mv-hint"></p>
+                </div>
+                <div>
+                  <label class="field-label" for="rf-twist">Barrel twist (1 in … in)</label>
+                  <input type="number" inputmode="decimal" id="rf-twist" class="form-input" min="5" max="20" step="0.25" value="${p ? p.twistRateIn : 8}" />
+                </div>
+                <div>
+                  <label class="field-label" for="rf-twist-dir">Twist direction</label>
+                  <select id="rf-twist-dir" class="form-select">
+                    <option value="right" ${p?.twistDirection !== 'left' ? 'selected' : ''}>Right hand</option>
+                    <option value="left" ${p?.twistDirection === 'left' ? 'selected' : ''}>Left hand</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label" for="rf-sh">Sight height (${u.sh})</label>
+                  <input type="number" inputmode="decimal" id="rf-sh" class="form-input" min="${lim.sh[0]}" max="${lim.sh[1]}" step="${lim.sh[2]}" value="${shDisp}" aria-describedby="rf-sh-hint" />
+                  <p class="field-hint" id="rf-sh-hint">Centre of the bore to centre of the scope.</p>
+                </div>
+                <div>
+                  <label class="field-label" for="rf-zero">Zero distance (${u.dist})</label>
+                  <input type="number" inputmode="decimal" id="rf-zero" class="form-input" min="${lim.zero[0]}" max="${lim.zero[1]}" step="1" value="${zeroDisp}" />
+                </div>
+              </div>
+            </fieldset>
 
-            <!-- MODAL ACTIONS -->
-            <div class="rifle-modal-actions mt-4">
-              <button type="button" id="btn-cancel-rifle-modal" class="btn-secondary">Cancel</button>
-              <button type="submit" id="btn-save-rifle-profile" class="btn-primary">💾 Save Rifle Profile</button>
-            </div>
-          </form>
-        </div>
-      </div>
+            <fieldset class="rf-section">
+              <legend>${icon('bullet')} Bullet</legend>
+              <div class="field-row">
+                <label class="field-label" for="rf-bullet-select">Bullet</label>
+                <select id="rf-bullet-select" class="form-select">
+                  <option value="custom" ${libBullet ? '' : 'selected'}>Enter my own…</option>
+                  ${bulletOptions}
+                </select>
+              </div>
+              <div class="field-grid-3">
+                <div class="field-span-2">
+                  <label class="field-label" for="rf-bullet-name">Bullet name</label>
+                  <input type="text" id="rf-bullet-name" class="form-input rf-bullet-field" maxlength="120" required value="${v(p ? b.name : 'Custom bullet')}" />
+                </div>
+                <div>
+                  <label class="field-label" for="rf-weight">Weight (gr)</label>
+                  <input type="number" inputmode="decimal" id="rf-weight" class="form-input rf-bullet-field" min="15" max="1500" step="0.1" value="${p ? b.weightGr : 140}" />
+                </div>
+                <div>
+                  <label class="field-label" for="rf-dia">Diameter (in)</label>
+                  <input type="number" inputmode="decimal" id="rf-dia" class="form-input rf-bullet-field" min="0.17" max="1" step="0.001" value="${p ? b.diameterIn : 0.264}" />
+                </div>
+                <div>
+                  <label class="field-label" for="rf-len">Length (in)</label>
+                  <input type="number" inputmode="decimal" id="rf-len" class="form-input rf-bullet-field" min="0.25" max="4" step="0.001" value="${p ? Number((b.lengthIn || b.diameterIn * 4.2).toFixed(3)) : 1.378}" />
+                </div>
+                <div>
+                  <label class="field-label" for="rf-drag-model">Drag model</label>
+                  <select id="rf-drag-model" class="form-select rf-bullet-field">
+                    <option value="G7" ${dm === 'G7' ? 'selected' : ''}>G7 (boat-tail)</option>
+                    <option value="G1" ${dm === 'G1' ? 'selected' : ''}>G1 (flat-base)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label" for="rf-bc" id="rf-bc-label"><abbr title="Ballistic coefficient">BC</abbr> (${dm})</label>
+                  <input type="number" inputmode="decimal" id="rf-bc" class="form-input rf-bullet-field" min="0.05" max="${dm === 'G1' ? 2 : 1.5}" step="0.001" value="${bcVal}" aria-describedby="rf-bc-hint" />
+                </div>
+              </div>
+              <p class="field-hint" id="rf-bc-hint">Picked from the list, both G1 and G7 values come with the bullet. For your own bullet the other one is estimated.</p>
+            </fieldset>
+
+            <fieldset class="rf-section">
+              <legend>${icon('scope-cap')} Scope</legend>
+              <div class="field-grid-2">
+                <div class="field-span-2">
+                  <label class="field-label" for="rf-optic-model">Scope model</label>
+                  <input type="text" id="rf-optic-model" class="form-input" maxlength="120" placeholder="e.g. Vortex Razor HD Gen III 6-36x56" value="${v(p?.optic?.model ?? '')}" />
+                </div>
+                <div>
+                  <label class="field-label" for="rf-click-value">Click value</label>
+                  <select id="rf-click-value" class="form-select">
+                    ${CLICKS.map((c) => `<option value="${c.id}" ${c.id === click.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="field-label" for="rf-reticle">Reticle</label>
+                  <select id="rf-reticle" class="form-select" aria-describedby="rf-reticle-hint">
+                    ${RETICLES.map((r) => `<option value="${esc(r.id)}" data-unit="${r.unit}" ${r.id === reticleId ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
+                  </select>
+                  <p class="field-hint" id="rf-reticle-hint">Only reticles that match the click unit are offered.</p>
+                </div>
+                <div>
+                  <label class="field-label" for="rf-focal-plane">Focal plane</label>
+                  <select id="rf-focal-plane" class="form-select">
+                    <option value="FFP" ${p?.optic?.focalPlane !== 'SFP' ? 'selected' : ''}>First focal plane (FFP)</option>
+                    <option value="SFP" ${p?.optic?.focalPlane === 'SFP' ? 'selected' : ''}>Second focal plane (SFP)</option>
+                  </select>
+                </div>
+                <div class="rf-mag">
+                  <span class="field-label" id="rf-mag-label">Magnification (lowest to highest)</span>
+                  <div class="rf-mag-row">
+                    <label class="lg-sr-only" for="rf-mag-min">Lowest magnification</label>
+                    <input type="number" inputmode="numeric" id="rf-mag-min" class="form-input" min="1" max="60" step="1" value="${p?.optic?.minMagnification ?? 5}" aria-describedby="rf-mag-label" />
+                    <span class="rf-mag-sep">to</span>
+                    <label class="lg-sr-only" for="rf-mag-max">Highest magnification</label>
+                    <input type="number" inputmode="numeric" id="rf-mag-max" class="form-input" min="1" max="100" step="1" value="${p?.optic?.maxMagnification ?? 25}" aria-describedby="rf-mag-label" />
+                  </div>
+                </div>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="lg-modal-actions">
+            <button type="button" class="btn-secondary-sm" data-lg-close value="" data-close>Cancel</button>
+            <button type="submit" class="btn-primary">${icon('save')} Save rifle</button>
+          </div>
+        </form>
+      </dialog>
     `;
 
-    const div = document.createElement('div');
-    div.innerHTML = modalHtml;
-    this.modalEl = div.firstElementChild;
-    document.body.appendChild(this.modalEl);
+    const holder = document.createElement('div');
+    // eslint-disable-next-line no-unsanitized/property -- reviewed: user/stored strings go through esc(); the rest are numbers and constants
+    holder.innerHTML = html;
+    this.dialog = holder.firstElementChild;
+    document.body.append(this.dialog);
+    this.trigger = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    this.libBullet = libBullet || null;
+    this.mvTouched = editing;
 
-    this._bindModalEvents();
+    this._bind();
+    this._syncReticles();
+    this._updateMvHint();
+
+    // onSaved runs once the dialog is fully closed, so the caller can move focus back into the page
+    // (while the close animation runs, the page behind the modal is still inert)
+    const onClosed = () => {
+      window.removeEventListener('hashchange', this._onHash);
+      window.removeEventListener('navigate-view', this._onHash);
+      this.dialog?.remove();
+      this.dialog = null;
+      const saved = this._saved;
+      this._saved = null;
+      if (saved) this.onSaved?.(saved);
+    };
+    if (typeof LadaGlass !== 'undefined' && LadaGlass.overlay?.open) {
+      LadaGlass.overlay.open(this.dialog, { trigger: this.trigger, modal: true, onClose: onClosed });
+    } else {
+      this.dialog.addEventListener('close', () => {
+        onClosed();
+        this.trigger?.focus?.();
+      });
+      this.dialog.addEventListener('click', (e) => {
+        if (e.target.closest('[data-close]')) this.close();
+      });
+      this.dialog.showModal();
+    }
+    window.addEventListener('hashchange', this._onHash);
+    window.addEventListener('navigate-view', this._onHash);
+    this.dialog.querySelector('#rf-name')?.focus();
   }
 
   close() {
-    if (this.modalEl && this.modalEl.parentElement) {
-      this.modalEl.parentElement.removeChild(this.modalEl);
-      this.modalEl = null;
+    const d = this.dialog;
+    if (!d) return;
+    if (typeof LadaGlass !== 'undefined' && LadaGlass.overlay?.close && d.open) {
+      LadaGlass.overlay.close(d, '');
+    } else if (d.open) {
+      d.close();
+    } else {
+      d.remove();
+      this.dialog = null;
     }
   }
 
-  _bindModalEvents() {
-    if (!this.modalEl) return;
+  _q(sel) {
+    return this.dialog?.querySelector(sel);
+  }
 
-    const closeBtn = this.modalEl.querySelector('#btn-close-rifle-modal');
-    const cancelBtn = this.modalEl.querySelector('#btn-cancel-rifle-modal');
-    const backdrop = this.modalEl.querySelector('#rf-modal-backdrop');
+  _click() {
+    return CLICKS.find((c) => c.id === this._q('#rf-click-value')?.value) || CLICKS[0];
+  }
 
-    closeBtn?.addEventListener('click', () => this.close());
-    cancelBtn?.addEventListener('click', () => this.close());
-    backdrop?.addEventListener('click', () => this.close());
+  /** Keep the reticle consistent with the click unit: hide reticles in the other unit. */
+  _syncReticles() {
+    const unit = this._click().unit;
+    const sel = this._q('#rf-reticle');
+    if (!sel) return;
+    let selectedOk = false;
+    for (const opt of sel.options) {
+      const ok = opt.dataset.unit === 'any' || opt.dataset.unit === unit;
+      opt.disabled = !ok;
+      opt.hidden = !ok;
+      if (opt.selected && ok) selectedOk = true;
+    }
+    if (!selectedOk) sel.value = unit === 'MOA' ? 'EBR-2C MOA' : 'EBR-8 MRAD';
+  }
 
-    // Projectile dropdown quick-fill
-    const bulletSel = this.modalEl.querySelector('#rf-bullet-select');
-    bulletSel?.addEventListener('change', (e) => {
-      const bId = e.target.value;
-      if (bId === 'custom') return;
-      const b = (appState.state.projectilesLibrary || []).find((x) => x.id === bId);
-      if (!b) return;
+  _updateMvHint() {
+    const hint = this._q('#rf-mv-hint');
+    if (!hint) return;
+    const b = this.libBullet;
+    const ms = b ? (b.factoryVelocityMs || (b.factoryVelocityFps ? b.factoryVelocityFps * 0.3048 : 0)) : 0;
+    hint.replaceChildren();
+    if (!ms) return;
+    const u = this._units();
+    const disp = Math.round(UnitConverter.fromSI(ms, u.vel));
+    hint.append(document.createTextNode(`Factory: ${disp} ${u.vel}. Your chronograph value is better. `));
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-link';
+    btn.textContent = 'Use factory';
+    btn.addEventListener('click', () => {
+      const mv = this._q('#rf-mv');
+      mv.value = String(disp);
+      setFieldError(mv, '');
+      this.mvTouched = true;
+    });
+    hint.append(btn);
+  }
 
-      const isImp = appState.state.systemUnits === 'imperial';
-      this.modalEl.querySelector('#rf-bullet-name').value = b.name;
-      this.modalEl.querySelector('#rf-weight').value = b.weightGr;
-      this.modalEl.querySelector('#rf-dia').value = b.diameterIn;
-      this.modalEl.querySelector('#rf-drag-model').value = b.dragModel || 'G7';
-      this.modalEl.querySelector('#rf-bc').value = b.dragModel === 'G1' ? b.bcG1 : (b.bcG7 || b.bcG1);
-      if (b.factoryVelocityFps) {
-        this.modalEl.querySelector('#rf-mv').value = isImp ? b.factoryVelocityFps : b.factoryVelocityMs;
+  _bind() {
+    const d = this.dialog;
+    d.querySelector('#rifle-builder-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this._save();
+    });
+
+    // Live validation for every number field
+    d.querySelectorAll('input[type="number"]').forEach((input) => {
+      input.addEventListener('change', () => this._num(input));
+    });
+    d.querySelectorAll('input[required][type="text"]').forEach((input) => {
+      input.addEventListener('input', () => {
+        if (input.value.trim()) setFieldError(input, '');
+      });
+    });
+    this._q('#rf-mv').addEventListener('input', () => {
+      this.mvTouched = true;
+    });
+
+    this._q('#rf-click-value').addEventListener('change', () => this._syncReticles());
+
+    this._q('#rf-drag-model').addEventListener('change', () => {
+      const g1 = this._q('#rf-drag-model').value === 'G1';
+      const label = this._q('#rf-bc-label');
+      label.replaceChildren();
+      const abbr = document.createElement('abbr');
+      abbr.title = 'Ballistic coefficient';
+      abbr.textContent = 'BC';
+      label.append(abbr, document.createTextNode(` (${g1 ? 'G1' : 'G7'})`));
+      const bc = this._q('#rf-bc');
+      bc.max = g1 ? '2' : '1.5';
+      if (this.libBullet) {
+        const val = g1 ? this.libBullet.bcG1 : this.libBullet.bcG7;
+        if (Number(val) > 0) bc.value = String(val);
       }
     });
 
-    // Form Submit
-    const form = this.modalEl.querySelector('#rifle-builder-form');
-    form?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      this._saveProfile();
+    // Picking a bullet fills its fields; typing in a bullet field makes it "my own"
+    this._q('#rf-bullet-select').addEventListener('change', (e) => {
+      const id = e.target.value;
+      const b = id === 'custom' ? null : (appState.state.projectilesLibrary || []).find((x) => x.id === id);
+      this.libBullet = b || null;
+      if (b) {
+        this._q('#rf-bullet-name').value = b.name;
+        this._q('#rf-weight').value = String(b.weightGr);
+        this._q('#rf-dia').value = String(b.diameterIn);
+        this._q('#rf-len').value = String(Number((b.lengthIn || b.diameterIn * 4.2).toFixed(3)));
+        const dm = b.dragModel === 'G1' ? 'G1' : 'G7';
+        this._q('#rf-drag-model').value = dm;
+        this._q('#rf-drag-model').dispatchEvent(new Event('change'));
+        this.dialog.querySelectorAll('.rf-bullet-field').forEach((el) => setFieldError(el, ''));
+        const ms = b.factoryVelocityMs || (b.factoryVelocityFps ? b.factoryVelocityFps * 0.3048 : 0);
+        if (!this.mvTouched && ms) {
+          const u = this._units();
+          this._q('#rf-mv').value = String(Math.round(UnitConverter.fromSI(ms, u.vel)));
+        }
+        if (!this._q('#rf-caliber').value.trim() && b.caliber) this._q('#rf-caliber').value = b.caliber;
+      }
+      this._updateMvHint();
+    });
+    this.dialog.querySelectorAll('.rf-bullet-field').forEach((el) => {
+      if (el.id === 'rf-drag-model') return;
+      el.addEventListener('input', () => {
+        if (!this.libBullet) return;
+        this.libBullet = null;
+        this._q('#rf-bullet-select').value = 'custom';
+        this._updateMvHint();
+      });
     });
   }
 
-  _saveProfile() {
-    const isImp = appState.state.systemUnits === 'imperial';
+  /** Validates one number input; returns the value or NaN. */
+  _num(input) {
+    const value = parseNumber(input.value);
+    const error = rangeError(input, value);
+    setFieldError(input, error);
+    return error ? NaN : value;
+  }
 
-    const name = this.modalEl.querySelector('#rf-name').value.trim();
-    const caliber = this.modalEl.querySelector('#rf-caliber').value.trim();
-    const desc = this.modalEl.querySelector('#rf-desc').value.trim() || 'Custom Precision Rifle Setup';
+  _save() {
+    const d = this.dialog;
+    const u = this._units();
+    const text = (id) => this._q(`#${id}`).value.trim();
+    const num = (id) => this._num(this._q(`#${id}`));
 
-    const bulletName = this.modalEl.querySelector('#rf-bullet-name').value.trim();
-    const weightGr = parseFloat(this.modalEl.querySelector('#rf-weight').value) || 140;
-    const diaIn = parseFloat(this.modalEl.querySelector('#rf-dia').value) || 0.264;
-    const dragModel = this.modalEl.querySelector('#rf-drag-model').value || 'G7';
-    const bcVal = parseFloat(this.modalEl.querySelector('#rf-bc').value) || 0.320;
+    const values = {
+      mv: num('rf-mv'), twist: num('rf-twist'), sh: num('rf-sh'), zero: num('rf-zero'),
+      weight: num('rf-weight'), dia: num('rf-dia'), len: num('rf-len'), bc: num('rf-bc'),
+      magMin: num('rf-mag-min'), magMax: num('rf-mag-max'),
+    };
+    for (const id of ['rf-name', 'rf-caliber', 'rf-bullet-name']) {
+      const el = this._q(`#${id}`);
+      setFieldError(el, el.value.trim() ? '' : 'This is needed');
+    }
+    if (Number.isFinite(values.magMin) && Number.isFinite(values.magMax) && values.magMin > values.magMax) {
+      setFieldError(this._q('#rf-mag-max'), 'Must be at least the lowest magnification');
+    }
 
-    const rawMv = parseFloat(this.modalEl.querySelector('#rf-mv').value) || (isImp ? 2750 : 838);
-    const mvMs = isImp ? rawMv / 3.28084 : rawMv;
+    const firstBad = d.querySelector('[aria-invalid="true"]');
+    if (firstBad) {
+      firstBad.focus();
+      toast("Couldn't save the rifle", 'bad', 'Fix the marked fields.');
+      return;
+    }
 
-    const twist = parseFloat(this.modalEl.querySelector('#rf-twist').value) || 8.0;
-
-    const rawSh = parseFloat(this.modalEl.querySelector('#rf-sh').value) || (isImp ? 1.85 : 4.7);
-    const sightHeightM = isImp ? rawSh * 0.0254 : rawSh / 100.0;
-
-    const rawZero = parseFloat(this.modalEl.querySelector('#rf-zero').value) || 100;
-    const zeroDistanceM = isImp ? Math.round(rawZero * 0.9144) : rawZero;
-
-    const opticModel = this.modalEl.querySelector('#rf-optic-model').value.trim() || 'Tactical Scope';
-    const focalPlane = this.modalEl.querySelector('#rf-focal-plane').value;
-    const reticle = this.modalEl.querySelector('#rf-reticle').value;
-
-    const [clickValStr, clickName] = this.modalEl.querySelector('#rf-click-value').value.split('|');
-    const clickValueRad = parseFloat(clickValStr) || 0.0001;
-
-    const minMag = parseInt(this.modalEl.querySelector('#rf-mag-min').value, 10) || 5;
-    const maxMag = parseInt(this.modalEl.querySelector('#rf-mag-max').value, 10) || 25;
-
-    const id = `profile-custom-${Date.now()}`;
-
-    const newProfile = {
-      id,
-      name,
-      description: desc,
-      caliber,
-      bullet: {
-        id: `bullet-${Date.now()}`,
-        name: bulletName,
-        weightGr,
-        diameterIn: diaIn,
-        lengthIn: diaIn * 4.2,
-        bcG1: dragModel === 'G1' ? bcVal : bcVal * 2.0,
-        bcG7: dragModel === 'G7' ? bcVal : bcVal * 0.5,
+    const dragModel = this._q('#rf-drag-model').value === 'G1' ? 'G1' : 'G7';
+    const lib = this.libBullet;
+    let bullet;
+    if (lib) {
+      const g7 = Number(lib.bcG7) > 0 ? lib.bcG7 : lib.bcG1 / G1_PER_G7;
+      const g1 = Number(lib.bcG1) > 0 ? lib.bcG1 : lib.bcG7 * G1_PER_G7;
+      bullet = {
+        id: lib.id, name: lib.name, weightGr: lib.weightGr, diameterIn: lib.diameterIn,
+        lengthIn: lib.lengthIn || lib.diameterIn * 4.2,
+        bcG1: Number(g1.toFixed(3)), bcG7: Number(g7.toFixed(3)),
+        // The user may have typed a different BC for the chosen model (e.g. a trued one)
         dragModel,
-      },
-      muzzleVelocityMs: Number(mvMs.toFixed(1)),
-      powderTempSensitivity: 0.9,
-      powderRefTempC: 15.0,
-      sightHeightM: Number(sightHeightM.toFixed(4)),
+      };
+      if (dragModel === 'G1') bullet.bcG1 = values.bc;
+      else bullet.bcG7 = values.bc;
+    } else {
+      const sameAsBefore = this.profile && this.profile.bullet && this.profile.bullet.name === text('rf-bullet-name');
+      bullet = {
+        id: sameAsBefore ? this.profile.bullet.id : `bullet-${Date.now().toString(36)}`,
+        name: text('rf-bullet-name').slice(0, 120),
+        weightGr: values.weight,
+        diameterIn: values.dia,
+        lengthIn: values.len,
+        bcG1: dragModel === 'G1' ? values.bc : Number((values.bc * G1_PER_G7).toFixed(3)),
+        bcG7: dragModel === 'G7' ? values.bc : Number((values.bc / G1_PER_G7).toFixed(3)),
+        dragModel,
+      };
+    }
+
+    const click = this._click();
+    const opticBase = this.profile?.optic || { zeroElevationClicks: 0, zeroWindageClicks: 0 };
+    const minMag = Math.round(values.magMin);
+    const maxMag = Math.round(values.magMax);
+    const zeroDistanceM = Number(UnitConverter.toSI(values.zero, u.dist).toFixed(2));
+    const updates = {
+      name: text('rf-name').slice(0, 120),
+      caliber: text('rf-caliber').slice(0, 80),
+      description: text('rf-desc').slice(0, 200),
+      bullet,
+      muzzleVelocityMs: Number(UnitConverter.toSI(values.mv, u.vel).toFixed(1)),
+      sightHeightM: Number(UnitConverter.toSI(values.sh, u.sh).toFixed(4)),
       zeroDistanceM,
-      zeroAngleRad: null,
-      twistRateIn: twist,
-      twistDirection: 'right',
+      zeroAngleRad: null, // re-zero with the new values
+      twistRateIn: values.twist,
+      twistDirection: this._q('#rf-twist-dir').value === 'left' ? 'left' : 'right',
       optic: {
-        model: opticModel,
-        focalPlane,
-        reticle,
-        clickValueRad,
-        clickName: clickName || '0.1 MRAD',
-        currentMagnification: Math.round((minMag + maxMag) / 2),
+        ...opticBase,
+        model: text('rf-optic-model').slice(0, 120) || 'Scope',
+        focalPlane: this._q('#rf-focal-plane').value === 'SFP' ? 'SFP' : 'FFP',
+        reticle: this._q('#rf-reticle').value,
+        clickValueRad: click.rad,
+        clickName: click.name,
         minMagnification: minMag,
         maxMagnification: maxMag,
-        zeroElevationClicks: 0,
-        zeroWindageClicks: 0,
+        currentMagnification: Math.min(maxMag, Math.max(minMag, opticBase.currentMagnification ?? Math.round((minMag + maxMag) / 2))),
       },
-      rifleWeightKg: 6.5,
     };
 
-    // Add to state & persist
-    appState.addProfile(newProfile);
-
-    this.close();
-
-    if (this.onSaved) {
-      this.onSaved(newProfile);
+    let saved;
+    if (this.profile && appState.state.profiles.includes(this.profile)) {
+      // Clicks of a different size make the stored zero offsets meaningless
+      if (Math.abs((this.profile.optic?.clickValueRad || 0) - click.rad) > 1e-9) {
+        updates.optic.zeroElevationClicks = 0;
+        updates.optic.zeroWindageClicks = 0;
+      }
+      Object.assign(this.profile, updates);
+      saved = this.profile;
+      this._saved = saved;
+      appState.notify('profiles');
+      this.close();
+    } else {
+      saved = {
+        id: `profile-${Date.now().toString(36)}`,
+        powderTempSensitivity: 0.9,
+        powderRefTempC: 15,
+        rifleWeightKg: 6.5,
+        ...updates,
+        optic: { zeroElevationClicks: 0, zeroWindageClicks: 0, ...updates.optic },
+      };
+      this._saved = saved;
+      appState.addProfile(saved);
+      this.close();
     }
   }
 }

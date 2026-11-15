@@ -1,102 +1,237 @@
 /**
- * Ballistic Workbench - Library view styles (on top of styles/main.css and Låda Glass).
+ * Ballistic Workbench - Library view and rifle dialog styles (on top of styles/main.css and Låda Glass).
  * Owned by src/ui/libraryManager.js and src/ui/rifleBuilderModal.js.
  */
 
-/* PROFILES GRID */
-.profiles-grid {
+/* ---- header, tabs, toolbar ------------------------------------------------------------------- */
+.library-backup { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.library-backup-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.library-backup .field-hint { margin: 0; text-align: right; }
+
+.library-tabs { max-width: 100%; overflow-x: auto; margin-bottom: 16px; }
+
+.library-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.library-section-title { font-size: 15px; font-weight: 600; }
+
+/* ---- rifles ---------------------------------------------------------------------------------- */
+.rifle-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: 14px;
 }
-.profile-card {
-  background-color: var(--bg-subcard);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 14px;
+.rifle-card {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-}
-.profile-card.active-profile {
-  border-color: var(--accent-cyan);
-  box-shadow: 0 0 8px var(--accent-cyan-glow);
-}
-.profile-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-.profile-desc {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: 10px;
-}
-.profile-specs {
-  font-size: 11px;
-  color: var(--text-secondary);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-
-/* RIFLE BUILDER MODAL */
-.rifle-modal-container {
-  background-color: var(--bg-panel);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  width: 92%;
-  max-width: 720px;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-  z-index: 200;
-  display: flex;
-  flex-direction: column;
-}
-.rifle-modal-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.rifle-modal-body {
-  padding: 20px;
-}
-.modal-section-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-cyan);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border-subtle);
-  margin-bottom: 10px;
-}
-.rifle-modal-actions {
-  display: flex;
-  justify-content: flex-end;
   gap: 10px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-subtle);
+  padding: 16px;
+  border-radius: var(--lg-radius-card);
 }
-.btn-close-x {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 18px;
-  cursor: pointer;
-  padding: 4px 8px;
+.rifle-card.is-active { border-color: color-mix(in srgb, var(--lg-accent) 60%, var(--lg-glass-edge)); box-shadow: var(--lg-shadow), 0 0 0 1px color-mix(in srgb, var(--lg-accent) 45%, transparent); }
+.rifle-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.rifle-card-head .badge { flex: none; white-space: nowrap; }
+.rifle-card h3 { font-size: 15px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.rifle-card-caliber { color: var(--lg-muted); font-size: 13px; margin-top: 2px; }
+.rifle-card-notes { color: var(--lg-muted); font-size: 13px; overflow-wrap: anywhere; }
+.rifle-specs { display: grid; gap: 4px; font-size: 13px; }
+.rifle-specs > div { display: grid; grid-template-columns: 9.5em minmax(0, 1fr); gap: 8px; }
+.rifle-specs dt { color: var(--lg-muted); }
+.rifle-specs dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.rifle-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--lg-line);
 }
-.btn-close-x:hover {
-  color: var(--text-main);
-}
-.field-grid-3 {
+.rifle-in-use { color: var(--lg-ok-text); font-size: 13px; }
+.btn-icon-only:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ---- bullets --------------------------------------------------------------------------------- */
+.bullet-controls {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.bullet-control .field-label .lg-icon { color: var(--lg-muted); }
+.bullet-list-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bullet-count { color: var(--lg-muted); font-size: 13px; }
+.bullet-list-bar + .field-hint { margin: 2px 0 10px; }
+.bullet-table-panel { overflow: hidden; }
+.bullet-table-panel .table-scrollable { max-height: 64vh; }
+.bullet-table td, .bullet-table th { vertical-align: middle; }
+.bullet-table tbody th.bullet-name-cell {
+  position: static;
+  text-align: left;
+  white-space: normal;
+  min-width: 14em;
+  padding: 7px 10px;
+  font-family: var(--lg-font);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--lg-text);
+  background: transparent;
+  border-bottom: 1px solid var(--lg-line);
+}
+.bullet-name { font-weight: 600; }
+.bullet-sub { display: block; color: var(--lg-muted); font-size: 12px; margin-top: 1px; }
+.bullet-bc { line-height: 1.35; }
+.bullet-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.bullet-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 32px 16px; color: var(--lg-muted); text-align: center; }
+.bullet-empty .lg-icon { width: 28px; height: 28px; }
+
+/* ---- add a bullet ---------------------------------------------------------------------------- */
+.add-bullet-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.add-intro { margin: 0 0 12px; }
+.add-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+.stability-panel .panel-body > .field-hint:first-child { margin: 0 0 12px; }
+
+.sg-score {
+  display: flex;
+  align-items: baseline;
   gap: 10px;
+  padding: 14px;
+  border-radius: var(--lg-radius-control);
+  border: 1px solid var(--sg, var(--lg-line));
+  background: color-mix(in srgb, var(--sg, var(--lg-text)) 10%, transparent);
+}
+.sg-good { --sg: var(--lg-ok); }
+.sg-marginal { --sg: var(--lg-warn); }
+.sg-bad { --sg: var(--lg-bad); }
+.sg-label { color: var(--lg-muted); font-size: 13px; }
+.sg-value { font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.sg-status { margin-left: auto; font-weight: 600; }
+.sg-good .sg-status { color: var(--lg-ok-text); }
+.sg-marginal .sg-status { color: var(--lg-warn-text); }
+.sg-bad .sg-status { color: var(--lg-bad-text); }
+.sg-stats { display: grid; gap: 4px; margin: 12px 0 0; font-size: 13px; }
+.sg-stats > div { display: flex; justify-content: space-between; gap: 8px; }
+.sg-stats dt { color: var(--lg-muted); }
+.sg-stats dd { margin: 0; font-variant-numeric: tabular-nums; }
+.sg-legend { list-style: none; margin: 14px 0 0; padding: 12px 0 0; border-top: 1px solid var(--lg-line); display: grid; gap: 6px; font-size: 12px; color: var(--lg-muted); }
+.sg-legend li { display: flex; align-items: center; gap: 8px; }
+.sg-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--sg); flex: none; }
+
+/* ---- undo bar -------------------------------------------------------------------------------- */
+.library-undo {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(640px, calc(100vw - 32px));
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--lg-glass-edge);
+  border-radius: var(--lg-radius-control);
+  background: var(--lg-elevated);
+  font-size: 13px;
+}
+.library-undo[hidden] { display: none; }
+.library-undo > span { min-width: 0; }
+
+/* ---- rifle dialog ---------------------------------------------------------------------------- */
+.rifle-dialog { width: min(760px, 94vw); max-width: 94vw; }
+.rifle-dialog-form { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.rifle-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 12px;
+  border-bottom: 1px solid var(--lg-line);
+}
+.rifle-dialog-head .lg-modal-title { padding-bottom: 0; }
+.rifle-dialog-sub { color: var(--lg-muted); font-size: 13px; padding: 2px var(--lg-space-l) var(--lg-space-m); }
+.rifle-dialog-head .btn-icon-only { margin-top: 12px; }
+.rifle-dialog-body { padding-top: 12px; padding-bottom: 4px; }
+.rifle-dialog .lg-modal-actions { border-top: 1px solid var(--lg-line); }
+.rf-section { border: 0; margin: 0 0 8px; padding: 0; min-width: 0; }
+.rf-section legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 0 6px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lg-text);
+  border-bottom: 1px solid var(--lg-line);
+}
+.rf-section legend .lg-icon { width: 16px; height: 16px; color: var(--lg-accent); }
+.rf-mag-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rf-mag-row .form-input { width: 5.5em; flex: 1 1 4em; }
+.rf-mag-sep { color: var(--lg-muted); font-size: 13px; }
+.btn-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--lg-accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.btn-link:focus-visible { outline: 2px solid var(--lg-accent); outline-offset: 2px; border-radius: 2px; }
+
+/* ---- narrow screens -------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .bullet-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .bullet-control-search { grid-column: 1 / -1; order: -1; }
+  .add-bullet-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .library-backup { align-items: flex-start; }
+  .library-backup .field-hint { text-align: left; }
+  .bullet-controls { grid-template-columns: minmax(0, 1fr); }
+  /* Bullet rows become compact two-line items: name on top, weight and BC below, Use on the right */
+  .bullet-table .col-opt { display: none; }
+  .bullet-table-panel .table-scrollable { max-height: none; }
+  .bullet-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .bullet-table, .bullet-table tbody { display: block; }
+  .bullet-table tbody tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 2px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--lg-line);
+  }
+  .bullet-table tbody tr > td, .bullet-table tbody tr > th.bullet-name-cell { display: block; padding: 0; border: 0; text-align: left; min-width: 0; }
+  .bullet-table tbody th.bullet-name-cell { grid-column: 1 / 3; grid-row: 1; }
+  .bullet-table tbody td:nth-child(2) { grid-column: 1; grid-row: 2; color: var(--lg-muted); }
+  .bullet-table tbody td.bullet-bc { grid-column: 2; grid-row: 2; color: var(--lg-muted); }
+  .bullet-table tbody td.bullet-bc br { display: none; }
+  .bullet-table tbody td.bullet-bc span { margin-left: 8px; }
+  .bullet-table tbody td:last-child { grid-column: 3; grid-row: 1 / 3; }
+  .rifle-dialog .field-grid-3, .rifle-dialog .field-grid-2, .add-bullet-form .field-grid-3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .rifle-dialog .field-span-2 { grid-column: 1 / -1; }
+  .library-undo { bottom: 12px; flex-wrap: wrap; }
+}
+@media (max-width: 400px) {
+  .rifle-dialog .field-grid-3, .rifle-dialog .field-grid-2, .add-bullet-form .field-grid-3, .add-bullet-form .field-grid-2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (pointer: coarse) {
+  .library-undo .btn-secondary-sm, .btn-link { min-height: 44px; }
 }
 
+#bc-hint { margin: -4px 0 12px; }

@@ -117,6 +117,7 @@ export function sanitizeProfiles(list, defaults) {
     // A missing or bad id must not collide with the template's id
     if (!(typeof p.id === 'string' && ID_RE.test(p.id))) clean.id = `profile-${Math.random().toString(36).slice(2, 10)}`;
     if (!['G1', 'G7'].includes(clean.bullet.dragModel)) clean.bullet.dragModel = 'G7';
+    if (p.bullet?.bcG7Estimated === true) clean.bullet.bcG7Estimated = true;
     if (!['FFP', 'SFP'].includes(clean.optic.focalPlane)) clean.optic.focalPlane = 'FFP';
     if (!['left', 'right'].includes(clean.twistDirection)) clean.twistDirection = 'right';
     clean.optic.minMagnification = Math.min(clean.optic.minMagnification, clean.optic.maxMagnification);
@@ -157,6 +158,7 @@ export function sanitizeBullets(list) {
     clean.dragModel = b.dragModel === 'G1' ? 'G1' : 'G7';
     if (!clean.name || !(clean.bcG7 || clean.bcG1) || !clean.weightGr) continue;
     if (b.isCustom === true) clean.isCustom = true;
+    if (b.bcG7Estimated === true) clean.bcG7Estimated = true;
     out.push(clean);
   }
   return uniqueIds(out);
