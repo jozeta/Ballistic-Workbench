@@ -28,7 +28,7 @@ class BallisticWorkbenchApp {
     this.initCommandPalette();
     this.initVersion();
     this.initPrintButtons();
-    initHelp(document.getElementById('app-main-content'));
+    initHelp(document.body); // the views, the sidebar and dialogs
 
     const initialHash = (typeof window !== 'undefined' ? window.location.hash.replace('#', '') : '') || 'workspace';
     const validViews = VIEWS;

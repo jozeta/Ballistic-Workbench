@@ -121,39 +121,118 @@ function scheduleHide() {
 }
 
 /** The visible label text for an input, for the button's accessible name. */
-function labelText(control, label) {
-  const t = (label?.textContent || control.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim();
-  return t || HELP[control.id]?.title || 'this setting';
+function labelText(text, key) {
+  const t = (text || '').replace(/\s+/g, ' ').trim();
+  return t || HELP[key]?.title || 'this setting';
 }
+
+function makeButton(key, name) {
+  const btn = el('button', 'help-btn');
+  btn.type = 'button';
+  btn.dataset.help = key;
+  btn.setAttribute('aria-label', `About ${labelText(name, key)}`);
+  btn.setAttribute('aria-expanded', 'false');
+  btn.setAttribute('aria-controls', 'help-pop');
+  btn.append(iconEl('info'));
+  return btn;
+}
+
+/** Puts a button after a field's label, keeping label and button on one line. */
+function besideLabel(label, btn) {
+  if (label.parentElement?.classList.contains('help-row')) {
+    label.parentElement.append(btn);
+    return;
+  }
+  const row = el('span', 'help-row');
+  label.before(row);
+  row.append(label, btn);
+}
+
+/** Once per anchor element: marks it so re-scans don't add a second button. */
+function once(anchor, key) {
+  const done = (anchor.dataset.helpFor || '').split(' ');
+  if (done.includes(key)) return false;
+  anchor.dataset.helpFor = [...done.filter(Boolean), key].join(' ');
+  return true;
+}
+
+/** Help for a single control found by id. */
+function attachToControl(root, key, control) {
+  // Special places where the control has no label of its own
+  if (key === 'turret-mode') {
+    const label = root.querySelector('.turret-header .lg-label');
+    if (label && once(label, key)) label.append(makeButton(key, label.textContent));
+    return;
+  }
+  if (key === 'col-picker-details') {
+    if (once(control, key)) control.after(makeButton(key, 'Columns'));
+    return;
+  }
+  const label = control.labels?.[0] || root.querySelector(`label[for="${CSS.escape(control.id)}"]`);
+  if (label && !label.contains(control)) {
+    if (once(label, key)) besideLabel(label, makeButton(key, label.textContent));
+    return;
+  }
+  if (label) {
+    if (once(label, key)) label.append(makeButton(key, label.textContent));
+    return;
+  }
+  // A heading or group label just before it (sidebar switches, tab lists)
+  const prev = control.previousElementSibling;
+  if (prev && /^(P|H[2-6]|LEGEND|SPAN)$/.test(prev.tagName) && prev.textContent.trim()) {
+    if (once(prev, key)) prev.append(makeButton(key, prev.textContent));
+    return;
+  }
+  if (once(control, key)) control.before(makeButton(key, control.getAttribute('aria-label')));
+}
+
+/** Help for a radio group, keyed by its name: next to the group's label or legend. */
+function attachToGroup(root, key, first) {
+  const label = document.getElementById(`${key}-label`)
+    || first.closest('fieldset')?.querySelector('legend')
+    || first.closest('[role="radiogroup"], .lg-segmented')?.previousElementSibling;
+  if (label && once(label, key)) {
+    if (label.tagName === 'LABEL' && label.htmlFor) besideLabel(label, makeButton(key, label.textContent));
+    else label.append(makeButton(key, label.textContent));
+  }
+}
+
+/** Help for a column of inputs in a table (one button in the column header). */
+function attachToColumn(key, first) {
+  const cell = first.closest('td, th');
+  const table = first.closest('table');
+  const head = table?.tHead?.rows[table.tHead.rows.length - 1];
+  const th = cell && head ? head.cells[cell.cellIndex] : null;
+  if (th && once(th, key)) th.append(makeButton(key, th.textContent));
+}
+
+// Repeated rows: help keys that stand for every input of a kind
+const REPEATED = [
+  // Stage targets repeat the same fields: help on the first target only (less noise)
+  { prefix: 'stage-field-', selector: (f) => `[id^="tgt-"][id$="-${f}"]` },
+  { prefix: 'shot-field-x', selector: () => '[id^="shot-x-"]', column: true },
+  { prefix: 'shot-field-y', selector: () => '[id^="shot-y-"]', column: true },
+  { prefix: 'range-row-select', selector: () => '.chk-range-select', column: true },
+];
 
 /** Adds "i" buttons to every control under root that has help and doesn't have a button yet. */
 export function attachHelp(root) {
-  for (const id of Object.keys(HELP)) {
-    const control = root.querySelector(`#${CSS.escape(id)}`);
-    if (!control || control.dataset.helpAttached) continue;
-    control.dataset.helpAttached = '1';
-    const label = control.labels?.[0] || root.querySelector(`label[for="${CSS.escape(id)}"]`);
-    const btn = el('button', 'help-btn');
-    btn.type = 'button';
-    btn.dataset.help = id;
-    btn.setAttribute('aria-label', `About ${labelText(control, label)}`);
-    btn.setAttribute('aria-expanded', 'false');
-    btn.setAttribute('aria-controls', 'help-pop');
-    btn.append(iconEl('info'));
-    if (label && !label.contains(control)) {
-      // Next to the label text (the button sits outside the label, so clicking it doesn't focus the field)
-      label.classList.add('has-help');
-      label.after(btn);
-      label.parentElement?.classList.add('help-row-host');
-      const row = el('span', 'help-row');
-      label.before(row);
-      row.append(label, btn);
-    } else if (label) {
-      label.classList.add('has-help');
-      label.after(btn);
-    } else {
-      control.before(btn);
+  for (const key of Object.keys(HELP)) {
+    const rep = REPEATED.find((r) => key.startsWith(r.prefix));
+    if (rep) {
+      const list = root.querySelectorAll(rep.selector(key.slice(rep.prefix.length)));
+      if (!list.length) continue;
+      if (rep.column) attachToColumn(key, list[0]);
+      else attachToControl(root, key, list[0]);
+      continue;
     }
+    const control = document.getElementById(key);
+    if (control && root.contains(control)) {
+      attachToControl(root, key, control);
+      continue;
+    }
+    const first = root.querySelector(`input[name="${CSS.escape(key)}"]`);
+    if (first) attachToGroup(root, key, first);
   }
 }
 
