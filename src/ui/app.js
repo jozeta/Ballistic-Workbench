@@ -270,7 +270,6 @@ class BallisticWorkbenchApp {
       { title: 'Drag model: G7 (boat-tail)', category: 'Solver', keywords: ['algorithm'], action: () => appState.updateSolverConfig({ activeAlgorithm: 'G7' }) },
       { title: 'Drag model: G1 (flat-base)', category: 'Solver', keywords: ['algorithm'], action: () => appState.updateSolverConfig({ activeAlgorithm: 'G1' }) },
       { title: 'Model: modified point mass (MPM)', category: 'Solver', keywords: ['algorithm'], action: () => appState.updateSolverConfig({ activeAlgorithm: 'MPM' }) },
-      { title: 'Model: 4DOF', category: 'Solver', keywords: ['algorithm'], action: () => appState.updateSolverConfig({ activeAlgorithm: '4DOF' }) },
 
       ...appState.state.profiles.map((p) => ({
         title: `Rifle: ${p.name}`,

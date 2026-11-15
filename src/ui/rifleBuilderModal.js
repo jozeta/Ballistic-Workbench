@@ -52,7 +52,10 @@ export class RifleBuilderModal {
     const vel = du.velocity === 'fps' || du.velocity === 'm/s' ? du.velocity : isImp ? 'fps' : 'm/s';
     const dist = du.distance === 'yd' || du.distance === 'm' ? du.distance : isImp ? 'yd' : 'm';
     const sh = du.sightHeight === 'in' || du.sightHeight === 'cm' ? du.sightHeight : isImp ? 'in' : 'cm';
-    return { vel, dist, sh };
+    // Bullet diameter and length follow the same display units as "Add a bullet" in the Library
+    const dia = du.bulletDiameter === 'mm' ? 'mm' : 'in';
+    const len = du.bulletLength === 'mm' ? 'mm' : 'in';
+    return { vel, dist, sh, dia, len };
   }
 
   _limits() {
@@ -61,7 +64,18 @@ export class RifleBuilderModal {
       mv: u.vel === 'fps' ? [600, 4500, 1] : [180, 1400, 0.1],
       sh: u.sh === 'in' ? [0.4, 6, 0.01] : [1, 15, 0.1],
       zero: u.dist === 'yd' ? [25, 1000, 1] : [25, 1000, 1],
+      dia: u.dia === 'mm' ? [4.32, 25.4, 0.01] : [0.17, 1, 0.001],
+      len: u.len === 'mm' ? [6.35, 101.6, 0.01] : [0.25, 4, 0.001],
     };
+  }
+
+  /** Inches to the display unit (mm or in), rounded for the field. */
+  _fromIn(inches, unit) {
+    return unit === 'mm' ? Number((inches * 25.4).toFixed(2)) : Number(Number(inches).toFixed(3));
+  }
+
+  _toIn(value, unit) {
+    return unit === 'mm' ? Number((value / 25.4).toFixed(4)) : value;
   }
 
   /** open() for a new rifle, open(profile) to edit that rifle. */
@@ -90,6 +104,10 @@ export class RifleBuilderModal {
     const mvDisp = round(UnitConverter.fromSI(mvMs, u.vel), lim.mv[2]);
     const shDisp = round(UnitConverter.fromSI(shM, u.sh), lim.sh[2]);
     const zeroDisp = Math.round(UnitConverter.fromSI(zeroM, u.dist));
+    const diaIn = p ? b.diameterIn : 0.264;
+    const lenIn = p ? b.lengthIn || b.diameterIn * 4.2 : 1.378;
+    const diaDisp = this._fromIn(diaIn, u.dia);
+    const lenDisp = this._fromIn(lenIn, u.len);
 
     // Bullet options grouped by caliber
     const groups = new Map();
@@ -112,64 +130,64 @@ export class RifleBuilderModal {
       <dialog class="lg-modal lg-modal-lg rifle-dialog" aria-labelledby="rf-title" aria-describedby="rf-subtitle">
         <form id="rifle-builder-form" class="rifle-dialog-form" novalidate>
           <div class="rifle-dialog-head">
-            <div>
+            <div class="rifle-dialog-heading">
               <h2 class="lg-modal-title" id="rf-title">${title}</h2>
-              <p class="rifle-dialog-sub" id="rf-subtitle">Rifle, scope and ammunition${editing ? ` for ${esc(p.name)}` : ''}</p>
+              <p class="lg-muted rifle-dialog-sub" id="rf-subtitle">${editing ? esc(p.name) : 'Rifle, bullet and scope. The new rifle is used in the Solver.'}</p>
             </div>
-            <button type="button" class="btn-ghost-sm btn-icon-only" data-lg-close value="" data-close aria-label="Close">${icon('x')}</button>
+            <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon rifle-dialog-close" data-lg-close value="" data-close aria-label="Close">${icon('x')}</button>
           </div>
 
           <div class="lg-modal-body rifle-dialog-body">
             <fieldset class="rf-section">
-              <legend>${icon('rifle')} Rifle</legend>
+              <legend class="lg-label">${icon('rifle')} Rifle</legend>
               <div class="field-grid-2">
                 <div>
                   <label class="field-label" for="rf-name">Name</label>
-                  <input type="text" id="rf-name" class="form-input" maxlength="120" required placeholder="e.g. Tikka T3x 6.5 Creedmoor" value="${v(p?.name)}" />
+                  <input type="text" id="rf-name" class="lg-input" maxlength="120" required placeholder="e.g. Tikka T3x 6.5 Creedmoor" value="${v(p?.name)}" />
                 </div>
                 <div>
                   <label class="field-label" for="rf-caliber">Caliber</label>
-                  <input type="text" id="rf-caliber" class="form-input" maxlength="80" required placeholder="e.g. 6.5 Creedmoor" value="${v(p?.caliber)}" />
+                  <input type="text" id="rf-caliber" class="lg-input" maxlength="80" required placeholder="e.g. 6.5 Creedmoor" value="${v(p?.caliber)}" />
                 </div>
                 <div class="field-span-2">
                   <label class="field-label" for="rf-desc">Notes (optional)</label>
-                  <input type="text" id="rf-desc" class="form-input" maxlength="200" placeholder="e.g. 26 in barrel, match load" value="${v(p?.description)}" />
+                  <input type="text" id="rf-desc" class="lg-input" maxlength="200" placeholder="e.g. 26 in barrel, match load" value="${v(p?.description)}" />
                 </div>
               </div>
               <div class="field-grid-3">
                 <div>
                   <label class="field-label" for="rf-mv">Muzzle velocity (${u.vel})</label>
-                  <input type="number" inputmode="decimal" id="rf-mv" class="form-input" min="${lim.mv[0]}" max="${lim.mv[1]}" step="${lim.mv[2]}" value="${mvDisp}" required aria-describedby="rf-mv-hint" />
+                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-mv" class="lg-input" min="${lim.mv[0]}" max="${lim.mv[1]}" step="${lim.mv[2]}" value="${mvDisp}" required aria-describedby="rf-mv-hint" />
                   <p class="field-hint" id="rf-mv-hint"></p>
                 </div>
                 <div>
                   <label class="field-label" for="rf-twist">Barrel twist (1 in … in)</label>
-                  <input type="number" inputmode="decimal" id="rf-twist" class="form-input" min="5" max="20" step="0.25" value="${p ? p.twistRateIn : 8}" />
+                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-twist" class="lg-input" min="5" max="20" step="0.25" value="${p ? p.twistRateIn : 8}" />
                 </div>
                 <div>
                   <label class="field-label" for="rf-twist-dir">Twist direction</label>
-                  <select id="rf-twist-dir" class="form-select">
+                  <select id="rf-twist-dir" class="lg-select">
                     <option value="right" ${p?.twistDirection !== 'left' ? 'selected' : ''}>Right hand</option>
                     <option value="left" ${p?.twistDirection === 'left' ? 'selected' : ''}>Left hand</option>
                   </select>
                 </div>
                 <div>
                   <label class="field-label" for="rf-sh">Sight height (${u.sh})</label>
-                  <input type="number" inputmode="decimal" id="rf-sh" class="form-input" min="${lim.sh[0]}" max="${lim.sh[1]}" step="${lim.sh[2]}" value="${shDisp}" aria-describedby="rf-sh-hint" />
+                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-sh" class="lg-input" min="${lim.sh[0]}" max="${lim.sh[1]}" step="${lim.sh[2]}" value="${shDisp}" aria-describedby="rf-sh-hint" />
                   <p class="field-hint" id="rf-sh-hint">Centre of the bore to centre of the scope.</p>
                 </div>
                 <div>
                   <label class="field-label" for="rf-zero">Zero distance (${u.dist})</label>
-                  <input type="number" inputmode="decimal" id="rf-zero" class="form-input" min="${lim.zero[0]}" max="${lim.zero[1]}" step="1" value="${zeroDisp}" />
+                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-zero" class="lg-input" min="${lim.zero[0]}" max="${lim.zero[1]}" step="1" value="${zeroDisp}" />
                 </div>
               </div>
             </fieldset>
 
             <fieldset class="rf-section">
-              <legend>${icon('bullet')} Bullet</legend>
+              <legend class="lg-label">${icon('bullet')} Bullet</legend>
               <div class="field-row">
                 <label class="field-label" for="rf-bullet-select">Bullet</label>
-                <select id="rf-bullet-select" class="form-select">
+                <select id="rf-bullet-select" class="lg-select">
                   <option value="custom" ${libBullet ? '' : 'selected'}>Enter my own…</option>
                   ${bulletOptions}
                 </select>
@@ -177,58 +195,58 @@ export class RifleBuilderModal {
               <div class="field-grid-3">
                 <div class="field-span-2">
                   <label class="field-label" for="rf-bullet-name">Bullet name</label>
-                  <input type="text" id="rf-bullet-name" class="form-input rf-bullet-field" maxlength="120" required value="${v(p ? b.name : 'Custom bullet')}" />
+                  <input type="text" id="rf-bullet-name" class="lg-input rf-bullet-field" maxlength="120" required value="${v(p ? b.name : 'Custom bullet')}" />
                 </div>
                 <div>
                   <label class="field-label" for="rf-weight">Weight (gr)</label>
-                  <input type="number" inputmode="decimal" id="rf-weight" class="form-input rf-bullet-field" min="15" max="1500" step="0.1" value="${p ? b.weightGr : 140}" />
+                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-weight" class="lg-input rf-bullet-field" min="15" max="1500" step="0.1" value="${p ? b.weightGr : 140}" />
                 </div>
                 <div>
-                  <label class="field-label" for="rf-dia">Diameter (in)</label>
-                  <input type="number" inputmode="decimal" id="rf-dia" class="form-input rf-bullet-field" min="0.17" max="1" step="0.001" value="${p ? b.diameterIn : 0.264}" />
+                  <label class="field-label" for="rf-dia">Diameter (${u.dia})</label>
+                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-dia" class="lg-input rf-bullet-field" min="${lim.dia[0]}" max="${lim.dia[1]}" value="${diaDisp}" />
                 </div>
                 <div>
-                  <label class="field-label" for="rf-len">Length (in)</label>
-                  <input type="number" inputmode="decimal" id="rf-len" class="form-input rf-bullet-field" min="0.25" max="4" step="0.001" value="${p ? Number((b.lengthIn || b.diameterIn * 4.2).toFixed(3)) : 1.378}" />
+                  <label class="field-label" for="rf-len">Length (${u.len})</label>
+                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-len" class="lg-input rf-bullet-field" min="${lim.len[0]}" max="${lim.len[1]}" value="${lenDisp}" />
                 </div>
                 <div>
                   <label class="field-label" for="rf-drag-model">Drag model</label>
-                  <select id="rf-drag-model" class="form-select rf-bullet-field">
+                  <select id="rf-drag-model" class="lg-select rf-bullet-field">
                     <option value="G7" ${dm === 'G7' ? 'selected' : ''}>G7 (boat-tail)</option>
                     <option value="G1" ${dm === 'G1' ? 'selected' : ''}>G1 (flat-base)</option>
                   </select>
                 </div>
                 <div>
                   <label class="field-label" for="rf-bc" id="rf-bc-label"><abbr title="Ballistic coefficient">BC</abbr> (${dm})</label>
-                  <input type="number" inputmode="decimal" id="rf-bc" class="form-input rf-bullet-field" min="0.05" max="${dm === 'G1' ? 2 : 1.5}" step="0.001" value="${bcVal}" aria-describedby="rf-bc-hint" />
+                  <input type="text" inputmode="decimal" autocomplete="off" id="rf-bc" class="lg-input rf-bullet-field" min="0.05" max="${dm === 'G1' ? 2 : 1.5}" step="0.001" value="${bcVal}" aria-describedby="rf-bc-hint" />
                 </div>
               </div>
               <p class="field-hint" id="rf-bc-hint">Picked from the list, both G1 and G7 values come with the bullet. For your own bullet the other one is estimated.</p>
             </fieldset>
 
             <fieldset class="rf-section">
-              <legend>${icon('scope-cap')} Scope</legend>
+              <legend class="lg-label">${icon('scope-cap')} Scope</legend>
               <div class="field-grid-2">
                 <div class="field-span-2">
                   <label class="field-label" for="rf-optic-model">Scope model</label>
-                  <input type="text" id="rf-optic-model" class="form-input" maxlength="120" placeholder="e.g. Vortex Razor HD Gen III 6-36x56" value="${v(p?.optic?.model ?? '')}" />
+                  <input type="text" id="rf-optic-model" class="lg-input" maxlength="120" placeholder="e.g. Vortex Razor HD Gen III 6-36x56" value="${v(p?.optic?.model ?? '')}" />
                 </div>
                 <div>
                   <label class="field-label" for="rf-click-value">Click value</label>
-                  <select id="rf-click-value" class="form-select">
+                  <select id="rf-click-value" class="lg-select">
                     ${CLICKS.map((c) => `<option value="${c.id}" ${c.id === click.id ? 'selected' : ''}>${c.name}</option>`).join('')}
                   </select>
                 </div>
                 <div>
                   <label class="field-label" for="rf-reticle">Reticle</label>
-                  <select id="rf-reticle" class="form-select" aria-describedby="rf-reticle-hint">
+                  <select id="rf-reticle" class="lg-select" aria-describedby="rf-reticle-hint">
                     ${RETICLES.map((r) => `<option value="${esc(r.id)}" data-unit="${r.unit}" ${r.id === reticleId ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
                   </select>
                   <p class="field-hint" id="rf-reticle-hint">Only reticles that match the click unit are offered.</p>
                 </div>
                 <div>
                   <label class="field-label" for="rf-focal-plane">Focal plane</label>
-                  <select id="rf-focal-plane" class="form-select">
+                  <select id="rf-focal-plane" class="lg-select">
                     <option value="FFP" ${p?.optic?.focalPlane !== 'SFP' ? 'selected' : ''}>First focal plane (FFP)</option>
                     <option value="SFP" ${p?.optic?.focalPlane === 'SFP' ? 'selected' : ''}>Second focal plane (SFP)</option>
                   </select>
@@ -237,10 +255,10 @@ export class RifleBuilderModal {
                   <span class="field-label" id="rf-mag-label">Magnification (lowest to highest)</span>
                   <div class="rf-mag-row">
                     <label class="lg-sr-only" for="rf-mag-min">Lowest magnification</label>
-                    <input type="number" inputmode="numeric" id="rf-mag-min" class="form-input" min="1" max="60" step="1" value="${p?.optic?.minMagnification ?? 5}" aria-describedby="rf-mag-label" />
+                    <input type="text" inputmode="numeric" autocomplete="off" id="rf-mag-min" class="lg-input" min="1" max="60" step="1" value="${p?.optic?.minMagnification ?? 5}" aria-describedby="rf-mag-label" />
                     <span class="rf-mag-sep">to</span>
                     <label class="lg-sr-only" for="rf-mag-max">Highest magnification</label>
-                    <input type="number" inputmode="numeric" id="rf-mag-max" class="form-input" min="1" max="100" step="1" value="${p?.optic?.maxMagnification ?? 25}" aria-describedby="rf-mag-label" />
+                    <input type="text" inputmode="numeric" autocomplete="off" id="rf-mag-max" class="lg-input" min="1" max="100" step="1" value="${p?.optic?.maxMagnification ?? 25}" aria-describedby="rf-mag-label" />
                   </div>
                 </div>
               </div>
@@ -248,8 +266,8 @@ export class RifleBuilderModal {
           </div>
 
           <div class="lg-modal-actions">
-            <button type="button" class="btn-secondary-sm" data-lg-close value="" data-close>Cancel</button>
-            <button type="submit" class="btn-primary">${icon('save')} Save rifle</button>
+            <button type="button" class="lg-btn" data-lg-close value="" data-close>Cancel</button>
+            <button type="submit" class="lg-btn lg-btn-primary">${icon('save')} ${editing ? 'Save changes' : 'Save rifle'}</button>
           </div>
         </form>
       </dialog>
@@ -263,6 +281,9 @@ export class RifleBuilderModal {
     this.trigger = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     this.libBullet = libBullet || null;
     this.mvTouched = editing;
+    // Fields shown rounded in the display unit: an unchanged field keeps its exact stored value,
+    // so opening and saving a rifle never nudges e.g. a 100 m zero to 99.67 m in yards
+    this.initial = { mv: [mvDisp, mvMs], sh: [shDisp, shM], zero: [zeroDisp, zeroM], dia: [diaDisp, diaIn], len: [lenDisp, lenIn] };
 
     this._bind();
     this._syncReticles();
@@ -344,7 +365,7 @@ export class RifleBuilderModal {
     hint.append(document.createTextNode(`Factory: ${disp} ${u.vel}. Your chronograph value is better. `));
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'btn-link';
+    btn.className = 'lg-btn lg-btn-ghost rf-inline-btn';
     btn.textContent = 'Use factory';
     btn.addEventListener('click', () => {
       const mv = this._q('#rf-mv');
@@ -363,7 +384,7 @@ export class RifleBuilderModal {
     });
 
     // Live validation for every number field
-    d.querySelectorAll('input[type="number"]').forEach((input) => {
+    d.querySelectorAll('input[inputmode]').forEach((input) => {
       input.addEventListener('change', () => this._num(input));
     });
     d.querySelectorAll('input[required][type="text"]').forEach((input) => {
@@ -401,8 +422,9 @@ export class RifleBuilderModal {
       if (b) {
         this._q('#rf-bullet-name').value = b.name;
         this._q('#rf-weight').value = String(b.weightGr);
-        this._q('#rf-dia').value = String(b.diameterIn);
-        this._q('#rf-len').value = String(Number((b.lengthIn || b.diameterIn * 4.2).toFixed(3)));
+        const u = this._units();
+        this._q('#rf-dia').value = String(this._fromIn(b.diameterIn, u.dia));
+        this._q('#rf-len').value = String(this._fromIn(b.lengthIn || b.diameterIn * 4.2, u.len));
         const dm = b.dragModel === 'G1' ? 'G1' : 'G7';
         this._q('#rf-drag-model').value = dm;
         this._q('#rf-drag-model').dispatchEvent(new Event('change'));
@@ -482,8 +504,8 @@ export class RifleBuilderModal {
         id: sameAsBefore ? this.profile.bullet.id : `bullet-${Date.now().toString(36)}`,
         name: text('rf-bullet-name').slice(0, 120),
         weightGr: values.weight,
-        diameterIn: values.dia,
-        lengthIn: values.len,
+        diameterIn: this.initial.dia[0] === values.dia ? this.initial.dia[1] : this._toIn(values.dia, u.dia),
+        lengthIn: this.initial.len[0] === values.len ? this.initial.len[1] : this._toIn(values.len, u.len),
         bcG1: dragModel === 'G1' ? values.bc : Number((values.bc * G1_PER_G7).toFixed(3)),
         bcG7: dragModel === 'G7' ? values.bc : Number((values.bc / G1_PER_G7).toFixed(3)),
         dragModel,
@@ -494,14 +516,18 @@ export class RifleBuilderModal {
     const opticBase = this.profile?.optic || { zeroElevationClicks: 0, zeroWindageClicks: 0 };
     const minMag = Math.round(values.magMin);
     const maxMag = Math.round(values.magMax);
-    const zeroDistanceM = Number(UnitConverter.toSI(values.zero, u.dist).toFixed(2));
+    const exact = (key, value, unit, decimals) => {
+      const [shown, si] = this.initial?.[key] || [];
+      return shown === value && Number.isFinite(si) ? si : Number(UnitConverter.toSI(value, unit).toFixed(decimals));
+    };
+    const zeroDistanceM = exact('zero', values.zero, u.dist, 2);
     const updates = {
       name: text('rf-name').slice(0, 120),
       caliber: text('rf-caliber').slice(0, 80),
       description: text('rf-desc').slice(0, 200),
       bullet,
-      muzzleVelocityMs: Number(UnitConverter.toSI(values.mv, u.vel).toFixed(1)),
-      sightHeightM: Number(UnitConverter.toSI(values.sh, u.sh).toFixed(4)),
+      muzzleVelocityMs: exact('mv', values.mv, u.vel, 1),
+      sightHeightM: exact('sh', values.sh, u.sh, 4),
       zeroDistanceM,
       zeroAngleRad: null, // re-zero with the new values
       twistRateIn: values.twist,

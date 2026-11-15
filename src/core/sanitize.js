@@ -167,12 +167,14 @@ export function sanitizeBullets(list) {
 }
 
 const STEPS = [10, 25, 50, 100];
-const ALGORITHMS = ['G1', 'G7', 'MPM', '4DOF'];
+const ALGORITHMS = ['G1', 'G7', 'MPM'];
 const SHAPES = ['ipsc', 'circle', 'square', 'nato-e'];
 
 export function sanitizeSolverConfig(value, defaults) {
   const clean = shapeLike(value, defaults);
   if (!STEPS.includes(clean.stepM)) clean.stepM = defaults.stepM;
+  // '4DOF' was offered before, but computed the same as MPM (no per-bullet aerodynamic data)
+  if (clean.activeAlgorithm === '4DOF') clean.activeAlgorithm = 'MPM';
   if (!ALGORITHMS.includes(clean.activeAlgorithm)) clean.activeAlgorithm = defaults.activeAlgorithm;
   return clean;
 }

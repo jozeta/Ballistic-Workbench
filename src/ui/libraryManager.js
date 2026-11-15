@@ -102,19 +102,17 @@ export class LibraryManagerView {
 
     // eslint-disable-next-line no-unsanitized/property -- reviewed: user/stored strings go through esc(); the rest are numbers and constants
     this.container.innerHTML = `
-      <section class="library-view" aria-labelledby="library-title">
-        <header class="view-header">
+      <section class="library-view lg-stack" aria-labelledby="library-title">
+        <header class="lg-header view-header">
           <div>
-            <h1 id="library-title">Library</h1>
-            <p>Bullets and rifles. Pick a bullet for your rifle or add your own.</p>
+            <h1 class="lg-title" id="library-title">Library</h1>
+            <p class="lg-muted">Your rifles and bullets. Pick a bullet for a rifle, or add your own.</p>
           </div>
-          <div class="library-backup">
-            <div class="library-backup-buttons">
-              <button type="button" class="btn-secondary-sm" data-action="export" aria-describedby="backup-hint">${icon('download')} Export…</button>
-              <button type="button" class="btn-secondary-sm" data-action="import" aria-describedby="backup-hint">${icon('upload')} Import…</button>
-              <input type="file" id="import-json-file" accept=".json,application/json" hidden />
-            </div>
-            <p class="field-hint" id="backup-hint">Back up rifles, bullets and settings to a file, or restore a backup.</p>
+          <div class="lg-row library-backup">
+            <button type="button" class="lg-btn" data-action="export" aria-describedby="backup-hint" data-lg-tooltip="Save rifles, bullets and settings to a file">${icon('download')} Export</button>
+            <button type="button" class="lg-btn" data-action="import" aria-describedby="backup-hint" data-lg-tooltip="Load a backup file">${icon('upload')} Import…</button>
+            <input type="file" id="import-json-file" accept=".json,application/json" hidden />
+            <p class="lg-sr-only" id="backup-hint">Export saves your rifles, bullets and settings to a backup file. Import loads a backup: it replaces your rifles and settings and adds its bullets. You can undo an import right after.</p>
           </div>
         </header>
 
@@ -128,7 +126,7 @@ export class LibraryManagerView {
           ${panel}
         </div>
 
-        <div class="library-undo lg-card" id="library-undo" role="status" aria-live="polite" ${this.undo ? '' : 'hidden'}>
+        <div class="library-undo lg-glass" id="library-undo" role="status" aria-live="polite" ${this.undo ? '' : 'hidden'}>
           ${this.undo ? this._undoInner() : ''}
         </div>
       </section>
@@ -141,7 +139,7 @@ export class LibraryManagerView {
   }
 
   _undoInner() {
-    return `<span>${esc(this.undo.message)}</span><button type="button" class="btn-secondary-sm" data-action="undo">${icon('arrow-left')} Undo</button>`;
+    return `<span>${esc(this.undo.message)}</span><button type="button" class="lg-btn" data-action="undo">${icon('arrow-left')} Undo</button>`;
   }
 
   _showUndo(message, run) {
@@ -176,44 +174,44 @@ export class LibraryManagerView {
       const zero = `${Math.round(UnitConverter.fromSI(p.zeroDistanceM, u.dist))} ${u.dist}`;
       const sh = UnitConverter.fromSI(p.sightHeightM, u.sh).toFixed(u.sh === 'in' ? 2 : 1);
       const name = esc(p.name);
+      const id = esc(p.id);
       return `
-        <article class="rifle-card lg-card ${isActive ? 'is-active' : ''}" aria-labelledby="rifle-${esc(p.id)}-name">
+        <article class="lg-card rifle-card${isActive ? ' is-active' : ''}" data-rifle="${id}" aria-labelledby="rifle-${id}-name">
           <div class="rifle-card-head">
-            <div>
-              <h3 id="rifle-${esc(p.id)}-name">${name}</h3>
-              <p class="rifle-card-caliber">${esc(p.caliber)}</p>
+            <div class="rifle-card-title">
+              <h3 id="rifle-${id}-name">${name}</h3>
+              ${p.caliber ? `<p class="lg-small lg-muted">${esc(p.caliber)}</p>` : ''}
             </div>
-            ${isActive ? '<span class="badge badge-ok">In use</span>' : ''}
+            ${isActive ? `<span class="lg-badge lg-badge-ok rifle-badge">${icon('check')} In use</span>` : ''}
           </div>
-          ${p.description ? `<p class="rifle-card-notes">${esc(p.description)}</p>` : ''}
-          <dl class="rifle-specs">
-            <div><dt>Bullet</dt><dd>${esc(p.bullet?.name)}</dd></div>
-            <div><dt>Muzzle velocity</dt><dd>${this._velocity(p.muzzleVelocityMs)}</dd></div>
-            <div><dt>Zero</dt><dd>${zero}</dd></div>
-            <div><dt>Barrel twist</dt><dd>1 in ${Number(p.twistRateIn).toFixed(1).replace(/\.0$/, '')} in</dd></div>
-            <div><dt>Sight height</dt><dd>${sh} ${u.sh}</dd></div>
-            <div><dt>Scope</dt><dd>${esc(p.optic?.model)}${p.optic?.clickName ? ` · ${esc(p.optic.clickName)} clicks` : ''}</dd></div>
+          ${p.description ? `<p class="lg-muted rifle-card-notes">${esc(p.description)}</p>` : ''}
+          <dl class="lg-kv rifle-specs">
+            <dt>Bullet</dt><dd>${esc(p.bullet?.name)}</dd>
+            <dt>Muzzle velocity</dt><dd>${this._velocity(p.muzzleVelocityMs)}</dd>
+            <dt>Zero</dt><dd>${zero}</dd>
+            <dt>Barrel twist</dt><dd>1 in ${Number(p.twistRateIn).toFixed(2).replace(/\.?0+$/, '')} in</dd>
+            <dt>Sight height</dt><dd>${sh} ${u.sh}</dd>
+            <dt>Scope</dt><dd>${esc(p.optic?.model)}${p.optic?.clickName ? ` · ${esc(p.optic.clickName)} clicks` : ''}</dd>
           </dl>
           <div class="rifle-card-actions">
             ${isActive
-              ? '<span class="rifle-in-use">Selected in the Solver</span>'
-              : `<button type="button" class="btn-primary-sm" data-action="use-rifle" data-id="${esc(p.id)}">${icon('check')} Use this rifle</button>`}
+              ? `<a class="lg-btn lg-btn-ghost rifle-main-action" href="#workspace">Open in Solver ${icon('arrow-right')}</a>`
+              : `<button type="button" class="lg-btn rifle-main-action" data-action="use-rifle" data-id="${id}" aria-label="Use ${name}">Use this rifle</button>`}
             <span class="toolbar-spacer"></span>
-            <button type="button" class="btn-ghost-sm btn-icon-only" data-action="edit-rifle" data-id="${esc(p.id)}" aria-label="Edit ${name}" title="Edit">${icon('edit')}</button>
-            <button type="button" class="btn-ghost-sm btn-icon-only" data-action="duplicate-rifle" data-id="${esc(p.id)}" aria-label="Duplicate ${name}" title="Duplicate">${icon('copy')}</button>
-            <button type="button" class="btn-ghost-sm btn-icon-only btn-danger-sm" data-action="delete-rifle" data-id="${esc(p.id)}"
-              aria-label="Delete ${name}" title="${only ? 'You need at least one rifle' : 'Delete'}" ${only ? 'disabled' : ''}>${icon('trash')}</button>
+            <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon" data-action="edit-rifle" data-id="${id}" aria-label="Edit ${name}" data-lg-tooltip="Edit">${icon('edit')}</button>
+            <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon" data-action="duplicate-rifle" data-id="${id}" aria-label="Duplicate ${name}" data-lg-tooltip="Duplicate">${icon('copy')}</button>
+            <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon lib-danger" data-action="delete-rifle" data-id="${id}"
+              aria-label="Delete ${name}" data-lg-tooltip="${only ? 'You need at least one rifle' : 'Delete'}" ${only ? 'aria-disabled="true"' : ''}>${icon('trash')}</button>
           </div>
         </article>`;
     }).join('');
 
     return `
-      <div class="library-toolbar">
-        <h2 class="library-section-title">Your rifles <span class="lg-muted">(${profiles.length})</span></h2>
-        <span class="toolbar-spacer"></span>
-        <button type="button" class="btn-primary-sm" data-action="new-rifle">${icon('plus')} New rifle</button>
+      <div class="lib-toolbar">
+        <h2 class="lg-label">Your rifles <span class="lib-count">${profiles.length}</span></h2>
+        <button type="button" class="lg-btn lg-btn-primary" data-action="new-rifle">${icon('plus')} New rifle</button>
       </div>
-      <div class="rifle-grid">${cards}</div>
+      <div class="lg-grid rifle-grid">${cards}</div>
     `;
   }
 
@@ -231,21 +229,14 @@ export class LibraryManagerView {
     list.splice(list.indexOf(src) + 1, 0, copy);
     appState.notify('profiles');
     toast('Rifle duplicated', 'ok', copy.name);
+    this._refocus(`[data-rifle="${CSS.escape(copy.id)}"] .rifle-main-action`);
   }
 
-  async _deleteRifle(id) {
+  /** Deletes at once; the undo bar (10 s) is the safety net, so there is no extra confirm step. */
+  _deleteRifle(id) {
     const list = appState.state.profiles;
     const p = this._findProfile(id);
     if (!p || list.length <= 1) return;
-    if (typeof LadaGlass !== 'undefined' && LadaGlass.confirm) {
-      const ok = await LadaGlass.confirm({
-        title: `Delete ${p.name}?`,
-        body: 'Its settings are removed from this device. You can undo right after.',
-        confirmLabel: 'Delete rifle',
-        danger: true,
-      });
-      if (!ok) return;
-    }
     const index = list.indexOf(p);
     if (index < 0) return;
     const wasActive = appState.state.activeProfileId === id;
@@ -310,37 +301,40 @@ export class LibraryManagerView {
     }).join('');
 
     return `
-      <div class="bullet-controls">
-        <div class="bullet-control bullet-control-rifle">
-          <label class="field-label" for="lib-rifle-select">${icon('rifle')} Rifle</label>
-          <select id="lib-rifle-select" class="form-select">
-            ${appState.state.profiles.map((p) => `<option value="${esc(p.id)}" ${p.id === profile.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
-          </select>
+      <div class="lg-card bullet-filters">
+        <h2 class="lg-sr-only">Find a bullet</h2>
+        <div class="bullet-controls">
+          <div class="bullet-control bullet-control-rifle">
+            <label class="field-label" for="lib-rifle-select">For rifle</label>
+            <select id="lib-rifle-select" class="lg-select">
+              ${appState.state.profiles.map((p) => `<option value="${esc(p.id)}" ${p.id === profile.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="bullet-control bullet-control-search">
+            <label class="field-label" for="proj-search">Search</label>
+            <div class="lg-search">
+              ${icon('search')}
+              <input type="search" id="proj-search" placeholder="Name, maker or weight, e.g. ELD 140" value="${esc(this.searchQuery)}" autocomplete="off" />
+            </div>
+          </div>
+          <div class="bullet-control">
+            <label class="field-label" for="caliber-filter">Bullet diameter</label>
+            <select id="caliber-filter" class="lg-select">
+              <option value="all" ${filter === 'all' ? 'selected' : ''}>All diameters</option>
+              ${options}
+            </select>
+          </div>
         </div>
-        <div class="bullet-control bullet-control-search">
-          <label class="field-label" for="proj-search">${icon('search')} Search bullets</label>
-          <input type="search" id="proj-search" class="form-input" placeholder="Name, maker or weight, e.g. ELD 140" value="${esc(this.searchQuery)}" autocomplete="off" />
-        </div>
-        <div class="bullet-control">
-          <label class="field-label" for="caliber-filter">${icon('filter')} Bullet diameter</label>
-          <select id="caliber-filter" class="form-select">
-            <option value="all" ${filter === 'all' ? 'selected' : ''}>All calibers</option>
-            ${options}
-          </select>
+        <div class="bullet-list-bar">
+          <label class="lg-row bullet-factory" for="use-factory-mv">
+            <input type="checkbox" class="lg-check" id="use-factory-mv" ${this.useFactoryMv ? 'checked' : ''} aria-describedby="factory-mv-hint" />
+            Also set the factory muzzle velocity
+          </label>
+          <p class="lg-small bullet-count" id="bullet-count" aria-live="polite"></p>
+          <p class="lg-small lg-muted" id="factory-mv-hint">"Use" puts the bullet in ${esc(profile.name)} and keeps its muzzle velocity (${this._velocity(profile.muzzleVelocityMs)}) unless this is ticked.</p>
         </div>
       </div>
-      <div class="bullet-list-bar">
-        <p class="bullet-count" id="bullet-count" aria-live="polite"></p>
-        <span class="toolbar-spacer"></span>
-        <label class="check-inline" for="use-factory-mv">
-          <input type="checkbox" id="use-factory-mv" ${this.useFactoryMv ? 'checked' : ''} aria-describedby="factory-mv-hint" />
-          Also use the factory velocity
-        </label>
-      </div>
-      <p class="field-hint" id="factory-mv-hint">"Use" swaps the bullet in ${esc(profile.name)} and keeps its muzzle velocity (${this._velocity(profile.muzzleVelocityMs)}) unless you tick this.</p>
-      <div class="panel bullet-table-panel">
-        <div class="table-scrollable" id="projectiles-table-wrapper">${this.renderBulletTable()}</div>
-      </div>
+      <div id="projectiles-table-wrapper">${this.renderBulletTable()}</div>
     `;
   }
 
@@ -349,55 +343,68 @@ export class LibraryManagerView {
     const list = this._filteredBullets();
     const inUseId = profile?.bullet?.id;
     const rifleName = esc(profile?.name || 'your rifle');
+    const filtered = this._effectiveFilter() !== 'all';
 
     if (!list.length) {
-      return `<div class="bullet-empty">${icon('search')}<p>No bullets match. Try another search or pick "All calibers".</p></div>`;
+      const reset = this.searchQuery.trim()
+        ? '<button type="button" class="lg-btn" data-action="clear-search">Clear the search</button>'
+        : '';
+      const all = filtered ? '<button type="button" class="lg-btn" data-action="all-diameters">Show all diameters</button>' : '';
+      return `
+        <div class="lg-card lg-empty bullet-empty">
+          <svg class="empty-art" aria-hidden="true" focusable="false"><use href="./assets/art.svg#empty"></use></svg>
+          <strong>No bullets match</strong>
+          <p>Try another search${filtered ? ' or all bullet diameters' : ''}, or add your own bullet.</p>
+          <div class="lg-row bullet-empty-actions">${reset}${all}<button type="button" class="lg-btn lg-btn-ghost" data-action="go-add">${icon('plus')} Add a bullet</button></div>
+        </div>`;
     }
 
     const rows = list.map((b) => {
       const inUse = b.id === inUseId;
       const custom = !FACTORY_IDS.has(b.id);
       const name = esc(b.name);
-      const g7 = Number(b.bcG7) > 0 ? `G7 ${Number(b.bcG7).toFixed(3)}${b.bcG7Estimated ? ' <span class="lg-muted">(estimated)</span>' : ''}` : '';
+      const g7 = Number(b.bcG7) > 0 ? `G7 ${Number(b.bcG7).toFixed(3)}${b.bcG7Estimated ? ' <span class="lg-muted">(est.)</span>' : ''}` : '';
       const g1 = Number(b.bcG1) > 0 ? `G1 ${Number(b.bcG1).toFixed(3)}` : '';
       const factory = this._factoryMs(b);
       return `
-        <tr class="${inUse ? 'target-row' : ''}">
+        <tr class="${inUse ? 'is-in-use' : ''}">
           <th scope="row" class="bullet-name-cell">
             <span class="bullet-name">${name}</span>
-            ${inUse ? '<span class="row-tag row-tag-zero">In use</span>' : ''}
-            ${custom ? '<span class="row-tag row-tag-target">Custom</span>' : ''}
-            <span class="bullet-sub">${esc(b.manufacturer)}${b.type ? ` · ${esc(b.type)}` : ''}</span>
+            ${inUse ? '<span class="lg-badge lg-badge-ok">In use</span>' : ''}
+            ${custom ? '<span class="lg-chip lg-plain">Custom</span>' : ''}
+            <span class="bullet-sub lg-small lg-muted">${esc(b.manufacturer)}${b.type ? ` · ${esc(b.type)}` : ''}</span>
           </th>
-          <td>${Number(b.weightGr)} gr</td>
-          <td class="bullet-bc">${g7}${g7 && g1 ? '<br />' : ''}<span class="${g7 ? 'lg-muted' : ''}">${g1}</span></td>
-          <td class="col-opt">${factory ? this._velocity(factory) : '–'}</td>
+          <td class="lg-num bullet-weight">${Number(b.weightGr)} gr</td>
+          <td class="lg-num bullet-bc">${g7}${g7 && g1 ? '<br />' : ''}<span class="${g7 ? 'lg-muted' : ''}">${g1}</span></td>
+          <td class="lg-num col-opt">${factory ? Math.round(UnitConverter.fromSI(factory, this._units().vel)) : '–'}</td>
           <td class="col-opt">${esc(b.recommendedTwist || '–')}</td>
-          <td><div class="bullet-actions">
+          <td class="bullet-actions-cell"><div class="bullet-actions">
             ${inUse
               ? ''
-              : `<button type="button" class="btn-secondary-sm" data-action="use-bullet" data-id="${esc(b.id)}" aria-label="Use ${name} in ${rifleName}">Use</button>`}
-            ${custom ? `<button type="button" class="btn-ghost-sm btn-icon-only btn-danger-sm" data-action="delete-bullet" data-id="${esc(b.id)}" aria-label="Delete ${name}" title="Delete">${icon('trash')}</button>` : ''}
+              : `<button type="button" class="lg-btn lg-btn-ghost" data-action="use-bullet" data-id="${esc(b.id)}" aria-label="Use ${name} in ${rifleName}">Use</button>`}
+            ${custom ? `<button type="button" class="lg-btn lg-btn-ghost lg-btn-icon lib-danger" data-action="delete-bullet" data-id="${esc(b.id)}" aria-label="Delete ${name}" data-lg-tooltip="Delete">${icon('trash')}</button>` : ''}
           </div></td>
         </tr>`;
     }).join('');
 
     const u = this._units();
     return `
-      <table class="dope-table bullet-table">
-        <caption class="lg-sr-only">Bullets. "Use" puts the bullet in ${rifleName}.</caption>
-        <thead>
-          <tr>
-            <th scope="col">Bullet</th>
-            <th scope="col">Weight</th>
-            <th scope="col"><abbr title="Ballistic coefficient: how well the bullet keeps its speed">BC</abbr></th>
-            <th scope="col" class="col-opt">Factory velocity (${u.vel})</th>
-            <th scope="col" class="col-opt">Twist</th>
-            <th scope="col"><span class="lg-sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>`;
+      <div class="lg-table-wrap lg-table-sticky bullet-table-wrap">
+        <table class="lg-table bullet-table">
+          <caption class="lg-sr-only">Bullets. "Use" puts the bullet in ${rifleName}.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Bullet</th>
+              <th scope="col" class="lg-num">Weight</th>
+              <th scope="col" class="lg-num"><abbr title="Ballistic coefficient: how well the bullet keeps its speed">BC</abbr></th>
+              <th scope="col" class="lg-num col-opt">Factory velocity (${u.vel})</th>
+              <th scope="col" class="col-opt">Twist</th>
+              <th scope="col"><span class="lg-sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
   }
 
   _updateBulletTable() {
@@ -514,79 +521,75 @@ export class LibraryManagerView {
 
     return `
       <div class="add-bullet-layout">
-        <form class="panel add-bullet-form" id="add-bullet-form" novalidate aria-labelledby="add-bullet-title">
-          <div class="panel-header"><h2 id="add-bullet-title">Add a bullet</h2></div>
-          <div class="panel-body">
-            <p class="field-hint add-intro">Enter dimensions to check stability in your barrel twist. Get the BC from the bullet maker's data.</p>
-            <div class="field-grid-2">
-              <div class="field-span-2">
-                <label class="field-label" for="cust-name">Name</label>
-                <input type="text" id="cust-name" class="form-input" maxlength="120" required placeholder="e.g. Lapua 136 gr Scenar-L" value="${v('name')}" />
-              </div>
-              <div>
-                <label class="field-label" for="cust-mfg">Maker (optional)</label>
-                <input type="text" id="cust-mfg" class="form-input" maxlength="80" placeholder="e.g. Lapua" value="${v('mfg')}" />
-              </div>
-              <div>
-                <label class="field-label" for="cust-caliber">Caliber (optional)</label>
-                <input type="text" id="cust-caliber" class="form-input" maxlength="80" placeholder="e.g. 6.5 Creedmoor" value="${v('caliber')}" />
-              </div>
+        <form class="lg-card add-bullet-form" id="add-bullet-form" novalidate aria-labelledby="add-bullet-title">
+          <h2 class="lg-label" id="add-bullet-title">New bullet</h2>
+          <p class="lg-muted add-intro">Get the BC and dimensions from the bullet maker's data. The stability check updates as you type.</p>
+          <div class="field-grid-2">
+            <div class="field-span-2">
+              <label class="field-label" for="cust-name">Name</label>
+              <input type="text" id="cust-name" class="lg-input" maxlength="120" required placeholder="e.g. Lapua 136 gr Scenar-L" value="${v('name')}" />
             </div>
-            <div class="field-grid-3">
-              <div>
-                <label class="field-label" for="cust-weight">Weight (gr)</label>
-                <input type="number" inputmode="decimal" id="cust-weight" class="form-input" min="${f.weight.min}" max="${f.weight.max}" step="${f.weight.step}" value="${v('weight', f.weight.def)}" />
-              </div>
-              <div>
-                <label class="field-label" for="cust-dia">Diameter (${f.diaUnit})</label>
-                <input type="number" inputmode="decimal" id="cust-dia" class="form-input" min="${f.dia.min}" max="${f.dia.max}" step="${f.dia.step}" value="${v('dia', f.dia.def)}" />
-              </div>
-              <div>
-                <label class="field-label" for="cust-len">Length (${f.lenUnit})</label>
-                <input type="number" inputmode="decimal" id="cust-len" class="form-input" min="${f.len.min}" max="${f.len.max}" step="${f.len.step}" value="${v('len', f.len.def)}" />
-              </div>
+            <div>
+              <label class="field-label" for="cust-mfg">Maker (optional)</label>
+              <input type="text" id="cust-mfg" class="lg-input" maxlength="80" placeholder="e.g. Lapua" value="${v('mfg')}" />
             </div>
-            <div class="field-grid-3">
-              <div>
-                <label class="field-label" for="cust-drag-model">Drag model</label>
-                <select id="cust-drag-model" class="form-select">
-                  <option value="G7" ${d.model !== 'G1' ? 'selected' : ''}>G7 (boat-tail)</option>
-                  <option value="G1" ${d.model === 'G1' ? 'selected' : ''}>G1 (flat-base)</option>
-                </select>
-              </div>
-              <div>
-                <label class="field-label" for="cust-bc-g7">G7 BC</label>
-                <input type="number" inputmode="decimal" id="cust-bc-g7" class="form-input" min="0.05" max="1.5" step="0.001" value="${v('g7', '0.315')}" aria-describedby="bc-hint" />
-              </div>
-              <div>
-                <label class="field-label" for="cust-bc-g1">G1 BC (optional)</label>
-                <input type="number" inputmode="decimal" id="cust-bc-g1" class="form-input" min="0.05" max="2" step="0.001" value="${v('g1')}" aria-describedby="bc-hint" />
-              </div>
+            <div>
+              <label class="field-label" for="cust-caliber">Caliber (optional)</label>
+              <input type="text" id="cust-caliber" class="lg-input" maxlength="80" placeholder="e.g. 6.5 Creedmoor" value="${v('caliber')}" />
             </div>
-            <p class="field-hint" id="bc-hint"><abbr title="Ballistic coefficient">BC</abbr>: enter at least the one for your drag model. A missing one is estimated from the other.</p>
-            <div class="field-grid-2">
-              <div>
-                <label class="field-label" for="cust-mv">Factory velocity (${f.velUnit}, optional)</label>
-                <input type="number" inputmode="decimal" id="cust-mv" class="form-input" min="${f.vel.min}" max="${f.vel.max}" step="${f.vel.step}" value="${v('mv')}" />
-              </div>
+          </div>
+          <div class="field-grid-3">
+            <div>
+              <label class="field-label" for="cust-weight">Weight (gr)</label>
+              <input type="text" inputmode="decimal" autocomplete="off" id="cust-weight" class="lg-input lib-num" min="${f.weight.min}" max="${f.weight.max}" step="${f.weight.step}" value="${v('weight', f.weight.def)}" />
             </div>
-            <div class="add-actions">
-              <button type="submit" class="btn-primary">${icon('save')} Save bullet</button>
+            <div>
+              <label class="field-label" for="cust-dia">Diameter (${f.diaUnit})</label>
+              <input type="text" inputmode="decimal" autocomplete="off" id="cust-dia" class="lg-input lib-num" min="${f.dia.min}" max="${f.dia.max}" step="${f.dia.step}" value="${v('dia', f.dia.def)}" />
             </div>
+            <div>
+              <label class="field-label" for="cust-len">Length (${f.lenUnit})</label>
+              <input type="text" inputmode="decimal" autocomplete="off" id="cust-len" class="lg-input lib-num" min="${f.len.min}" max="${f.len.max}" step="${f.len.step}" value="${v('len', f.len.def)}" />
+            </div>
+          </div>
+          <div class="field-grid-3">
+            <div>
+              <label class="field-label" for="cust-drag-model">Drag model</label>
+              <select id="cust-drag-model" class="lg-select">
+                <option value="G7" ${d.model !== 'G1' ? 'selected' : ''}>G7 (boat-tail)</option>
+                <option value="G1" ${d.model === 'G1' ? 'selected' : ''}>G1 (flat-base)</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label" for="cust-bc-g7">G7 BC</label>
+              <input type="text" inputmode="decimal" autocomplete="off" id="cust-bc-g7" class="lg-input lib-num" min="0.05" max="1.5" step="0.001" value="${v('g7', '0.315')}" aria-describedby="bc-hint" />
+            </div>
+            <div>
+              <label class="field-label" for="cust-bc-g1">G1 BC (optional)</label>
+              <input type="text" inputmode="decimal" autocomplete="off" id="cust-bc-g1" class="lg-input lib-num" min="0.05" max="2" step="0.001" value="${v('g1')}" aria-describedby="bc-hint" />
+            </div>
+          </div>
+          <p class="field-hint" id="bc-hint"><abbr title="Ballistic coefficient">BC</abbr>: enter the one for your drag model. A missing one is estimated from the other.</p>
+          <div class="field-grid-2">
+            <div>
+              <label class="field-label" for="cust-mv">Factory velocity (${f.velUnit}, optional)</label>
+              <input type="text" inputmode="decimal" autocomplete="off" id="cust-mv" class="lg-input lib-num" min="${f.vel.min}" max="${f.vel.max}" step="${f.vel.step}" value="${v('mv')}" />
+            </div>
+          </div>
+          <div class="add-actions">
+            <button type="submit" class="lg-btn lg-btn-primary">${icon('save')} Save bullet</button>
           </div>
         </form>
 
-        <section class="panel stability-panel" aria-labelledby="stability-title">
-          <div class="panel-header"><h2 id="stability-title">Stability (Miller formula)</h2></div>
-          <div class="panel-body">
-            <p class="field-hint">In ${esc(profile.name)}: barrel twist 1 in ${esc(profile.twistRateIn)} in, ${this._velocity(profile.muzzleVelocityMs)}, standard air.</p>
-            <div id="stability-live-hud" class="stability-hud" aria-live="polite"></div>
-            <ul class="sg-legend">
-              <li><span class="sg-dot sg-good"></span><abbr title="Gyroscopic stability factor">Sg</abbr> 1.5 or more: stable</li>
-              <li><span class="sg-dot sg-marginal"></span>1.0 to 1.5: marginal, BC may drop</li>
-              <li><span class="sg-dot sg-bad"></span>Below 1.0: unstable, the bullet may tumble</li>
-            </ul>
-          </div>
+        <section class="lg-card lg-kpi stability-card" aria-labelledby="stability-title">
+          <h2 class="lg-label" id="stability-title">Stability in this rifle</h2>
+          <p class="lg-small lg-muted stability-context">${esc(profile.name)}: twist 1 in ${esc(profile.twistRateIn)} in, ${this._velocity(profile.muzzleVelocityMs)}, standard air (Miller formula).</p>
+          <div id="stability-live-hud" class="stability-hud" aria-live="polite"></div>
+          <ul class="sg-legend" aria-label="What the numbers mean">
+            <li><span class="lg-chip lg-ok"><abbr title="Gyroscopic stability factor">Sg</abbr> 1.5 or more</span> Stable</li>
+            <li><span class="lg-chip lg-warn">1.0 to 1.5</span> Marginal: the BC may drop</li>
+            <li><span class="lg-chip lg-bad">Below 1.0</span> Unstable: the bullet may tumble</li>
+          </ul>
         </section>
       </div>
     `;
@@ -628,7 +631,7 @@ export class LibraryManagerView {
     const dia = this._readNumber('cust-dia', { mark: false });
     const len = this._readNumber('cust-len', { mark: false });
     if (![wt, dia, len].every(Number.isFinite)) {
-      hud.innerHTML = '<p class="lg-muted">Enter weight, diameter and length to see the stability.</p>';
+      hud.textContent = 'Enter weight, diameter and length to see the stability.';
       return;
     }
     const profile = appState.getActiveProfile();
@@ -636,21 +639,20 @@ export class LibraryManagerView {
     const lenIn = this._inches(len, f.lenUnit);
     const res = calculateStability(wt, diaIn, lenIn, profile.twistRateIn, profile.muzzleVelocityMs / 0.3048);
     const sg = Number(res.sg) || 0;
-    const level = sg >= 1.5 ? ['good', 'Stable'] : sg >= 1.0 ? ['marginal', 'Marginal'] : ['bad', 'Unstable'];
+    const level = sg >= 1.5 ? ['ok', 'Stable'] : sg >= 1.0 ? ['warn', 'Marginal'] : ['bad', 'Unstable'];
     const tooLong = lenIn / diaIn > 6.5;
     // eslint-disable-next-line no-unsanitized/property -- reviewed: user/stored strings go through esc(); the rest are numbers and constants
     hud.innerHTML = `
-      <div class="sg-score sg-${level[0]}">
-        <span class="sg-label"><abbr title="Gyroscopic stability factor">Sg</abbr></span>
-        <span class="sg-value">${sg.toFixed(2)}</span>
-        <span class="sg-status">${level[1]}</span>
+      <div class="sg-score">
+        <span class="lg-kpi-value"><abbr title="Gyroscopic stability factor">Sg</abbr> ${sg.toFixed(2)}</span>
+        <span class="lg-badge lg-badge-${level[0]}">${level[1]}</span>
       </div>
-      <dl class="sg-stats">
-        <div><dt>Slowest twist for Sg 1.5</dt><dd>1 in ${Number(res.optimalTwistIn).toFixed(1)} in</dd></div>
-        <div><dt>Length</dt><dd>${Number(res.lengthInCalibers).toFixed(2)} calibers</dd></div>
-        <div><dt>Sectional density</dt><dd>${Number(res.sectionalDensity).toFixed(3)} lb/in²</dd></div>
+      <dl class="lg-kv sg-stats">
+        <dt>Slowest twist for Sg 1.5</dt><dd>1 in ${Number(res.optimalTwistIn).toFixed(1)} in</dd>
+        <dt>Length</dt><dd>${Number(res.lengthInCalibers).toFixed(2)} calibers</dd>
+        <dt>Sectional density</dt><dd>${Number(res.sectionalDensity).toFixed(3)} lb/in²</dd>
       </dl>
-      ${tooLong ? '<p class="field-hint">Check the length: over 6.5 calibers is unusually long.</p>' : ''}
+      ${tooLong ? '<p class="lg-alert lg-alert-warn sg-note">Check the length: over 6.5 calibers is unusually long.</p>' : ''}
     `;
   }
 
@@ -774,7 +776,7 @@ export class LibraryManagerView {
       return;
     }
     const btn = e.target.closest?.('[data-action]');
-    if (!btn || !this.container.contains(btn) || btn.disabled) return;
+    if (!btn || !this.container.contains(btn) || btn.disabled || btn.getAttribute('aria-disabled') === 'true') return;
     const id = btn.dataset.id;
     switch (btn.dataset.action) {
       case 'new-rifle':
@@ -794,8 +796,9 @@ export class LibraryManagerView {
         break;
       }
       case 'use-rifle':
-        appState.setActiveProfile(id);
         toast('Rifle selected', 'ok', `${this._findProfile(id)?.name || ''} is now used in the Solver.`);
+        appState.setActiveProfile(id); // re-renders through the subscription
+        this._refocus(`[data-rifle="${CSS.escape(id)}"] .rifle-main-action`);
         break;
       case 'duplicate-rifle':
         this._duplicateRifle(id);
@@ -816,6 +819,25 @@ export class LibraryManagerView {
         toast('Undone', 'info');
         break;
       }
+      case 'clear-search': {
+        this.searchQuery = '';
+        const search = this.container.querySelector('#proj-search');
+        if (search) search.value = '';
+        this._updateBulletTable();
+        search?.focus();
+        break;
+      }
+      case 'all-diameters': {
+        this.caliberFilter = 'all';
+        const sel = this.container.querySelector('#caliber-filter');
+        if (sel) sel.value = 'all';
+        this._updateBulletTable();
+        sel?.focus();
+        break;
+      }
+      case 'go-add':
+        this.setTab('add');
+        break;
       case 'export':
         this._export();
         break;
@@ -862,10 +884,17 @@ export class LibraryManagerView {
         } catch {
           // importJSON reports it
         }
+        const before = JSON.parse(appState.exportJSON()); // for undo
         if (!appState.importJSON(text)) {
           toast("Couldn't import", 'bad', "The file isn't a Ballistic Workbench backup.");
           return;
         }
+        this._showUndo('Backup imported. Your previous rifles and settings were replaced.', () => {
+          const state = appState.state;
+          for (const k of Object.keys(state)) if (!(k in before)) delete state[k];
+          Object.assign(state, before);
+          appState.notify('import');
+        });
         const rifles = appState.state.profiles.length;
         const idSet = new Set(ids);
         const bullets = appState.state.projectilesLibrary.filter((b) => idSet.has(b.id)).length;

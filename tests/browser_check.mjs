@@ -290,12 +290,13 @@ try {
 
   // ---- 8. Compare models -----------------------------------------------------------------------------
   await goto('#solverLab', 1200);
-  const lab = await ev(`({ w: document.getElementById('solver-lab-canvas').getBoundingClientRect().width, rows: document.querySelectorAll('.lab-table tbody tr').length })`);
-  check(lab.w > 200 && lab.rows > 5, `compare models: chart drawn and ${lab.rows} table rows`);
-  const before = await ev(`document.querySelector('[data-series]').getAttribute('aria-pressed')`);
-  await ev(`document.querySelector('[data-series]').click()`);
+  const lab = await ev(`({ w: document.querySelector('#lab-chart svg.lg-chart-svg')?.getBoundingClientRect().width || 0, rows: document.querySelectorAll('.lab-table tbody tr').length, models: document.querySelectorAll('[data-series]').length })`);
+  check(lab.w > 200 && lab.rows > 5, `compare models: Låda chart drawn and ${lab.rows} table rows`);
+  check(lab.models === 3, `compare models offers the three distinct models (${lab.models})`);
+  const before = await ev(`document.querySelector('[data-series]:not(:disabled)').checked`);
+  await ev(`document.querySelector('[data-series]:not(:disabled)').click()`);
   await sleep(300);
-  check((await ev(`document.querySelector('[data-series]').getAttribute('aria-pressed')`)) !== before, 'compare models: series toggle works');
+  check((await ev(`document.querySelector('[data-series]').checked`)) !== before, 'compare models: model toggle works');
   await ev(`document.querySelector('#theme-switch [data-theme-set="light"]').click()`);
   await sleep(600);
   check((await ev(`document.querySelectorAll('.lab-table tbody tr').length`)) === lab.rows, 'compare models survives a theme change (it used to go blank)');

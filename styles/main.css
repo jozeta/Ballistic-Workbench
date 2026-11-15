@@ -79,12 +79,8 @@ ul, ol { padding: 0; }
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
-/* Force Tabular Numbers for Precision Alignment */
-table, .stat-val, .card-value, input[type="number"], .badge, .mono-num {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-}
+/* Numbers line up (tabular figures) in the UI font, as in Låda Glass */
+table, input, .lg-kpi-value { font-variant-numeric: tabular-nums; }
 
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
@@ -113,25 +109,13 @@ h1, h2, h3, h4 {
   font-size: 12px;
   margin-top: 2px;
 }
-.text-cyan { color: var(--accent-cyan); }
-.text-amber { color: var(--accent-amber); }
-.text-emerald { color: var(--accent-emerald); }
-.text-purple { color: var(--accent-purple); }
-.text-muted { color: var(--text-muted); }
-.text-sm { font-size: 11px; }
-.font-bold { font-weight: 700; }
-.font-semibold { font-weight: 600; }
-.mt-1 { margin-top: 4px; }
-.mt-2 { margin-top: 8px; }
-.mt-3 { margin-top: 12px; }
-.mt-4 { margin-top: 16px; }
 
 /* =====================================================================================
    CORE: header, layout and shared components (Låda Glass look). View-specific styles live
    further down or in styles/views/*.css. Shared class names other views rely on:
    .panel .lg-card .view-header .btn-primary(-sm) .btn-secondary-sm .btn-accent-sm .btn-ghost-sm
-   .form-input .form-select(-sm) .field-label .field-row .field-grid-2/3 .field-hint .field-error
-   .panel-toolbar .tab-btn .badge .dope-table .check-inline
+   .field-label .field-row .field-grid-2/3 .field-hint .field-error
+   .panel-toolbar .badge .check-inline
    ===================================================================================== */
 
 /* ---- app shell (Låda lg-app: sidebar + main) ----------------------------------------------- */
@@ -163,8 +147,8 @@ h1, h2, h3, h4 {
 
 /* View header: h1 + one sentence, actions on the right (Låda lg-header) */
 .view-header { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--lg-space-m); flex-wrap: wrap; }
-.view-header h1, .view-title { font-size: var(--lg-fs-title); font-weight: 600; letter-spacing: -0.01em; margin: 0; }
-.view-header p, .view-subtitle { color: var(--lg-muted); margin: var(--lg-space-xxs) 0 0; max-width: 72ch; }
+.view-header h1 { font-size: var(--lg-fs-title); font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+.view-header p { color: var(--lg-muted); margin: var(--lg-space-xxs) 0 0; max-width: 72ch; }
 
 /* ---- surfaces ------------------------------------------------------------------------------ */
 .panel {
@@ -210,39 +194,6 @@ h1, h2, h3, h4 {
 .field-hint { color: var(--lg-muted); font-size: 12px; margin-top: 4px; }
 .field-error { color: var(--lg-bad-text); font-size: 12px; margin-top: 4px; }
 
-.form-input, .form-select, .form-select-sm, .form-input-sm, .form-textarea {
-  width: 100%;
-  min-height: 34px;
-  padding: 6px 10px;
-  border-radius: var(--lg-radius-control);
-  border: 1px solid var(--lg-line-2);
-  background: var(--lg-field);
-  background-clip: padding-box;
-  color: var(--lg-text);
-  font: inherit;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  transition: border-color var(--lg-dur-quick) var(--lg-ease), box-shadow var(--lg-dur-quick) var(--lg-ease);
-}
-.form-select, .form-select-sm {
-  appearance: none;
-  -webkit-appearance: none;
-  padding-right: 30px;
-  cursor: pointer;
-  background-image: linear-gradient(45deg, transparent 50%, var(--lg-muted) 50%), linear-gradient(135deg, var(--lg-muted) 50%, transparent 50%);
-  background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-}
-.form-select-sm, .form-input-sm { width: auto; min-height: 30px; padding-top: 4px; padding-bottom: 4px; font-size: 12px; }
-.form-select option, .form-select-sm option { background: var(--lg-elevated); color: var(--lg-text); }
-.form-input:hover, .form-select:hover, .form-select-sm:hover, .form-input-sm:hover { border-color: color-mix(in srgb, var(--lg-accent) 45%, var(--lg-line-2)); }
-.form-input:focus, .form-select:focus, .form-select-sm:focus, .form-input-sm:focus, .form-textarea:focus {
-  outline: none;
-  border-color: var(--lg-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lg-accent) 25%, transparent);
-}
-[aria-invalid="true"].form-input, [aria-invalid="true"].form-input-sm { border-color: var(--lg-bad); }
 [aria-invalid="true"]:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--lg-bad) 25%, transparent); }
 
 input[type="range"] { flex: 1; min-width: 0; accent-color: var(--lg-accent); cursor: pointer; height: 28px; }
@@ -252,67 +203,13 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .check-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--lg-text); cursor: pointer; }
 
 /* ---- buttons ------------------------------------------------------------------------------- */
-.btn-primary, .btn-primary-sm, .btn-secondary-sm, .btn-accent-sm, .btn-ghost-sm {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 6px 12px;
-  border-radius: var(--lg-radius-control);
-  border: 1px solid var(--lg-line-2);
-  background: var(--lg-field);
-  color: var(--lg-text);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 550;
-  white-space: nowrap;
-  cursor: pointer;
-  text-decoration: none;
-  transition: border-color var(--lg-dur-quick) var(--lg-ease), filter var(--lg-dur-quick) var(--lg-ease), transform var(--lg-dur-quick) var(--lg-ease);
-}
-.btn-primary { min-height: 38px; padding: 8px 16px; }
-.btn-primary, .btn-primary-sm, .btn-accent-sm {
-  border-color: transparent;
-  color: var(--lg-on-accent);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--lg-accent) var(--lg-lit-top), white), color-mix(in srgb, var(--lg-accent) var(--lg-lit-bottom), black));
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .2), 0 0 0 1px color-mix(in srgb, var(--lg-accent) 70%, black) inset;
-}
-.btn-ghost-sm { background: transparent; border-color: transparent; color: var(--lg-accent); }
-.btn-secondary-sm:hover, .btn-ghost-sm:hover { border-color: color-mix(in srgb, var(--lg-accent) 55%, var(--lg-line-2)); }
-.btn-primary:hover, .btn-primary-sm:hover, .btn-accent-sm:hover { filter: brightness(1.07); }
-.btn-primary:active, .btn-primary-sm:active, .btn-secondary-sm:active, .btn-accent-sm:active { transform: scale(.98); }
-.btn-primary:disabled, .btn-primary-sm:disabled, .btn-secondary-sm:disabled, .btn-accent-sm:disabled { opacity: .5; cursor: not-allowed; transform: none; filter: none; }
-.btn-icon-only { padding: 6px; min-width: 34px; min-height: 34px; }
-.btn-block { width: 100%; }
-.btn-danger-sm { color: var(--lg-bad-text); }
-.btn-primary .lg-icon, .btn-primary-sm .lg-icon, .btn-secondary-sm .lg-icon, .btn-accent-sm .lg-icon, .btn-ghost-sm .lg-icon { width: 16px; height: 16px; }
 
-/* Segmented buttons (chart series, card formats, tools): .tab-btn inside any group */
-.tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 4px 11px;
-  border: 0;
-  border-radius: var(--lg-radius-small);
-  background: transparent;
-  color: var(--lg-muted);
-  font: inherit;
-  font-size: 13px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.tab-btn:hover { color: var(--lg-text); }
-.tab-btn.active, .tab-btn[aria-pressed="true"], .tab-btn[aria-selected="true"] {
-  color: var(--lg-text);
-  background: linear-gradient(180deg, var(--lg-glass-fill-top), var(--lg-glass-fill-bottom)), var(--lg-glass-strong);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .18), inset 0 0 0 1px var(--lg-glass-edge);
-}
+.btn-block { width: 100%; }
+
+
 .lg-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; font-size: 13px; }
-.lg-tab .lg-icon, .tab-btn .lg-icon { width: 16px; height: 16px; }
-.lg-tab[aria-selected="true"] .lg-icon, .tab-btn.active .lg-icon { color: var(--lg-accent); }
+.lg-tab .lg-icon { width: 16px; height: 16px; }
+.lg-tab[aria-selected="true"] .lg-icon { color: var(--lg-accent); }
 
 .badge {
   display: inline-flex;
@@ -325,34 +222,12 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
   color: var(--lg-text);
   border: 1px solid var(--lg-line);
 }
-.badge-mach-supersonic, .badge-ok { background: color-mix(in srgb, var(--lg-ok) 14%, transparent); color: var(--lg-ok-text); border-color: color-mix(in srgb, var(--lg-ok) 30%, transparent); }
-.badge-mach-transonic, .badge-warn { background: color-mix(in srgb, var(--lg-warn) 14%, transparent); color: var(--lg-warn-text); border-color: color-mix(in srgb, var(--lg-warn) 30%, transparent); }
-.badge-mach-subsonic, .badge-bad { background: color-mix(in srgb, var(--lg-bad) 14%, transparent); color: var(--lg-bad-text); border-color: color-mix(in srgb, var(--lg-bad) 30%, transparent); }
+.badge-ok { background: color-mix(in srgb, var(--lg-ok) 14%, transparent); color: var(--lg-ok-text); border-color: color-mix(in srgb, var(--lg-ok) 30%, transparent); }
+.badge-warn { background: color-mix(in srgb, var(--lg-warn) 14%, transparent); color: var(--lg-warn-text); border-color: color-mix(in srgb, var(--lg-warn) 30%, transparent); }
+.badge-bad { background: color-mix(in srgb, var(--lg-bad) 14%, transparent); color: var(--lg-bad-text); border-color: color-mix(in srgb, var(--lg-bad) 30%, transparent); }
 
 /* ---- tables -------------------------------------------------------------------------------- */
-.table-scrollable { overflow: auto; max-height: 62vh; border-radius: 0 0 var(--lg-radius-card) var(--lg-radius-card); }
-.dope-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
-.dope-table th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 8px 10px;
-  text-align: right;
-  white-space: nowrap;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .05em;
-  text-transform: uppercase;
-  color: var(--lg-muted);
-  background: var(--lg-elevated);
-  border-bottom: 1px solid var(--lg-line-2);
-}
-.dope-table td { padding: 6px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--lg-line); }
-.dope-table th:first-child, .dope-table td:first-child { text-align: left; }
-.dope-table tbody tr:hover { background: color-mix(in srgb, var(--lg-text) 5%, transparent); }
-.dope-table .target-row { background: color-mix(in srgb, var(--lg-accent) 14%, transparent); }
-.dope-table .zero-row td { color: var(--lg-ok-text); }
-.dope-table .highlight-row { background: color-mix(in srgb, var(--lg-accent-2) 16%, transparent); }
+
 .row-tag { margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 10px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; vertical-align: 1px; }
 .row-tag-zero { background: color-mix(in srgb, var(--lg-ok) 18%, transparent); color: var(--lg-ok-text); }
 .row-tag-target { background: color-mix(in srgb, var(--lg-accent) 22%, transparent); color: var(--lg-text); }
@@ -361,11 +236,6 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .panel-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--lg-line); }
 .toolbar-spacer { flex: 1; }
 .field-inline { display: inline-flex; align-items: center; gap: 6px; color: var(--lg-muted); font-size: 12px; }
-.text-muted { color: var(--lg-muted); }
-.text-cyan { color: var(--lg-accent); }
-.text-amber { color: var(--lg-warn-text); }
-.text-emerald { color: var(--lg-ok-text); }
-.text-red { color: var(--lg-bad-text); }
 
 /* ====================================================================================
    SOLVER VIEW
@@ -408,7 +278,7 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .setup-section > summary .lg-icon { color: var(--lg-accent); }
 .section-summary { margin-left: auto; color: var(--lg-muted); font-weight: 500; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .section-body { padding: 4px 14px 14px; }
-.section-body > .form-select { margin-bottom: 12px; }
+
 .wind-clock-wrapper { display: flex; justify-content: center; margin-bottom: 10px; }
 #wind-clock-canvas { width: 200px; height: 200px; max-width: 100%; touch-action: none; }
 
@@ -490,9 +360,6 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .range-table .zero-row th, .range-table .zero-row td { color: var(--lg-ok-text); }
 .turret-btn { min-height: 34px; padding-left: 4px; padding-right: 4px; font-variant-numeric: tabular-nums; }
 /* Chart */
-.chart-canvas-container { position: relative; height: 440px; padding: 8px; }
-.chart-canvas-container canvas { display: block; width: 100%; height: 100%; }
-.chart-tab-bar { padding: 3px; }
 
 /* Column picker */
 .column-visibility-dropdown { position: relative; }
@@ -550,9 +417,9 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
   .hold-clicks { font-size: 13px; }
   .hold-clicks .lg-muted { display: none; }
   .reticle-canvas-container { min-height: 300px; }
-  .chart-canvas-container { height: 320px; }
+  
   .mag-control { margin-left: 0; min-width: 0; width: 100%; }
-  .table-scrollable { max-height: 70vh; }
+  
   .field-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 380px) {
@@ -560,20 +427,22 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
   .field-span-2 { grid-column: auto; }
 }
 @media (pointer: coarse) {
-  .form-input, .form-select, .btn-primary-sm, .btn-secondary-sm, .btn-accent-sm, .btn-ghost-sm, .nav-link,
-  .btn-units-toggle, .btn-theme-toggle, .btn-cmd-palette, .tab-btn, .lg-tab, .form-select-sm, .form-input-sm { min-height: 44px; }
-  .btn-icon-only { min-width: 44px; }
+  .nav-link,
+.lg-tab { min-height: 44px; }
+  
   input[type="checkbox"] { width: 20px; height: 20px; }
 }
 
 /* UTILITY CLASSES (replace inline style attributes, which the CSP blocks) */
-.w-45px { width: 45px; }
-.w-55px { width: 55px; }
-.w-65px { width: 65px; }
-.w-70px { width: 70px; }
-.w-75px { width: 75px; }
-.w-85px { width: 85px; }
-.w-95px { width: 95px; }
-.w-125px { width: 125px; }
-.ml-10px { margin-left: 10px; }
-.text-center { text-align: center; }
+
+
+/* Touch screens: 44 px targets for the Låda controls too */
+@media (pointer: coarse) {
+  .lg-btn, .lg-input, .lg-select, .lg-tab, .lg-segmented label, .app-nav .nav-link { min-height: 44px; }
+  .lg-btn-icon { min-width: 44px; }
+  .lg-check { width: 20px; height: 20px; }
+}
+/* Phones: room under the content so toasts never cover the last buttons */
+@media (max-width: 760px) {
+  .lg-main { padding-bottom: 96px; }
+}

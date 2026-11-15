@@ -28,7 +28,7 @@ const DEFAULT_TARGET = {
 };
 
 const DEFAULT_SOLVER_CONFIG = {
-  activeAlgorithm: 'G7', // 'G1' | 'G7' | 'MPM' | '4DOF'
+  activeAlgorithm: 'G7', // 'G1' | 'G7' | 'MPM'
   stepM: 25,
   maxRangeM: 1200,
   includeSpinDrift: true,

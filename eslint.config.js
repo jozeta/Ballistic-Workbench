@@ -34,7 +34,7 @@ export default [
     languageOptions: { sourceType: 'script', globals: { self: 'readonly', caches: 'readonly', fetch: 'readonly', URL: 'readonly', Response: 'readonly' } },
   },
   {
-    files: ['tests/**', 'eslint.config.js'],
+    files: ['tests/**', 'scripts/**', 'eslint.config.js'],
     languageOptions: { globals: { process: 'readonly', console: 'readonly', Buffer: 'readonly', WebSocket: 'readonly', fetch: 'readonly', URL: 'readonly', setTimeout: 'readonly' } },
   },
 ];

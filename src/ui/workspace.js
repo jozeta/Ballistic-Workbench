@@ -677,7 +677,6 @@ export class WorkspaceView {
                     <option value="G7" ${config.activeAlgorithm === 'G7' ? 'selected' : ''}>Point mass, G7 drag</option>
                     <option value="G1" ${config.activeAlgorithm === 'G1' ? 'selected' : ''}>Point mass, G1 drag</option>
                     <option value="MPM" ${config.activeAlgorithm === 'MPM' ? 'selected' : ''}>Modified point mass (adds spin drift, jump, Coriolis)</option>
-                    <option value="4DOF" ${config.activeAlgorithm === '4DOF' ? 'selected' : ''}>4DOF (also models bullet spin)</option>
                   </select>
                 </div>
                 <div>

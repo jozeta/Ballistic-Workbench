@@ -1,9 +1,10 @@
 /**
  * Ballistic Workbench - Compare models view.
  * Solves the active rifle and atmosphere with each solver model (point mass with G1 or G7 drag,
- * modified point mass, 4DOF), each zeroed on its own, and shows how far they differ:
- *   - a chart: "Difference from G7" (default; the curves would otherwise lie on top of each other)
- *     or "Elevation by model", with a toggle per model (the toggles are the legend)
+ * modified point mass), each zeroed on its own, and shows how far they differ:
+ *   - a Låda Glass line chart (SVG): elevation difference from G7 (default; the curves would
+ *     otherwise lie on top of each other), drift difference from G7, or elevation by model,
+ *     with a checkbox per model to hide lines (the chart legend names the lines shown)
  *   - a table of the differences from G7, in the user's units
  *   - "About the models", each with "Use in Solver"
  * Recalculates whenever the rifle, atmosphere, units or solver settings change.
@@ -14,39 +15,32 @@ import { UnitConverter } from '../core/units.js';
 import { esc } from '../core/escape.js';
 import { getAtmosphericConditions } from '../physics/atmosphere.js';
 import { solveTrajectory, solveZeroAngle } from '../physics/solvers.js';
-import { getPalette } from '../canvas/palette.js';
 import { icon } from './icons.js';
 import { toast } from './notify.js';
 
 const MODELS = [
   {
-    id: 'G7', key: 'g7', label: 'G7', name: 'Point mass, G7 drag', color: 'accent', dash: [],
+    id: 'G7', key: 'g7', label: 'G7', name: 'Point mass, G7 drag',
     about: 'Reference drag shape for modern boat-tail bullets; usually the better fit for long-range match bullets.',
   },
   {
-    id: 'G1', key: 'g1', label: 'G1', name: 'Point mass, G1 drag', color: 'warn', dash: [8, 5],
+    id: 'G1', key: 'g1', label: 'G1', name: 'Point mass, G1 drag',
     about: 'Reference drag shape for flat-base bullets. With boat-tail match bullets it drifts from reality, mostly past ~600 m and through transonic.',
   },
   {
-    id: 'MPM', key: 'mpm', label: 'MPM', name: 'Modified point mass', color: 'ok', dash: [2, 4],
-    about: 'Adds spin drift, aerodynamic jump from crosswind, and Coriolis.',
-  },
-  {
-    id: '4DOF', key: 'dof4', label: '4DOF', name: 'Four degrees of freedom', color: 'accent2', dash: [12, 4, 2, 4],
-    about: 'Modified point mass plus an estimate of how the bullet\'s spin slows down over the flight.',
+    id: 'MPM', key: 'mpm', label: 'MPM', name: 'Modified point mass',
+    about: 'G7 point mass plus spin drift, aerodynamic jump from crosswind, and Coriolis. In calm air the elevation matches G7; the difference shows in drift.',
   },
 ];
 const ABBR = {
   MPM: '<abbr title="Modified point mass">MPM</abbr>',
-  '4DOF': '<abbr title="Four degrees of freedom">4DOF</abbr>',
 };
 // Chart modes: what is plotted for each model
 const MODES = [
-  { id: 'diff', button: 'Elevation difference', title: 'Elevation difference from G7', field: 'diff', unit: 'angle', axis: 'Difference from G7' },
-  { id: 'drift', button: 'Drift difference', title: 'Drift difference from G7', field: 'dDrift', unit: 'drift', axis: 'Drift difference from G7' },
-  { id: 'elev', button: 'Elevation', title: 'Elevation by model', field: 'elev', unit: 'angle', axis: 'Elevation' },
+  { id: 'diff', button: 'Elevation difference', title: 'Elevation difference from G7', field: 'diff', unit: 'angle', signed: true },
+  { id: 'drift', button: 'Drift difference', title: 'Drift difference from G7', field: 'dDrift', unit: 'drift', signed: true },
+  { id: 'elev', button: 'Elevation', title: 'Elevation by model', field: 'elev', unit: 'angle', signed: false },
 ];
-const SVG_DASH = { g7: '', g1: '8 5', mpm: '2 4', dof4: '12 4 2 4' };
 
 /** Formats a signed difference; values that round to zero show as 0.00, never −0.00. */
 function signed(v, decimals) {
@@ -58,8 +52,7 @@ function signed(v, decimals) {
 export class SolverLabView {
   constructor(containerElement) {
     this.container = containerElement;
-    this.canvas = null;
-    this.ctx = null;
+    this.chart = null;
     this.data = null;
     this.mode = 'diff'; // MODES id
     this.visible = new Set(MODELS.map((m) => m.key));
@@ -83,8 +76,12 @@ export class SolverLabView {
 
   destroy() {
     this.unsubscribe?.();
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
+    this._destroyChart();
+  }
+
+  _destroyChart() {
+    this.chart?.destroy?.();
+    this.chart = null;
   }
 
   _units() {
@@ -152,147 +149,80 @@ export class SolverLabView {
   _series(key) {
     const u = this._units();
     const unitM = u.dist === 'yd' ? 0.9144 : 1;
-    const base = this.data.g7;
-    const pts = this.data[key] || [];
+    const base = this.data?.g7 || [];
+    const pts = this.data?.[key] || [];
     const out = [];
     for (let i = 0; i < base.length && i < pts.length; i++) {
       const elev = this._angle(pts[i].elevationRad ?? pts[i].elevationMrad / 1000);
       const elevG7 = this._angle(base[i].elevationRad ?? base[i].elevationMrad / 1000);
       const dDrift = UnitConverter.fromSI(pts[i].driftM - base[i].driftM, u.drift);
-      out.push({ d: pts[i].distanceM / unitM, elev, diff: elev - elevG7, dDrift });
+      out.push({ d: Math.round(pts[i].distanceM / unitM), elev, diff: elev - elevG7, dDrift });
     }
     return out;
   }
 
-  // ---- chart ----------------------------------------------------------------------------------
+  // ---- chart (LadaGlass.chart.line) ------------------------------------------------------------
 
-  _initCanvas() {
-    this.canvas = this.container.querySelector('#solver-lab-canvas');
-    this.ctx = this.canvas?.getContext('2d') || null;
-    this.resizeObserver?.disconnect();
-    if (this.canvas && window.ResizeObserver) {
-      this.resizeObserver = new ResizeObserver(() => this.drawChart());
-      this.resizeObserver.observe(this.canvas.parentElement);
+  _chartData() {
+    const u = this._units();
+    const mode = this._mode();
+    const unit = mode.unit === 'drift' ? u.drift : u.angle;
+    const shown = MODELS.filter((m) => this.visible.has(m.key));
+    const series = shown.map((m) => ({
+      name: m.key === 'g7' && mode.signed ? 'G7 (reference)' : m.label,
+      points: this._series(m.key).map((p) => [p.d, p[mode.field]]).filter((p) => Number.isFinite(p[1])),
+    }));
+    // Decimals from the size of the values shown, so small differences don't all read 0.0
+    let span = 0;
+    for (const s of series) for (const p of s.points) span = Math.max(span, Math.abs(p[1]));
+    const dec = span < 0.5 ? 2 : span < 10 ? 1 : 0;
+    const fmtY = mode.signed ? (v) => `${signed(v, dec)} ${unit}` : (v) => `${(Math.abs(v) < 0.5 * 10 ** -dec ? 0 : v).toFixed(dec)} ${unit}`;
+    return {
+      label: `${mode.title} (${unit})`,
+      series,
+      x: { type: 'linear', format: (v) => `${Math.round(v).toLocaleString('en-US')} ${u.dist}` },
+      y: { format: fmtY },
+    };
+  }
+
+  /** One plain sentence on why the lines differ, from the numbers on screen. */
+  _explain() {
+    const el = this.container.querySelector('#lab-explain');
+    const { g7, g1, mpm } = this.data || {};
+    if (!el || !g7?.length) return;
+    const u = this._units();
+    const last = g7.length - 1;
+    const ang = (p) => this._angle(p.elevationRad ?? p.elevationMrad / 1000);
+    const dist = (p) => Math.round(UnitConverter.fromSI(p.distanceM, u.dist));
+    const parts = [];
+    const g1Diff = ang(g1[last]) - ang(g7[last]);
+    parts.push(Math.abs(g1Diff) < (u.angle === 'MOA' ? 0.35 : 0.1)
+      ? `G1 and G7 agree within ${Math.abs(g1Diff).toFixed(2)} ${u.angle} out to ${dist(g7[last])} ${u.dist}: both BCs were measured for this bullet, so they predict nearly the same path.`
+      : `G1 needs ${Math.abs(g1Diff).toFixed(2)} ${u.angle} ${g1Diff > 0 ? 'more' : 'less'} than G7 at ${dist(g7[last])} ${u.dist}; for boat-tail bullets G7 is usually closer to reality.`);
+    const mid = Math.min(last, Math.round(last / 2));
+    const jump = ang(mpm[mid]) - ang(g7[mid]);
+    if (Math.abs(jump) >= 0.005) {
+      parts.push(`MPM sits a steady ${jump > 0 ? '+' : ''}${jump.toFixed(2)} ${u.angle} from G7: that is aerodynamic jump from the crosswind, an angle set at the muzzle, so it is the same at every distance.`);
+    } else {
+      parts.push('In calm air MPM needs the same elevation as G7; its difference is drift.');
     }
+    const driftCm = (mpm[last].driftM - g7[last].driftM) * 100;
+    parts.push(`MPM drifts ${Math.abs(UnitConverter.fromSI(driftCm / 100, u.drift)).toFixed(1)} ${u.drift} ${driftCm >= 0 ? 'right' : 'left'} of G7 at ${dist(g7[last])} ${u.dist} from spin drift and Coriolis.`);
+    el.textContent = parts.join(' ');
   }
 
   drawChart() {
-    if (!this.ctx || !this.data?.g7?.length) return;
-    const canvas = this.canvas;
-    const w = Math.max(240, Math.floor(canvas.clientWidth));
-    const h = Math.max(220, Math.floor(canvas.clientHeight));
-    const dpr = window.devicePixelRatio || 1;
-    if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
-      canvas.width = Math.floor(w * dpr);
-      canvas.height = Math.floor(h * dpr);
+    const host = this.container.querySelector('#lab-chart');
+    if (!host || !this.data?.g7?.length || typeof LadaGlass === 'undefined' || !LadaGlass.chart?.line) return;
+    const data = this._chartData();
+    if (this.chart && this.chart.host === host) {
+      this.chart.update(data);
+    } else {
+      this._destroyChart();
+      this.chart = LadaGlass.chart.line(host, data);
+      this.chart.host = host;
     }
-    const ctx = this.ctx;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-
-    const pal = getPalette();
-    const u = this._units();
-    const narrow = w < 480;
-    const pad = { top: 14, right: narrow ? 10 : 18, bottom: 40, left: narrow ? 48 : 62 };
-    const plotW = w - pad.left - pad.right;
-    const plotH = h - pad.top - pad.bottom;
-    const mode = this._mode();
-    const field = mode.field;
-    const isDiff = mode.id !== 'elev';
-    const axisUnit = mode.unit === 'drift' ? u.drift : u.angle;
-
-    const shown = MODELS.filter((m) => this.visible.has(m.key));
-    const series = shown.map((m) => ({ m, pts: this._series(m.key) }));
-    let lo = 0;
-    let hi = 0;
-    for (const s of series) for (const p of s.pts) {
-      lo = Math.min(lo, p[field]);
-      hi = Math.max(hi, p[field]);
-    }
-    if (hi - lo < 0.2) {
-      hi += 0.1;
-      lo -= isDiff ? 0.1 : 0;
-    }
-    // Nice tick step
-    const raw = (hi - lo) / (narrow ? 4 : 6);
-    const mag = 10 ** Math.floor(Math.log10(raw));
-    const step = [1, 2, 2.5, 5, 10].map((k) => k * mag).find((s) => s >= raw) || 10 * mag;
-    lo = Math.floor(lo / step) * step;
-    hi = Math.ceil(hi / step) * step;
-    const decimals = step < 0.1 ? 2 : step < 1 ? 1 : 0;
-
-    const maxD = this.maxDisp;
-    const x = (d) => pad.left + (d / maxD) * plotW;
-    const y = (v) => pad.top + plotH - ((v - lo) / (hi - lo)) * plotH;
-
-    ctx.font = `12px ${pal.font}`;
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = pal.line;
-    ctx.fillStyle = pal.muted;
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    for (let v = lo; v <= hi + step / 2; v += step) {
-      const yy = Math.round(y(v)) + 0.5;
-      ctx.beginPath();
-      ctx.moveTo(pad.left, yy);
-      ctx.lineTo(pad.left + plotW, yy);
-      ctx.stroke();
-      const t = Math.abs(v) < step / 1000 ? (0).toFixed(decimals) : v.toFixed(decimals);
-      ctx.fillText(t, pad.left - 6, yy);
-    }
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    const xStep = narrow ? 400 : 200;
-    for (let d = 0; d <= maxD; d += xStep) {
-      const xx = Math.round(x(d)) + 0.5;
-      ctx.beginPath();
-      ctx.moveTo(xx, pad.top);
-      ctx.lineTo(xx, pad.top + plotH);
-      ctx.stroke();
-      ctx.fillText(String(d), xx, pad.top + plotH + 6);
-    }
-    ctx.fillText(`Distance (${u.dist})`, pad.left + plotW / 2, pad.top + plotH + 22);
-
-    // Zero line in difference mode
-    if (isDiff && lo < 0 && hi > 0) {
-      ctx.strokeStyle = pal.line2;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(pad.left, y(0));
-      ctx.lineTo(pad.left + plotW, y(0));
-      ctx.stroke();
-    }
-
-    // Y-axis title
-    ctx.save();
-    ctx.translate(12, pad.top + plotH / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = pal.muted;
-    ctx.fillText(`${mode.axis} (${axisUnit})`, 0, 0);
-    ctx.restore();
-
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = 'round';
-    for (const s of series) {
-      ctx.strokeStyle = pal[s.m.color] || pal.accent;
-      ctx.setLineDash(s.m.dash);
-      ctx.beginPath();
-      s.pts.forEach((p, i) => {
-        if (i === 0) ctx.moveTo(x(p.d), y(p[field]));
-        else ctx.lineTo(x(p.d), y(p[field]));
-      });
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
-
-    // Text equivalent for screen readers
-    const last = Object.fromEntries(MODELS.map((m) => [m.key, this._series(m.key).at(-1)]));
-    const end = last.g7 ? Math.round(last.g7.d) : maxD;
-    const sumField = mode.id === 'drift' ? 'dDrift' : 'diff';
-    const parts = MODELS.filter((m) => m.key !== 'g7').map((m) => `${m.label} ${signed(last[m.key]?.[sumField] ?? 0, mode.id === 'drift' ? 1 : 2)}`);
-    canvas.setAttribute('aria-label', `Chart: ${mode.title}. At ${end} ${u.dist}, ${mode.id === 'drift' ? 'drift' : 'elevation'} compared with G7: ${parts.join(', ')} ${axisUnit}. The table below has every value.`);
+    this._explain();
   }
 
   // ---- table ----------------------------------------------------------------------------------
@@ -302,7 +232,7 @@ export class SolverLabView {
     if (!tbody || !this.data?.g7) return;
     const u = this._units();
     const unitM = u.dist === 'yd' ? 0.9144 : 1;
-    const { g7, g1, mpm, dof4 } = this.data;
+    const { g7, g1, mpm } = this.data;
     const dec = 2;
     const dDec = 1;
     const ang = (p) => this._angle(p.elevationRad ?? p.elevationMrad / 1000);
@@ -313,138 +243,150 @@ export class SolverLabView {
       const d = Math.round(g7[i].distanceM / unitM);
       if (d === 0 || d % 100 !== 0) continue;
       const b = g7[i];
-      const row = [g1[i], mpm[i], dof4[i]];
+      const row = [g1[i], mpm[i]];
       const diffs = row.map((p) => (p ? signed(ang(p) - ang(b), dec) : '–'));
       const big = row[0] && Math.abs(ang(row[0]) - ang(b)) > (u.angle === 'MOA' ? 1.7 : 0.5);
       html += `
         <tr>
           <th scope="row">${d}</th>
-          <td>${(Math.abs(ang(b)) < 0.005 ? 0 : ang(b)).toFixed(dec)}</td>
-          <td class="${big ? 'lab-big' : ''}">${diffs[0]}</td>
-          <td>${diffs[1]}</td>
-          <td>${diffs[2]}</td>
-          <td>${mpm[i] ? signed(drift(mpm[i]) - drift(b), dDec) : '–'}</td>
-          <td>${dof4[i] ? signed(drift(dof4[i]) - drift(b), dDec) : '–'}</td>
-          <td>${b.tofS.toFixed(2)}</td>
+          <td class="lg-num">${(Math.abs(ang(b)) < 0.005 ? 0 : ang(b)).toFixed(dec)}</td>
+          <td class="lg-num lab-col-group${big ? ' lab-big' : ''}">${diffs[0]}</td>
+          <td class="lg-num">${diffs[1]}</td>
+          <td class="lg-num lab-col-group">${mpm[i] ? signed(drift(mpm[i]) - drift(b), dDec) : '–'}</td>
+          <td class="lg-num lab-col-group">${b.tofS.toFixed(2)}</td>
         </tr>`;
     }
-    // eslint-disable-next-line no-unsanitized/property -- reviewed: user/stored strings go through esc(); the rest are numbers and constants
+    // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers and constants only
     tbody.innerHTML = html;
   }
 
   // ---- render ---------------------------------------------------------------------------------
 
   render() {
+    this._destroyChart(); // its host is replaced below
     const profile = appState.getActiveProfile();
     const env = appState.getActiveEnvironment();
     const active = appState.state.solverConfig?.activeAlgorithm || 'G7';
     const u = this._units();
+    const mode = this._mode();
+    const onlyOne = this.visible.size === 1;
 
-    const toggles = MODELS.map((m) => `
-      <button type="button" class="tab-btn lab-series lab-series-${m.key}" data-series="${m.key}" aria-pressed="${this.visible.has(m.key)}">
-        <svg class="lab-swatch" viewBox="0 0 28 8" aria-hidden="true" focusable="false"><line x1="1" y1="4" x2="27" y2="4" stroke="currentColor" stroke-width="2.5" stroke-linecap="butt" ${SVG_DASH[m.key] ? `stroke-dasharray="${SVG_DASH[m.key]}"` : ''} /></svg>
-        ${ABBR[m.id] || m.label}
-      </button>`).join('');
+    const modeRadios = MODES.map((m) => `
+      <input type="radio" name="lab-mode" id="lab-mode-${m.id}" value="${m.id}" ${this.mode === m.id ? 'checked' : ''} />
+      <label for="lab-mode-${m.id}">${m.button}</label>`).join('');
 
-    const cards = MODELS.map((m) => {
+    const toggles = MODELS.map((m) => {
+      const on = this.visible.has(m.key);
+      const locked = on && onlyOne;
+      return `
+        <label class="lab-show" for="lab-show-${m.key}">
+          <input type="checkbox" class="lg-check" id="lab-show-${m.key}" data-series="${m.key}" ${on ? 'checked' : ''} ${locked ? 'disabled aria-describedby="lab-show-hint"' : ''} />
+          ${ABBR[m.id] || m.label}
+        </label>`;
+    }).join('');
+
+    const models = MODELS.map((m) => {
       const inUse = m.id === active;
       return `
-        <article class="lab-model lab-model-${m.key}" aria-labelledby="lab-model-${m.key}">
-          <div class="lab-model-head">
-            <svg class="lab-swatch" viewBox="0 0 28 8" aria-hidden="true" focusable="false"><line x1="1" y1="4" x2="27" y2="4" stroke="currentColor" stroke-width="2.5" ${SVG_DASH[m.key] ? `stroke-dasharray="${SVG_DASH[m.key]}"` : ''} /></svg>
-            <h3 id="lab-model-${m.key}">${esc(m.name)}${m.id === 'MPM' || m.id === '4DOF' ? ` (${ABBR[m.id]})` : ''}</h3>
+        <li class="lab-model" aria-labelledby="lab-model-${m.key}">
+          <div class="lab-model-text">
+            <h3 class="lab-model-name" id="lab-model-${m.key}">${esc(m.name)}${m.id === 'MPM' ? ` (${ABBR[m.id]})` : ''}</h3>
+            <p class="lg-muted">${esc(m.about)}</p>
           </div>
-          <p>${esc(m.about)}</p>
-          ${inUse
-            ? `<span class="badge badge-ok">${icon('check')} Used in Solver</span>`
-            : `<button type="button" class="btn-secondary-sm" data-use="${m.id}">Use in Solver</button>`}
-        </article>`;
+          <div class="lab-model-action">
+            ${inUse
+              ? `<span class="lg-badge lg-badge-ok lab-in-use" tabindex="-1">${icon('check')} In use</span>`
+              : `<button type="button" class="lg-btn" data-use="${m.id}" aria-label="Use ${esc(m.name)} in the Solver">Use in Solver</button>`}
+          </div>
+        </li>`;
     }).join('');
 
     // eslint-disable-next-line no-unsanitized/property -- reviewed: user/stored strings go through esc(); the rest are numbers and constants
     this.container.innerHTML = `
-      <section class="lab-view" aria-labelledby="lab-title">
-        <header class="view-header">
+      <section class="lab-view lg-stack" aria-labelledby="lab-title">
+        <header class="lg-header view-header">
           <div>
-            <h1 id="lab-title">Compare models</h1>
-            <p>How G1, G7, modified point mass and 4DOF differ for your rifle and conditions.</p>
+            <h1 class="lg-title" id="lab-title">Compare models</h1>
+            <p class="lg-muted">How the G1 and G7 drag models and modified point mass (spin drift, jump and Coriolis) differ for your rifle and conditions.</p>
           </div>
-          <p class="lab-context">${icon('rifle')} ${esc(profile.name)} <span class="lg-muted">·</span> ${icon('thermometer')} ${esc(env.name)}</p>
+          <ul class="lab-context" aria-label="Compared for">
+            <li class="lg-chip lg-plain" title="Rifle: ${esc(profile.name)}">${icon('rifle')}<span>${esc(profile.name)}</span></li>
+            <li class="lg-chip lg-plain" title="Atmosphere: ${esc(env.name)}">${icon('thermometer')}<span>${esc(env.name)}</span></li>
+          </ul>
         </header>
 
         <div class="lab-grid">
-          <section class="panel lab-chart-panel" aria-labelledby="lab-chart-title">
-            <div class="panel-header">
-              <h2 id="lab-chart-title">${this._mode().title}</h2>
-              <div class="lg-tabs lab-mode" role="group" aria-label="What the chart shows">
-                ${MODES.map((m) => `<button type="button" class="lg-tab" data-mode="${m.id}" aria-pressed="${this.mode === m.id}">${m.button}</button>`).join('')}
-              </div>
+          <section class="lg-card lab-chart-card" aria-labelledby="lab-chart-title">
+            <div class="lab-card-head">
+              <h2 class="lg-label" id="lab-chart-title">${mode.title} (${mode.unit === 'drift' ? u.drift : u.angle})</h2>
+              <div class="lg-segmented lab-mode" role="radiogroup" aria-label="What the chart shows">${modeRadios}</div>
             </div>
-            <div class="lab-series-bar" role="group" aria-label="Show models">${toggles}</div>
-            <div class="lab-chart-container">
-              <canvas id="solver-lab-canvas" role="img" aria-label="Chart comparing the models"></canvas>
-            </div>
-            <p class="field-hint lab-chart-hint">Each model is zeroed on its own, so all lines meet at the zero distance. In the drift difference, G1 differs because wind acts on its different drag; MPM and 4DOF add spin drift, jump and Coriolis. Select a model above to hide or show its line.</p>
+            <fieldset class="lab-shows">
+              <legend class="lg-small lg-muted">Models</legend>
+              ${toggles}
+            </fieldset>
+            <p class="lg-sr-only" id="lab-show-hint">At least one model stays on the chart.</p>
+            <div class="lab-chart" id="lab-chart"></div>
+            <p class="lg-small lg-muted lab-note">Each model is zeroed on its own, so all lines meet at the zero distance. Hover or focus the chart and use the arrow keys to read values.</p>
+            <p class="lg-small lab-explain" id="lab-explain" aria-live="polite"></p>
           </section>
 
-          <section class="panel lab-about-panel" aria-labelledby="lab-about-title">
-            <div class="panel-header"><h2 id="lab-about-title">About the models</h2></div>
-            <div class="lab-about-body">${cards}</div>
+          <section class="lg-card lab-about-card" aria-labelledby="lab-about-title">
+            <h2 class="lg-label" id="lab-about-title">About the models</h2>
+            <ul class="lab-models">${models}</ul>
           </section>
         </div>
 
-        <section class="panel lab-table-panel" aria-labelledby="lab-table-title">
-          <div class="panel-header">
-            <h2 id="lab-table-title">Difference from G7</h2>
-            <p class="field-hint">Positive means the model needs more elevation (or drifts further right) than G7.</p>
+        <section class="lg-card lab-table-card" aria-labelledby="lab-table-title">
+          <div class="lab-card-head">
+            <h2 class="lg-label" id="lab-table-title">Difference from G7</h2>
+            <p class="lg-small lg-muted lab-table-hint">Positive: the model needs more elevation, or drifts further right, than G7.</p>
           </div>
-          <div class="table-scrollable">
-            <table class="dope-table lab-table">
+          <div class="lg-table-wrap">
+            <table class="lg-table lab-table">
               <caption class="lg-sr-only">Elevation and drift of each model compared with G7, by range</caption>
               <thead>
                 <tr>
-                  <th scope="col">Range (${u.dist})</th>
-                  <th scope="col">G7 elevation (${u.angle})</th>
-                  <th scope="col">G1 − G7 (${u.angle})</th>
-                  <th scope="col">MPM − G7 (${u.angle})</th>
-                  <th scope="col">4DOF − G7 (${u.angle})</th>
-                  <th scope="col">MPM − G7 drift (${u.drift})</th>
-                  <th scope="col">4DOF − G7 drift (${u.drift})</th>
-                  <th scope="col">G7 time of flight (s)</th>
+                  <th scope="col" rowspan="2" class="lab-th-range">Range (${u.dist})</th>
+                  <th scope="col" rowspan="2" class="lg-num">G7 elevation (${u.angle})</th>
+                  <th scope="colgroup" colspan="2" class="lab-col-group lab-th-group">Elevation − G7 (${u.angle})</th>
+                  <th scope="col" rowspan="2" class="lg-num lab-col-group">MPM drift − G7 (${u.drift})</th>
+                  <th scope="col" rowspan="2" class="lg-num lab-col-group">Time of flight (s)</th>
+                </tr>
+                <tr>
+                  <th scope="col" class="lg-num lab-col-group">G1</th>
+                  <th scope="col" class="lg-num">MPM</th>
                 </tr>
               </thead>
-              <tbody id="lab-delta-tbody" aria-live="polite"></tbody>
+              <tbody id="lab-delta-tbody"></tbody>
             </table>
           </div>
         </section>
       </section>
     `;
 
-    this._initCanvas();
     this._bind();
   }
 
   _bind() {
-    this.container.querySelectorAll('[data-mode]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        if (this.mode === btn.dataset.mode) return;
-        this.mode = btn.dataset.mode;
-        this.container.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === this.mode)));
+    this.container.querySelectorAll('input[name="lab-mode"]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        if (!radio.checked || this.mode === radio.value) return;
+        this.mode = radio.value;
+        const mode = this._mode();
+        const u = this._units();
         const title = this.container.querySelector('#lab-chart-title');
-        if (title) title.textContent = this._mode().title;
+        if (title) title.textContent = `${mode.title} (${mode.unit === 'drift' ? u.drift : u.angle})`;
         this.drawChart();
       });
     });
-    this.container.querySelectorAll('[data-series]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const key = btn.dataset.series;
-        if (this.visible.has(key)) {
-          if (this.visible.size === 1) return; // keep at least one line
-          this.visible.delete(key);
-        } else {
-          this.visible.add(key);
-        }
-        btn.setAttribute('aria-pressed', String(this.visible.has(key)));
+    this.container.querySelectorAll('input[data-series]').forEach((box) => {
+      box.addEventListener('change', () => {
+        const key = box.dataset.series;
+        if (box.checked) this.visible.add(key);
+        else if (this.visible.size > 1) this.visible.delete(key);
+        else box.checked = true; // keep at least one line
+        this._syncToggles();
         this.drawChart();
       });
     });
@@ -455,9 +397,19 @@ export class SolverLabView {
         if (!m) return;
         toast('Solver model changed', 'ok', `The Solver now uses ${m.name}.`);
         appState.updateSolverConfig({ activeAlgorithm: id }); // re-renders through the subscription
-        this.container.querySelector(`.lab-model-${m.key} .badge`)?.setAttribute('tabindex', '-1');
-        this.container.querySelector(`.lab-model-${m.key} .badge`)?.focus();
+        this.container.querySelector(`#lab-model-${m.key}`)?.closest('.lab-model')?.querySelector('.lab-in-use')?.focus();
       });
+    });
+  }
+
+  /** The last model left on the chart can't be switched off. */
+  _syncToggles() {
+    const only = this.visible.size === 1;
+    this.container.querySelectorAll('input[data-series]').forEach((box) => {
+      const locked = only && this.visible.has(box.dataset.series);
+      box.disabled = locked;
+      if (locked) box.setAttribute('aria-describedby', 'lab-show-hint');
+      else box.removeAttribute('aria-describedby');
     });
   }
 }

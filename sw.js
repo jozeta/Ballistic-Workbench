@@ -22,6 +22,7 @@ const STATIC_ASSETS = [
   './src/core/escape.js',
   './src/core/sanitize.js',
   './src/core/state.js',
+  './src/core/targets.js',
   './src/core/trajectory.js',
   './src/core/units.js',
   './src/data/defaultProfiles.js',

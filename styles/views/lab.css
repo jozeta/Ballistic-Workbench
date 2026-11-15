@@ -1,106 +1,100 @@
 /**
  * Ballistic Workbench - Compare models view styles (on top of styles/main.css and Låda Glass).
- * Owned by src/ui/solverLab.js.
+ * Owned by src/ui/solverLab.js. Surfaces, controls, chart and table are Låda classes; this file
+ * only lays them out.
  */
 
-/* Legacy view headers still used by the DOPE cards and Tools views (kept until they move to .view-header) */
-.dope-studio-header, .tools-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.lab-context {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  color: var(--lg-text);
-  font-size: 13px;
-}
-.lab-context .lg-icon { width: 15px; height: 15px; color: var(--lg-muted); }
+/* Header: what is being compared */
+.lab-context { display: flex; flex-wrap: wrap; gap: var(--lg-space-xs); margin: 0; padding: 0; list-style: none; min-width: 0; max-width: 100%; }
+.lab-context .lg-chip { max-width: min(44ch, 100%); min-width: 0; color: var(--lg-text); }
+.lab-context .lg-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lab-context .lg-icon { width: 13px; height: 13px; flex: none; color: var(--lg-muted); }
 
 .lab-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: 16px;
-  margin-bottom: 16px;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: var(--lg-space-m);
+  align-items: start;
 }
 
-/* Series colours: the same tokens the canvas reads through getPalette() */
-.lab-series-g7, .lab-model-g7 .lab-swatch { --series: var(--lg-accent); }
-.lab-series-g1, .lab-model-g1 .lab-swatch { --series: var(--lg-warn); }
-.lab-series-mpm, .lab-model-mpm .lab-swatch { --series: var(--lg-ok); }
-.lab-series-dof4, .lab-model-dof4 .lab-swatch { --series: var(--lg-accent-2); }
-.lab-swatch { width: 28px; height: 8px; flex: none; color: var(--series, var(--lg-accent)); }
-
-.lab-series-bar {
+/* Card heading row: label on the left, controls on the right */
+.lab-card-head {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 10px 16px 0;
+  gap: var(--lg-space-s) var(--lg-space-m);
+  margin-bottom: var(--lg-space-m);
 }
-.lab-series { border: 1px solid var(--lg-line); }
-.lab-series[aria-pressed="false"] { opacity: .55; }
-.lab-series[aria-pressed="false"] .lab-swatch { color: var(--lg-muted); }
+.lab-card-head .lg-label { margin: 0; }
 
-.lab-mode .lg-tab[aria-pressed="true"] {
-  color: var(--lg-text);
-  background: linear-gradient(180deg, var(--lg-glass-fill-top), var(--lg-glass-fill-bottom)), var(--lg-glass-strong);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .18), inset 0 0 0 1px var(--lg-glass-edge);
-}
+/* Chart card */
+.lab-chart-card { display: grid; gap: var(--lg-space-m); }
+.lab-chart-card .lab-card-head { margin-bottom: 0; }
+.lab-shows { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lg-space-xs) var(--lg-space-l); margin: 0; padding: 0; border: 0; min-width: 0; }
+.lab-shows legend { float: left; margin-right: var(--lg-space-xs); padding: 0; }
+.lab-show { display: inline-flex; align-items: center; gap: var(--lg-space-s); cursor: pointer; }
+.lab-show:has(.lg-check:disabled) { cursor: not-allowed; }
+.lab-chart { --lg-chart-height: 320px; }
+.lab-note { margin: 0; }
 
-.lab-chart-panel { display: flex; flex-direction: column; }
-.lab-mode { max-width: 100%; overflow-x: auto; }
-.lab-chart-container {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 380px;
-}
-#solver-lab-canvas {
-  position: absolute;
-  top: 8px;
-  left: 4px;
-  display: block;
-  width: calc(100% - 16px);
-  height: calc(100% - 8px);
-}
-.lab-chart-hint { padding: 0 16px 14px; }
-
-.lab-about-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-}
+/* About the models: one list, divided rows (no cards inside the card) */
+.lab-about-card .lg-label { margin: 0 0 var(--lg-space-xs); }
+.lab-models { margin: 0; padding: 0; list-style: none; }
 .lab-model {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 12px;
-  border: 1px solid var(--lg-line);
-  border-radius: var(--lg-radius-control);
-  background: var(--lg-field);
+  display: grid;
+  gap: var(--lg-space-s);
+  padding: var(--lg-space-m) 0;
 }
-.lab-model-head { display: flex; align-items: center; gap: 8px; }
-.lab-model h3 { font-size: 13px; font-weight: 600; }
-.lab-model p { font-size: 13px; color: var(--lg-muted); line-height: 1.45; }
-.lab-model .badge { gap: 4px; }
-.lab-model .badge .lg-icon { width: 13px; height: 13px; }
+.lab-model + .lab-model { box-shadow: inset 0 1px 0 var(--lg-line); }
+.lab-model:last-child { padding-bottom: 0; }
+.lab-model-name { margin: 0 0 var(--lg-space-xxs); font-size: var(--lg-fs-body); font-weight: 600; }
+.lab-model-text p { margin: 0; line-height: 1.45; }
+.lab-model { align-content: start; }
+.lab-model-action { display: flex; align-items: flex-start; }
+.lab-in-use { gap: var(--lg-space-xs); min-height: 24px; padding: 0 var(--lg-space-s); }
+.lab-in-use .lg-icon { width: 13px; height: 13px; }
+.lab-in-use:focus-visible { outline: 2px solid var(--lg-accent); outline-offset: 2px; }
 
-.lab-table-panel .panel-header .field-hint { margin: 0; }
+/* Difference table */
+.lab-table-card .lab-card-head { margin-bottom: var(--lg-space-s); }
+.lab-table-hint { margin: 0; }
+.lab-table { font-family: var(--lg-font); } /* main.css sets tables in mono; Låda tables use the UI font */
+.lab-table th, .lab-table td { white-space: nowrap; }
+.lab-table .lg-num { text-align: right; }
+.lab-table thead th.lab-th-group { text-align: center; }
+.lab-table thead th[rowspan] { vertical-align: bottom; }
+.lab-table tbody th[scope="row"] {
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--lg-text);
+  background: none;
+  box-shadow: none;
+  font-variant-numeric: tabular-nums;
+}
+.lab-table tbody tr + tr th[scope="row"] { box-shadow: inset 0 1px 0 var(--lg-line); }
+.lab-table td { font-variant-numeric: tabular-nums; }
+.lab-table .lab-col-group { border-left: 1px solid var(--lg-line); }
 .lab-table td.lab-big { color: var(--lg-warn-text); font-weight: 600; }
-.lab-table th[scope="row"] { font-weight: 600; text-align: left; }
 
-@media (max-width: 1000px) {
+@media (max-width: 1100px) {
   .lab-grid { grid-template-columns: minmax(0, 1fr); }
+  .lab-models { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); column-gap: var(--lg-space-l); }
+  .lab-model, .lab-model + .lab-model { box-shadow: inset 0 1px 0 var(--lg-line); }
+  .lab-model:last-child { padding-bottom: var(--lg-space-m); }
 }
 @media (max-width: 600px) {
-  .lab-chart-container { min-height: 300px; }
-  #solver-lab-canvas { left: 0; width: calc(100% - 4px); }
-  .lab-series-bar { padding: 10px 12px 0; }
-  .lab-mode { flex-wrap: wrap; overflow: visible; }
-  .lab-chart-panel .panel-header { padding: 12px; }
+  .lab-chart { --lg-chart-height: 240px; }
+  .lab-mode { width: 100%; }
+  .lab-mode label { flex: 1; text-align: center; padding-left: 6px; padding-right: 6px; }
+  .lab-context .lg-chip { max-width: 100%; }
 }
+@media (pointer: coarse) {
+  .lab-mode label { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
+  .lab-show { min-height: 44px; }
+  .lab-model-action .lg-btn { min-height: 44px; }
+}
+
+.lab-explain { margin-top: var(--lg-space-xs); max-width: 80ch; }
