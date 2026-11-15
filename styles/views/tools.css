@@ -93,6 +93,12 @@
 .card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lg-space-s); margin-top: var(--lg-space-xs); }
 .field-hint .lg-icon { width: 13px; height: 13px; vertical-align: -2px; }
 .tools-view .field-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--lg-space-s) var(--lg-space-m); }
+/* Side-by-side fields: label, input, hint and error rows line up (subgrid), so a label that wraps
+   to two lines does not push its input below its neighbour's */
+.tools-view .field-grid-2 > .field-row { display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 0; align-content: start; min-width: 0; }
+.tools-view .field-grid-2 > .field-row > :first-child { align-self: end; }
+.tools-view .field-grid-2 > .field-row > .lg-input, .tools-view .field-grid-2 > .field-row > .lg-select { align-self: start; }
+.tools-view .field-grid-2 > .field-row > .field-hint, .tools-view .field-grid-2 > .field-row > .field-error { align-self: start; }
 .tools-view .field-label { font-size: var(--lg-fs-small); }
 
 /* Apply buttons carry the rifle name, which can be long: let them wrap instead of overflowing */
@@ -111,8 +117,10 @@
 .hero-note { margin: 0; }
 .tool-hero .card-actions { margin-top: var(--lg-space-s); }
 .kpi-unit { font-size: 13px; font-weight: 500; color: var(--lg-muted); margin-left: 4px; letter-spacing: 0; }
-.kpi-grid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--lg-space-m); }
-.kpi-grid .lg-kpi { display: grid; align-content: start; gap: var(--lg-space-xxs); min-width: 0; }
+/* Label, value and note rows line up across the cards (subgrid), even when a label wraps */
+.kpi-grid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; gap: 0 var(--lg-space-m); }
+.kpi-grid .lg-kpi { display: grid; grid-row: span 3; grid-template-rows: subgrid; align-content: start; row-gap: var(--lg-space-xxs); min-width: 0; }
+.kpi-grid .lg-kpi .lg-label { align-self: end; }
 .kpi-grid .lg-kpi .lg-label { margin: 0; }
 .kpi-grid .lg-kpi-value { margin-top: 0; overflow-wrap: anywhere; }
 .applied-note {
@@ -158,6 +166,25 @@
 .sw-dash { stroke-dasharray: 4 3; }
 .sw-shot { fill: color-mix(in srgb, var(--lg-accent) 30%, transparent); stroke: var(--lg-accent); stroke-width: 1.6; }
 
+/* Result that no longer matches the inputs (a field is invalid): dimmed, with a note on top */
+.is-stale > :not(.stale-note) { opacity: .4; filter: saturate(.4); transition: opacity .15s ease; pointer-events: none; }
+.stale-note {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-xs);
+  margin: 0;
+  color: var(--lg-warn-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.stale-note .lg-icon { width: 14px; height: 14px; flex: none; }
+.step-output .stale-note { margin-top: var(--lg-space-s); }
+@media (prefers-reduced-motion: reduce) { .is-stale > :not(.stale-note) { transition: none; } }
+.tool-hero .hero-value.is-doubtful { color: var(--lg-muted); }
+
+/* Bar value labels (LadaGlass charts) can sit on a grid line: a surface halo keeps them readable */
+.tool-chart .lg-chart-value { paint-order: stroke; stroke: var(--lg-elevated); stroke-width: 3px; stroke-linejoin: round; }
+
 /* ---- 1. truing -------------------------------------------------------------------------------- */
 .truing-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--lg-space-m); align-items: start; }
 @container tools (max-width: 720px) { .truing-steps { grid-template-columns: minmax(0, 1fr); } }
@@ -179,9 +206,14 @@
 #group-canvas.is-dragging { cursor: grabbing; }
 #group-canvas.is-calibrating { outline: 2px dashed var(--lg-accent); outline-offset: 2px; }
 .group-tools { display: grid; gap: var(--lg-space-s); padding-top: var(--lg-space-m); border-top: 1px solid var(--lg-line); }
-.group-tool-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lg-space-s); }
-.group-tool-label { width: 48px; margin: 0; }
-.cv-range-slider { width: 120px; flex: 1 1 100px; max-width: 180px; }
+/* Label column, then the controls; controls that wrap stay in their own column */
+.group-tool-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: var(--lg-space-s); }
+.group-tool-label { margin: 0; }
+.group-tool-ctrls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lg-space-s); min-width: 0; }
+.cv-sens { display: flex; align-items: center; gap: var(--lg-space-s); flex: 1 1 180px; min-width: 0; }
+.cv-sens label { white-space: nowrap; }
+.cv-range-slider { width: 120px; flex: 1 1 80px; min-width: 80px; max-width: 180px; }
+.shot-actions { flex-wrap: wrap; gap: var(--lg-space-s); }
 .scale-select { width: auto; flex: 0 1 auto; }
 #btn-calibrate-scale[aria-pressed="true"] {
   border-color: var(--lg-accent);
@@ -207,11 +239,12 @@
 /* ---- small screens and touch ----------------------------------------------------------------- */
 @container tools (max-width: 420px) {
   .tool-hero .hero-value { font-size: 26px; }
-  .group-tool-label { width: 100%; }
+  .group-tool-row { grid-template-columns: minmax(0, 1fr); gap: var(--lg-space-xs); }
 }
 
 @media (pointer: coarse) {
   .shot-del { width: 48px; }
+  .tools-view .lg-segmented label { display: inline-flex; align-items: center; justify-content: center; min-width: var(--lg-touch, 44px); }
   .cv-range-slider { min-height: var(--lg-touch, 44px); }
 }
 

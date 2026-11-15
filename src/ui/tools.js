@@ -87,6 +87,23 @@ const CHRONO_SAMPLE = {
   fps: '2708 2714 2706 2712 2710 2704 2716 2707 2711 2709',
 };
 
+/**
+ * Result regions that go stale while one of their inputs is invalid. Inputs name their region with
+ * data-out="<key>"; the region is dimmed and gets a note until the field is fixed.
+ */
+const STALE_OUT = {
+  'truing-mv': '#trued-mv-result',
+  'truing-dsf': '#trued-dsf-result',
+  wez: '#wez-results',
+  group: '#group-metrics-summary',
+  milling: '#milling-out',
+  recoil: '#recoil-results',
+};
+
+/** Range estimates beyond this are almost certainly a wrong size or reading. */
+const MAX_PLAUSIBLE_RANGE_M = 2500;
+const MIN_PLAUSIBLE_RANGE_M = 10;
+
 const GROUP_HINT = 'Click the target to add a shot. Drag a shot or the aim point to move it. Right-click or long-press a shot to delete it.';
 
 // ---- small helpers -------------------------------------------------------------------------
@@ -121,6 +138,11 @@ function units() {
     mass: imp ? 'lb' : 'kg',
   };
 }
+
+/** The model the Solver uses ('MPM', or the bullet's drag table 'G1'/'G7'), so Tools match it. */
+const solverAlgorithm = () => (typeof appState.solverAlgorithm === 'function'
+  ? appState.solverAlgorithm()
+  : appState.getActiveProfile()?.bullet?.dragModel === 'G1' ? 'G1' : 'G7');
 
 /** Angle subtended by a linear size at a distance (radians). */
 const subtends = (sizeM, distM) => Math.atan2(sizeM, distM);
@@ -224,6 +246,7 @@ export class ToolsView {
       clearTimeout(this._resizeTimer);
       this._resizeTimer = setTimeout(() => {
         if (this.activeTool === 'wez' && this.wezData) this.drawWezDispersion(this.wezData, this._wezTarget);
+        if (this.activeTool === 'chrono') this.calcChrono(); // only rebuilds when the chart style changes
       }, 120);
     };
     window.addEventListener('resize', this._onResize);
@@ -239,12 +262,14 @@ export class ToolsView {
         this.values.truing.dsfElevRad = null;
         this.results = { mv: null, dsf: null };
       }
+      // Truing results were worked out with the old model
+      if (key === 'solverConfig') this.results = { mv: null, dsf: null };
       if (key === 'units' || key === 'displayUnits') {
         // Readings the user typed keep the unit they were typed in
         const c = this.values.chrono;
         if (c.edited && !c.unit && this._chronoUnitShown) c.unit = this._chronoUnitShown;
       }
-      if (['units', 'displayUnits', 'profile', 'profiles', 'activeProfile', 'environment', 'activeEnvironment', 'import'].includes(key)) {
+      if (['units', 'displayUnits', 'profile', 'profiles', 'activeProfile', 'environment', 'activeEnvironment', 'import', 'solverConfig'].includes(key)) {
         this.render();
       }
     });
@@ -287,7 +312,7 @@ export class ToolsView {
    * A validated number field. `si` is the value in SI (or raw when unit is null); min/max are in
    * SI too and are converted to the display unit. `set(valueSI)` runs for valid values only.
    */
-  _numField({ id, label, unit = null, si, min, max, dec, step, hint = '', set, live = false, unitText }) {
+  _numField({ id, label, unit = null, si, min, max, dec, step, hint = '', set, live = false, unitText, out = '' }) {
     this.fieldDefs ||= new Map();
     const d = dec ?? DECIMALS[unit] ?? 1;
     const p = 10 ** d;
@@ -299,7 +324,7 @@ export class ToolsView {
     return `
       <div class="field-row">
         <label class="field-label" for="${id}">${esc(label)}${u ? ` (${esc(u)})` : ''}</label>
-        <input type="text" inputmode="decimal" autocomplete="off" id="${id}" class="lg-input" min="${lo}" max="${hi}" ${step ? `step="${step}"` : ''} value="${value}"${hint ? ` aria-describedby="${id}-hint"` : ''} />
+        <input type="text" inputmode="decimal" autocomplete="off" id="${id}" class="lg-input" min="${lo}" max="${hi}" ${step ? `step="${step}"` : ''} value="${value}"${hint ? ` aria-describedby="${id}-hint"` : ''}${out ? ` data-out="${out}"` : ''} />
         ${hint ? `<p class="field-hint" id="${id}-hint">${hint}</p>` : ''}
       </div>`;
   }
@@ -311,6 +336,31 @@ export class ToolsView {
       if (def.live) {
         // Also validate on change, so an invalid value left in the field keeps its message
         bindNumber(input, () => {}, 'change');
+      }
+      // After validation (listeners run in order): dim results while a field is invalid
+      input?.addEventListener('input', () => this._syncStale());
+      input?.addEventListener('change', () => this._syncStale());
+    }
+  }
+
+  /** Dims each result region whose inputs include an invalid field, with a note saying why. */
+  _syncStale() {
+    for (const [key, sel] of Object.entries(STALE_OUT)) {
+      const target = this.container.querySelector(sel);
+      if (!target) continue;
+      const bad = !!this.container.querySelector(`[data-out="${key}"][aria-invalid="true"]`);
+      const hasResult = [...target.children].some((c) => !c.classList.contains('stale-note'));
+      const on = bad && hasResult;
+      target.classList.toggle('is-stale', on);
+      const note = target.querySelector(':scope > .stale-note');
+      if (on && !note) {
+        const p = document.createElement('p');
+        p.className = 'stale-note';
+        // eslint-disable-next-line no-unsanitized/property -- reviewed: constant icon and text
+        p.innerHTML = `${icon('alert')}<span>Fix the highlighted field to update the result.</span>`;
+        target.prepend(p);
+      } else if (!on && note) {
+        note.remove();
       }
     }
   }
@@ -385,8 +435,8 @@ export class ToolsView {
           <h3 class="lg-label" id="truing-mv-title">Step 1: muzzle velocity</h3>
           <p class="step-desc">Shoot at ${band(500)}–${band(800)} ${u.dist} and enter the elevation that centred your group.</p>
           <div class="field-grid-2">
-            ${this._numField({ id: 'true-mv-dist', label: 'Distance', unit: u.dist, si: v.mvDistM, min: 200, max: 1200, set: (x) => { v.mvDistM = x; this._updatePrediction('true-mv-dial', x); } })}
-            ${this._numField({ id: 'true-mv-dial', label: 'Elevation that hit', unit: u.ang, si: v.mvElevRad, min: 0.0001, max: 0.03, step: u.ang === 'MRAD' ? 0.1 : 0.25, set: (x) => (v.mvElevRad = x), hint: this._predictionText(v.mvDistM) })}
+            ${this._numField({ id: 'true-mv-dist', label: 'Distance', unit: u.dist, si: v.mvDistM, min: 200, max: 1200, out: 'truing-mv', set: (x) => { v.mvDistM = x; this._updatePrediction('true-mv-dial', x); this._truingInputChanged('mv'); } })}
+            ${this._numField({ id: 'true-mv-dial', label: 'Elevation that hit', unit: u.ang, si: v.mvElevRad, min: 0.0001, max: 0.03, step: u.ang === 'MRAD' ? 0.1 : 0.25, out: 'truing-mv', set: (x) => { v.mvElevRad = x; this._truingInputChanged('mv'); }, hint: this._predictionText(v.mvDistM) })}
           </div>
           <div class="card-actions"><button type="button" id="btn-calc-trued-mv" class="lg-btn lg-btn-primary">${icon('refresh')} Calculate muzzle velocity</button></div>
           <div id="trued-mv-result" class="step-output" aria-live="polite"></div>
@@ -396,8 +446,8 @@ export class ToolsView {
           <h3 class="lg-label" id="truing-dsf-title">Step 2: drag at long range</h3>
           <p class="step-desc">After step 1, shoot at ${grouped(band(1000))} ${u.dist} or further, where the bullet slows towards the speed of sound. This adjusts the <abbr title="Ballistic coefficient">BC</abbr>.</p>
           <div class="field-grid-2">
-            ${this._numField({ id: 'true-dsf-dist', label: 'Distance', unit: u.dist, si: v.dsfDistM, min: 600, max: 2500, set: (x) => { v.dsfDistM = x; this._updatePrediction('true-dsf-dial', x); } })}
-            ${this._numField({ id: 'true-dsf-dial', label: 'Elevation that hit', unit: u.ang, si: v.dsfElevRad, min: 0.001, max: 0.06, step: u.ang === 'MRAD' ? 0.1 : 0.25, set: (x) => (v.dsfElevRad = x), hint: this._predictionText(v.dsfDistM) })}
+            ${this._numField({ id: 'true-dsf-dist', label: 'Distance', unit: u.dist, si: v.dsfDistM, min: 600, max: 2500, out: 'truing-dsf', set: (x) => { v.dsfDistM = x; this._updatePrediction('true-dsf-dial', x); this._truingInputChanged('dsf'); } })}
+            ${this._numField({ id: 'true-dsf-dial', label: 'Elevation that hit', unit: u.ang, si: v.dsfElevRad, min: 0.001, max: 0.06, step: u.ang === 'MRAD' ? 0.1 : 0.25, out: 'truing-dsf', set: (x) => { v.dsfElevRad = x; this._truingInputChanged('dsf'); }, hint: this._predictionText(v.dsfDistM) })}
           </div>
           ${odd ? `<p class="field-hint">This rifle uses the ${esc(profile.bullet?.dragModel)} drag model. Truing adjusts its G7 BC.</p>` : ''}
           <div class="card-actions"><button type="button" id="btn-calc-trued-dsf" class="lg-btn lg-btn-primary">${icon('refresh')} Calculate drag</button></div>
@@ -418,7 +468,7 @@ export class ToolsView {
         environment: env,
         airDensity: a.densityKgM3,
         speedOfSound: a.speedOfSoundMs,
-        algorithm: profile.bullet?.dragModel === 'G1' ? 'G1' : 'G7',
+        algorithm: solverAlgorithm(),
         stepM: 10,
         maxRangeM: distM + 20,
       });
@@ -440,8 +490,17 @@ export class ToolsView {
     if (el) el.textContent = this._predictionText(distM);
   }
 
+  /** A step's inputs changed: a result worked out from the old inputs (and not applied) is dropped. */
+  _truingInputChanged(step) {
+    const r = this.results[step];
+    if (!r || r.applied) return;
+    this.results[step] = null;
+    this._updateTruingResults();
+  }
+
+  /** tabindex -1: focus moves here after Apply, which replaces the button the user was on. */
   _appliedNote(name) {
-    return `<p class="applied-note">${icon('check-circle')} Applied to ${name}. The Solver uses it now.</p>`;
+    return `<p class="applied-note" tabindex="-1">${icon('check-circle')} Applied to ${name}. The Solver uses it now.</p>`;
   }
 
   _mvResultHtml() {
@@ -452,9 +511,16 @@ export class ToolsView {
     const delta = r.calibratedMv - r.originalMv;
     const big = Math.abs(delta) > 60;
     const d = DECIMALS[u.vel];
-    const warn = !r.converged
-      ? alertBox('warn', 'alert', 'No exact match', 'The model could not match this elevation. Check the distance and the elevation, then try again.')
-      : big ? alertBox('warn', 'alert', 'Big change', 'Check the distance, the elevation and your zero before you apply it.') : '';
+    if (!r.converged) {
+      // The solver stops at its search limits: those are not a result, so none is shown
+      return `
+      <div class="step-result">
+        <div class="hero-head"><p class="lg-label">Trued muzzle velocity</p>${badge('warn', 'No result')}</div>
+        <div class="lg-kpi-value">—</div>
+        ${alertBox('warn', 'alert', 'No exact match', `No realistic muzzle velocity gives this elevation at this distance (the rifle now uses ${fmtU(r.originalMv, u.vel)}). Check the distance, the elevation and your zero, then try again.`)}
+      </div>`;
+    }
+    const warn = big ? alertBox('warn', 'alert', 'Big change', 'Check the distance, the elevation and your zero before you apply it.') : '';
     return `
       <div class="step-result">
         <div class="hero-head"><p class="lg-label">Trued muzzle velocity</p>${badge(warn ? 'warn' : 'ok', warn ? 'Check' : 'Looks right')}</div>
@@ -476,9 +542,16 @@ export class ToolsView {
     const what = Math.abs(pct) < 0.5
       ? 'Drag matches the BC.'
       : `Drag is ${fixed(Math.abs(pct), 1)}% ${pct > 0 ? 'higher' : 'lower'} than the BC predicts.`;
-    const warn = !r.converged
-      ? alertBox('warn', 'alert', 'No exact match', 'The model could not match this elevation within the allowed range (drag factor 0.6–1.5). Check the distance and true the muzzle velocity first.')
-      : big ? alertBox('warn', 'alert', 'Big change', 'Check the distance and true the muzzle velocity first.') : '';
+    if (!r.converged) {
+      // The solver stops at its search limits: those are not a result, so none is shown
+      return `
+      <div class="step-result">
+        <div class="hero-head"><p class="lg-label">New BC (${r.model})</p>${badge('warn', 'No result')}</div>
+        <div class="lg-kpi-value">—</div>
+        ${alertBox('warn', 'alert', 'No exact match', `No drag change the model allows (0.6× to 1.5× the drag of BC ${fixed(r.oldBc, 3)}) gives this elevation at this distance. Check the distance and the elevation, and true the muzzle velocity first.`)}
+      </div>`;
+    }
+    const warn = big ? alertBox('warn', 'alert', 'Big change', 'Check the distance and true the muzzle velocity first.') : '';
     return `
       <div class="step-result">
         <div class="hero-head"><p class="lg-label">New BC (${r.model})</p>${badge(warn ? 'warn' : 'ok', warn ? 'Check' : 'Looks right')}</div>
@@ -497,7 +570,7 @@ export class ToolsView {
       const profile = appState.getActiveProfile();
       const env = appState.getActiveEnvironment();
       const atmos = atmosphere(env);
-      return { profile, environment: env, airDensity: atmos.densityKgM3, speedOfSound: atmos.speedOfSoundMs };
+      return { profile, environment: env, airDensity: atmos.densityKgM3, speedOfSound: atmos.speedOfSoundMs, algorithm: solverAlgorithm() };
     };
     const valid = (...ids) => ids.every((id) => q(id)?.getAttribute('aria-invalid') !== 'true');
 
@@ -558,6 +631,8 @@ export class ToolsView {
       if (this.results.dsf && !this.results.dsf.applied) this.results.dsf = null;
       toast('Muzzle velocity updated', 'ok', `${name}: ${fixed(toUnit(r.originalMv, u.vel), DECIMALS[u.vel])} → ${fmtU(r.calibratedMv, u.vel)}`);
       this.render();
+      // The Apply button is gone: keep focus at the same place, on the note that replaced it
+      this.container.querySelector('#trued-mv-result .applied-note')?.focus();
     });
 
     this.container.querySelector('#btn-apply-trued-dsf')?.addEventListener('click', () => {
@@ -569,7 +644,9 @@ export class ToolsView {
       r.applied = true;
       toast('BC updated', 'ok', `${profile.name}: BC (${r.model}) ${fixed(r.oldBc, 3)} → ${fixed(r.newBc, 3)}`);
       this.render();
+      this.container.querySelector('#trued-dsf-result .applied-note')?.focus();
     });
+    this._syncStale();
   }
 
   // ---- 2. Hit probability -----------------------------------------------------------------------
@@ -598,7 +675,7 @@ export class ToolsView {
             <label class="field-label" for="wez-shape">Target type</label>
             <select id="wez-shape" class="lg-select">${Object.keys(WEZ_TARGETS).map(shapeOpt).join('')}</select>
           </div>
-          ${this._numField({ id: 'wez-dist', label: 'Distance', unit: u.dist, si: v.distM, min: 50, max: 2500, set: (x) => { v.distM = x; this.runWez(); } })}
+          ${this._numField({ id: 'wez-dist', label: 'Distance', unit: u.dist, si: v.distM, min: 50, max: 2500, out: 'wez', set: (x) => { v.distM = x; this.runWez(); } })}
           <div class="field-row">
             <span class="field-label" id="wez-shots-label">Simulated shots</span>
             ${this._segmented('wez-shots', 'Simulated shots', SHOT_COUNTS.map((n) => [n, grouped(n)]), v.shots)}
@@ -607,19 +684,19 @@ export class ToolsView {
           <h3 class="lg-label card-section" id="wez-err-title">Error sources (1 <abbr title="Standard deviation">SD</abbr>)</h3>
           <p class="field-hint section-hint">One standard deviation: about two out of three shots fall within this much of the average.</p>
           <div class="field-grid-2">
-            ${this._numField({ id: 'wez-mv-sd', label: 'Muzzle velocity SD', unit: u.vel, si: v.mvSdMs, min: 0, max: 30, set: (x) => { v.mvSdMs = x; this.runWez(); } })}
-            ${this._numField({ id: 'wez-range-sd', label: 'Distance error', unit: u.dist, si: v.rangeSdM, min: 0, max: 50, dec: 1, set: (x) => { v.rangeSdM = x; this.runWez(); } })}
-            ${this._numField({ id: 'wez-wind-sd', label: 'Wind speed error', unit: u.wind, si: v.windSdMs, min: 0, max: 10, set: (x) => { v.windSdMs = x; this.runWez(); } })}
-            ${this._numField({ id: 'wez-dir-sd', label: 'Wind direction error', unitText: '°', si: v.dirSdDeg, min: 0, max: 90, dec: 0, set: (x) => { v.dirSdDeg = x; this.runWez(); } })}
+            ${this._numField({ id: 'wez-mv-sd', label: 'Muzzle velocity SD', unit: u.vel, si: v.mvSdMs, min: 0, max: 30, out: 'wez', set: (x) => { v.mvSdMs = x; this.runWez(); } })}
+            ${this._numField({ id: 'wez-range-sd', label: 'Distance error', unit: u.dist, si: v.rangeSdM, min: 0, max: 50, dec: 1, out: 'wez', set: (x) => { v.rangeSdM = x; this.runWez(); } })}
+            ${this._numField({ id: 'wez-wind-sd', label: 'Wind speed error', unit: u.wind, si: v.windSdMs, min: 0, max: 10, out: 'wez', set: (x) => { v.windSdMs = x; this.runWez(); } })}
+            ${this._numField({ id: 'wez-dir-sd', label: 'Wind direction error', unitText: '°', si: v.dirSdDeg, min: 0, max: 90, dec: 0, out: 'wez', set: (x) => { v.dirSdDeg = x; this.runWez(); } })}
           </div>
-          ${this._numField({ id: 'wez-shooter-moa', label: 'Rifle and shooter precision', unitText: u.ang, unit: u.ang, si: v.precisionRad, min: 0.00001, max: 0.003, set: (x) => { v.precisionRad = x; this.runWez(); }, hint: 'How much your shots spread around the aim point on a calm day, in each direction. 0.5 MOA (0.15 MRAD) is a good precision rifle and shooter.' })}
+          ${this._numField({ id: 'wez-shooter-moa', label: 'Rifle and shooter precision', unitText: u.ang, unit: u.ang, si: v.precisionRad, min: 0.00001, max: 0.003, out: 'wez', set: (x) => { v.precisionRad = x; this.runWez(); }, hint: 'How much your shots spread around the aim point on a calm day, in each direction. 0.5 MOA (0.15 MRAD) is a good precision rifle and shooter.' })}
           <div class="card-actions">
             <button type="button" id="btn-run-wez" class="lg-btn">${icon('dice')} Run again</button>
             <span class="lg-muted lg-small">Results update as you type. Each run draws new random shots.</span>
           </div>
         </section>
 
-        <div class="tool-results">
+        <div class="tool-results" id="wez-results">
           <div id="wez-metrics-container" class="lg-stack" aria-live="polite"></div>
           <section class="lg-card tool-card" aria-labelledby="wez-plot-title">
             <h3 class="lg-label" id="wez-plot-title">Simulated impacts</h3>
@@ -673,6 +750,7 @@ export class ToolsView {
         environment: env,
         airDensity: atmos.densityKgM3,
         speedOfSound: atmos.speedOfSoundMs,
+        algorithm: solverAlgorithm(),
         target,
         numShots: v.shots,
         uncertainties: {
@@ -733,17 +811,32 @@ export class ToolsView {
     ctx.lineTo(w, cy);
     ctx.stroke();
 
-    // Ring labels on the right axis (11 px, muted)
-    ctx.font = c.font(11, 400);
-    ctx.fillStyle = c.muted;
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-    ctx.strokeStyle = c.alpha(c.surface, 0.9);
-    ctx.lineWidth = 3;
-    for (let k = 2; k * ringCm * scale <= w / 2 - 28; k += 2) {
-      ctx.strokeText(u.imp ? `${k * 5} in` : `${k * 10} cm`, cx + k * ringCm * scale + 3, cy + 3);
-      ctx.fillText(u.imp ? `${k * 5} in` : `${k * 10} cm`, cx + k * ringCm * scale + 3, cy + 3);
-    }
+    // Ring scale: drawn last, in a clear lane along the bottom edge, away from the shots
+    const ringLabels = () => {
+      const lane = 22;
+      ctx.fillStyle = c.alpha(c.surface, 0.82);
+      ctx.fillRect(0, h - lane, w, lane);
+      ctx.strokeStyle = c.line2;
+      ctx.lineWidth = c.stroke.hair;
+      ctx.beginPath();
+      ctx.moveTo(0, h - lane);
+      ctx.lineTo(w, h - lane);
+      ctx.stroke();
+      ctx.font = c.font(11, 400);
+      ctx.fillStyle = c.muted;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      for (let k = 2; k * ringCm * scale <= w / 2 - 22; k += 2) {
+        const text = u.imp ? `${k * 5} in` : `${k * 10} cm`;
+        for (const x of [cx - k * ringCm * scale, cx + k * ringCm * scale]) {
+          ctx.beginPath();
+          ctx.moveTo(x, h - lane);
+          ctx.lineTo(x, h - lane + 4);
+          ctx.stroke();
+          ctx.fillText(text, x, h - lane / 2 + 2);
+        }
+      }
+    };
 
     // Target silhouette
     const halfW = (target.targetSizeWidthCm / 2) * scale;
@@ -815,6 +908,8 @@ export class ToolsView {
     ctx.lineTo(cx, cy + 7);
     ctx.stroke();
 
+    ringLabels();
+
     canvas.setAttribute(
       'aria-label',
       `Simulated impacts on the target at ${fmtU(target.distanceM, u.dist)}: ${fixed(res.hitProbabilityPercent, 0)}% hit. Half of the shots land within ${fmtU((res.cepCm || 0) / 100, u.size)} of the aim point.`
@@ -859,6 +954,7 @@ export class ToolsView {
     sensDiv.innerHTML = top
       ? alertBox('info', 'bulb', `Biggest factor: ${esc(longName(top))}`, esc(SENSITIVITY_TEXT[top.category]?.advice || ''))
       : '';
+    this._syncStale();
   }
 
   // ---- 3. Group analysis ------------------------------------------------------------------------
@@ -884,7 +980,7 @@ export class ToolsView {
             </div>
           </div>
           <div class="field-grid-2">
-            ${this._numField({ id: 'group-distance', label: 'Distance', unit: u.dist, si: dist, min: 10, max: 2500, set: (x) => { this.groupDistM = x; this._groupChanged(false); } })}
+            ${this._numField({ id: 'group-distance', label: 'Distance', unit: u.dist, si: dist, min: 10, max: 2500, out: 'group', set: (x) => { this.groupDistM = x; this._groupChanged(false); } })}
             <div class="field-row">
               <label class="field-label" for="group-caliber-select">Bullet diameter</label>
               <select id="group-caliber-select" class="lg-select">
@@ -900,24 +996,31 @@ export class ToolsView {
           <div class="group-tools">
             <div class="group-tool-row">
               <span class="lg-label group-tool-label">Photo</span>
-              <button type="button" id="btn-run-cv" class="lg-btn">${icon('search')} Find holes</button>
-              <label class="lg-small lg-muted" for="cv-sensitivity-slider">Sensitivity <span id="cv-sens-val" class="lg-mono">${sens}%</span></label>
-              <input type="range" id="cv-sensitivity-slider" min="15" max="95" value="${sens}" step="1" class="lg-slider cv-range-slider" />
+              <div class="group-tool-ctrls">
+                <button type="button" id="btn-run-cv" class="lg-btn">${icon('search')} Find holes</button>
+                <span class="cv-sens">
+                  <label class="lg-small lg-muted" for="cv-sensitivity-slider">Sensitivity <span id="cv-sens-val" class="lg-mono">${sens}%</span></label>
+                  <input type="range" id="cv-sensitivity-slider" min="15" max="95" value="${sens}" step="1" class="lg-slider cv-range-slider" />
+                </span>
+              </div>
             </div>
             <div class="group-tool-row">
               <span class="lg-label group-tool-label">Scale</span>
-              <label class="lg-sr-only" for="cv-scale-unit-select">Reference length</label>
-              <select id="cv-scale-unit-select" class="lg-select scale-select">
-                <option value="25.4" ${Math.abs(ref - 25.4) < 0.1 ? 'selected' : ''}>1 inch (25.4 mm)</option>
-                <option value="10.0" ${Math.abs(ref - 10.0) < 0.1 ? 'selected' : ''}>1 cm (10 mm)</option>
-              </select>
-              <button type="button" id="btn-calibrate-scale" class="lg-btn" aria-pressed="${calibrating}">${icon('ruler')} ${calibrating ? 'Cancel' : 'Set scale'}</button>
+              <div class="group-tool-ctrls">
+                <label class="lg-sr-only" for="cv-scale-unit-select">Reference length</label>
+                <select id="cv-scale-unit-select" class="lg-select scale-select">
+                  <option value="25.4" ${Math.abs(ref - 25.4) < 0.1 ? 'selected' : ''}>1 inch (25.4 mm)</option>
+                  <option value="10.0" ${Math.abs(ref - 10.0) < 0.1 ? 'selected' : ''}>1 cm (10 mm)</option>
+                </select>
+                <button type="button" id="btn-calibrate-scale" class="lg-btn" aria-pressed="${calibrating}">${icon('ruler')} ${calibrating ? 'Cancel' : 'Set scale'}</button>
+              </div>
             </div>
             <div class="group-tool-row">
               <span class="lg-label group-tool-label">Shots</span>
-              <button type="button" id="btn-reset-aim-point" class="lg-btn">${icon('crosshair')} Centre aim point</button>
-              <button type="button" id="btn-reset-sample-group" class="lg-btn">${icon('refresh')} Sample shots</button>
-              <button type="button" id="btn-clear-group" class="lg-btn lg-btn-danger">${icon('trash')} Clear</button>
+              <div class="group-tool-ctrls">
+                <button type="button" id="btn-reset-aim-point" class="lg-btn">${icon('crosshair')} Centre aim point</button>
+                <button type="button" id="btn-reset-sample-group" class="lg-btn">${icon('refresh')} Sample shots</button>
+              </div>
             </div>
           </div>
         </section>
@@ -927,7 +1030,10 @@ export class ToolsView {
           <section class="lg-card tool-card" aria-labelledby="group-shots-title">
             <div class="card-head">
               <h3 class="lg-label" id="group-shots-title">Shots</h3>
-              <button type="button" id="btn-add-shot" class="lg-btn">${icon('plus')} Add shot</button>
+              <div class="lg-row shot-actions">
+                <button type="button" id="btn-add-shot" class="lg-btn">${icon('plus')} Add shot</button>
+                <button type="button" id="btn-clear-group" class="lg-btn lg-btn-danger">${icon('trash')} Clear</button>
+              </div>
             </div>
             <p class="field-hint section-hint">Measured from the aim point in ${u.size}. Right and up are positive.</p>
             <div id="shot-list"></div>
@@ -1450,10 +1556,21 @@ export class ToolsView {
     if (stats.n === 0) {
       // eslint-disable-next-line no-unsanitized/property -- reviewed: constant text only
       summary.innerHTML = emptyState('No shots yet', 'Click the target, upload a photo or use Add shot.');
+      this._syncStale();
       return;
     }
     const u = units();
     const distM = this.groupDistM || 100;
+    if (stats.n < 2) {
+      // One shot has no spread and no group centre to correct to
+      // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
+      summary.innerHTML = `
+        ${hero({ label: 'Group size (extreme spread)', tone: 'warn', chance: 'Add more shots', value: '—', text: `1 shot at ${fmtU(distM, u.dist)}. Group size, spread and the group centre need at least 2 shots.` })}
+        ${kpis([['Mean radius', '–', 'needs 2 shots'], ['Vertical SD', '–', 'needs 2 shots'], ['Horizontal SD', '–', 'needs 2 shots']])}
+        ${alertBox('info', 'info', 'Add more shots', 'Mark at least 2 shots, ideally 5 or more, to measure the group and get a scope correction.')}`;
+      this._syncStale();
+      return;
+    }
     const mm = (v) => fmtU(v / 1000, u.size);
     const ang = (v) => fmtU(subtends(v / 1000, distM), u.ang);
     const profile = appState.getActiveProfile();
@@ -1488,6 +1605,7 @@ export class ToolsView {
         `${fix.length ? `To centre the group, dial ${fix.join(' and ')}.` : 'The group is centred on the aim point.'} Group centre: ${offset(stats.meanY, 'high', 'low')}, ${offset(stats.meanX, 'right', 'left')}. Clicks use ${esc(profile.optic?.clickName || '0.1 MRAD')}.`)}
       ${this.photoNeedsScale ? alertBox('warn', 'ruler', 'Set the scale', `Sizes from a photo are only right after you set the scale: choose Set scale and click both ends of a ${this._refName()} line.`) : ''}
       <p class="field-hint">Mean radius is the average distance of the shots from the group centre. SD is the standard deviation (n − 1).</p>`;
+    this._syncStale();
   }
 
   _renderShotList() {
@@ -1510,8 +1628,8 @@ export class ToolsView {
             ${rel.map((p, i) => `
               <tr>
                 <td class="num shot-num">${i + 1}</td>
-                <td><input type="text" inputmode="decimal" autocomplete="off" class="lg-input shot-input" id="shot-x-${i}" data-idx="${i}" data-axis="x" min="${-limit}" max="${limit}" value="${fixed(toUnit(p.x / 1000, u.size), dec)}" aria-label="Shot ${i + 1}, right (${u.size})" /></td>
-                <td><input type="text" inputmode="decimal" autocomplete="off" class="lg-input shot-input" id="shot-y-${i}" data-idx="${i}" data-axis="y" min="${-limit}" max="${limit}" value="${fixed(toUnit(p.y / 1000, u.size), dec)}" aria-label="Shot ${i + 1}, up (${u.size})" /></td>
+                <td><input type="text" inputmode="decimal" autocomplete="off" class="lg-input shot-input" id="shot-x-${i}" data-idx="${i}" data-axis="x" data-out="group" min="${-limit}" max="${limit}" value="${fixed(toUnit(p.x / 1000, u.size), dec)}" aria-label="Shot ${i + 1}, right (${u.size})" /></td>
+                <td><input type="text" inputmode="decimal" autocomplete="off" class="lg-input shot-input" id="shot-y-${i}" data-idx="${i}" data-axis="y" data-out="group" min="${-limit}" max="${limit}" value="${fixed(toUnit(p.y / 1000, u.size), dec)}" aria-label="Shot ${i + 1}, up (${u.size})" /></td>
                 <td class="shot-del"><button type="button" class="lg-btn lg-btn-ghost lg-btn-icon btn-del-shot" data-idx="${i}" aria-label="Delete shot ${i + 1}">${icon('trash')}</button></td>
               </tr>`).join('')}
           </tbody>
@@ -1527,6 +1645,7 @@ export class ToolsView {
         shot[input.dataset.axis] = this.aimPointMm[input.dataset.axis] + mmVal;
         this._groupChanged(false);
       });
+      input.addEventListener('change', () => this._syncStale());
     });
     host.querySelectorAll('.btn-del-shot').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -1739,13 +1858,15 @@ export class ToolsView {
     const normalised = String(text || '').replace(/(\d),(\d)/g, '$1.$2');
     const tokens = normalised.split(/[\s;,]+/).filter(Boolean);
     const values = [];
-    const ignored = [];
+    const ignored = []; // not a number
+    const nonPositive = []; // a number, but zero or negative
     for (const t of tokens) {
       const n = parseNumber(t);
-      if (Number.isFinite(n) && n > 0) values.push(n);
-      else ignored.push(t);
+      if (!Number.isFinite(n)) ignored.push(t);
+      else if (n > 0) values.push(n);
+      else nonPositive.push(t);
     }
-    return { values, ignored };
+    return { values, ignored, nonPositive };
   }
 
   _chronoUnit() {
@@ -1789,7 +1910,10 @@ export class ToolsView {
     ta?.addEventListener('change', () => {
       this.values.chrono.text = ta.value.slice(0, 20000);
       this.values.chrono.edited = true;
-      this.calcChrono();
+      // change fires as focus leaves the field: let focus land first (calcChrono keeps it),
+      // and skip the rebuild when the input handler already worked out this text
+      clearTimeout(this._chronoTimer);
+      this._chronoTimer = setTimeout(() => this.calcChrono(), 0);
     });
     this.container.querySelectorAll('input[name="chrono-unit"]').forEach((r) => {
       r.addEventListener('change', () => {
@@ -1815,13 +1939,20 @@ export class ToolsView {
     clearTimeout(this._chronoTimer);
     const v = this.values.chrono;
     const unit = this._chronoUnit();
-    const { values, ignored } = ToolsView.parseVelocities(v.text);
+    const narrow = (out.clientWidth || 600) < 480;
+    const key = `${unit}|${narrow}|${v.text}`;
+    if (key === this._chronoKey && out.childElementCount) return;
+    this._chronoKey = key;
+    // A rebuild replaces the buttons and the chart: put focus back on the same element afterwards
+    const focusId = out.contains(document.activeElement) ? document.activeElement.id : '';
+    const { values, ignored, nonPositive } = ToolsView.parseVelocities(v.text);
     const toSI = (x) => fromUnit(x, unit);
     const [lo, hi] = unit === 'fps' ? [300, 5000] : [100, 1500];
     const outOfRange = values.filter((x) => x < lo || x > hi);
     const good = values.filter((x) => x >= lo && x <= hi);
     const problems = [
       ignored.length ? `Ignored ${ignored.length} entr${ignored.length === 1 ? 'y' : 'ies'} that ${ignored.length === 1 ? 'is' : 'are'} not a number: ${esc(ignored.slice(0, 5).join(', '))}${ignored.length > 5 ? '…' : ''}.` : '',
+      nonPositive.length ? `Ignored ${plural(nonPositive.length, 'reading')} of zero or below: ${esc(nonPositive.slice(0, 5).join(', '))}${nonPositive.length > 5 ? '…' : ''}. A velocity must be above zero.` : '',
       outOfRange.length ? `Ignored ${plural(outOfRange.length, 'reading')} outside ${lo}–${hi} ${unit}: ${outOfRange.slice(0, 5).join(', ')}. Are the readings in ${unit}?` : '',
     ].filter(Boolean);
     const problemHtml = problems.length ? alertBox('warn', 'alert', 'Some entries were skipped', problems.join(' ')) : '';
@@ -1833,6 +1964,7 @@ export class ToolsView {
     if (good.length < 2) {
       // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
       out.innerHTML = `<div class="lg-stack">${emptyState('Enter at least 2 velocities', `Type or paste the readings from your chronograph, in ${unit}.`)}${problemHtml}</div>`;
+      if (focusId) out.querySelector(`#${focusId}`)?.focus();
       return;
     }
 
@@ -1878,6 +2010,8 @@ export class ToolsView {
     const rd = unit === 'fps' ? 0 : 1;
     this._chart('chrono', out.querySelector('#chrono-chart'), 'bar', {
       label: `Shot by shot, difference from the average velocity in ${unit}`,
+      // On a narrow screen the value labels crowd the bars and the axis: the tooltip has the values
+      stacked: narrow,
       categories: good.map((_, i) => String(i + 1)),
       series: [{ name: `Difference (${unit})`, values: good.map((x) => Number((x - mean).toFixed(rd))) }],
     });
@@ -1893,7 +2027,9 @@ export class ToolsView {
       // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
       if (wrap) wrap.outerHTML = this._appliedNote(esc(profile.name));
       out.querySelector('#chrono-current-mv')?.remove();
+      out.querySelector('.applied-note')?.focus();
     });
+    if (focusId) out.querySelector(`#${focusId}`)?.focus();
   }
 
   // ---- 5. Range estimation ----------------------------------------------------------------------
@@ -1919,12 +2055,12 @@ export class ToolsView {
               <option value="custom" ${v.preset === 'custom' ? 'selected' : ''}>Custom size</option>
             </select>
           </div>
-          ${this._numField({ id: 'milling-size-mm', label: 'Target size', unit: u.size, si: v.sizeM, min: 0.05, max: 10, live: true, set: (x) => { v.sizeM = x; this._syncPreset(); this.calcMilling(); } })}
+          ${this._numField({ id: 'milling-size-mm', label: 'Target size', unit: u.size, si: v.sizeM, min: 0.05, max: 10, live: true, out: 'milling', set: (x) => { v.sizeM = x; this._syncPreset(); this.calcMilling(); } })}
           <div class="field-row">
             <span class="field-label" id="milling-ang-label">Reticle</span>
             ${this._segmented('milling-ang', 'Reticle', [['MRAD', 'MRAD'], ['MOA', 'MOA']], ang)}
           </div>
-          ${this._numField({ id: 'milling-mils', label: 'Size in reticle', unit: ang, si: v.angleRad, min: 0.00005, max: 0.05, step: ang === 'MRAD' ? 0.05 : 0.25, live: true, set: (x) => { v.angleRad = x; this.calcMilling(); }, hint: 'Read it in the same direction as the size: a width across, a height up and down. In a second focal plane scope, read at the magnification the reticle is calibrated for.' })}
+          ${this._numField({ id: 'milling-mils', label: 'Size in reticle', unit: ang, si: v.angleRad, min: 0.00005, max: 0.05, step: ang === 'MRAD' ? 0.05 : 0.25, live: true, out: 'milling', set: (x) => { v.angleRad = x; this.calcMilling(); }, hint: 'Read it in the same direction as the size: a width across, a height up and down. In a second focal plane scope, read at the magnification the reticle is calibrated for.' })}
         </section>
         <div class="tool-results" id="milling-out" aria-live="polite"></div>
       </div>`;
@@ -1984,23 +2120,34 @@ export class ToolsView {
     const formula = ang === 'MRAD'
       ? 'Distance (m) = size (mm) ÷ reading (MRAD)'
       : 'Distance (yd) ≈ size (in) × 95.5 ÷ reading (MOA)';
-    const tooFar = distM > 3000;
+    // A size and reading that give a distance far beyond any rifle (or a few metres) are almost
+    // always a typo, a size/reading mix-up (width vs height) or the wrong reticle unit
+    const implausible = distM > MAX_PLAUSIBLE_RANGE_M ? 'far' : distM < MIN_PLAUSIBLE_RANGE_M ? 'near' : '';
+    const otherAng = ang === 'MRAD' ? 'MOA' : 'MRAD';
+    const checkText = implausible === 'far'
+      ? `That is further than ${grouped(toUnit(MAX_PLAUSIBLE_RANGE_M, u.dist))} ${u.dist}, beyond the reach of almost any rifle, so the reading or the size is probably wrong. Check that both are the same direction (a width across, a height up and down), that the reading is in ${ang} and not ${otherAng}, and that the size is in ${u.size}.`
+      : `That is closer than ${grouped(toUnit(MIN_PLAUSIBLE_RANGE_M, u.dist))} ${u.dist}, so the reading or the size is probably wrong. Check that the reading is in ${ang} and not ${otherAng}, and that the size is in ${u.size}.`;
+    const exact = `A reading ${errTxt} off gives ${grouped(toUnit(near, u.dist))}–${Number.isFinite(far) ? grouped(toUnit(far, u.dist)) : 'very far'} ${u.dist}. Confirm with a rangefinder when you can.`;
     // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
     out.innerHTML = `
       <div class="lg-stack">
         ${hero({
           label: 'Estimated distance',
+          tone: 'warn',
+          chance: implausible ? 'Check the reading' : '',
           value: `${grouped(toUnit(distM, u.dist))}<span class="kpi-unit">${u.dist}</span>`,
           valueId: 'milling-range-result',
+          valueCls: implausible ? 'is-doubtful' : '',
           text: `<span id="milling-range-yd">About ${grouped(toUnit(distM, other))} ${other}</span>`,
         })}
-        ${alertBox(tooFar ? 'warn' : 'info', tooFar ? 'alert' : 'info', tooFar ? 'Very far' : 'How exact is this?',
-          `${tooFar ? 'That is beyond most rifles\' reach. Check the size and the reading. ' : ''}A reading ${errTxt} off gives ${grouped(toUnit(near, u.dist))}–${Number.isFinite(far) ? grouped(toUnit(far, u.dist)) : 'very far'} ${u.dist}. Confirm with a rangefinder when you can.`)}
+        ${implausible
+          ? alertBox('warn', 'alert', 'Probably a wrong reading', checkText)
+          : alertBox('info', 'info', 'How exact is this?', exact)}
         <section class="lg-card tool-card" aria-labelledby="mill-formula-title">
           <h3 class="lg-label" id="mill-formula-title">Formula</h3>
           <p class="lg-mono formula">${formula}</p>
         </section>
-      </div>`;
+      </div>`;    this._syncStale();
   }
 
   // ---- 6. Recoil --------------------------------------------------------------------------------
@@ -2014,12 +2161,12 @@ export class ToolsView {
       <div class="tool-layout">
         <section class="lg-card tool-card tool-inputs" aria-labelledby="recoil-in-title">
           <h3 class="lg-label" id="recoil-in-title">Rifle and load</h3>
-          ${this._numField({ id: 'recoil-rifle-kg', label: 'Rifle weight with scope and bipod', unit: u.mass, si: v.rifleKg, min: 1, max: 30, live: true, set: (x) => { v.rifleKg = x; this.calcRecoil(); } })}
+          ${this._numField({ id: 'recoil-rifle-kg', label: 'Rifle weight with scope and bipod', unit: u.mass, si: v.rifleKg, min: 1, max: 30, out: 'recoil', live: true, set: (x) => { v.rifleKg = x; this.calcRecoil(); } })}
           <div class="field-grid-2">
-            ${this._numField({ id: 'recoil-bullet-gr', label: 'Bullet weight', unitText: 'gr', si: v.bulletGr, min: 20, max: 1000, dec: 1, live: true, set: (x) => { v.bulletGr = x; this.calcRecoil(); } })}
-            ${this._numField({ id: 'recoil-powder-gr', label: 'Powder charge', unitText: 'gr', si: v.powderGr, min: 1, max: 300, dec: 1, live: true, set: (x) => { v.powderGr = x; this.calcRecoil(); } })}
+            ${this._numField({ id: 'recoil-bullet-gr', label: 'Bullet weight', unitText: 'gr', si: v.bulletGr, min: 20, max: 1000, dec: 1, out: 'recoil', live: true, set: (x) => { v.bulletGr = x; this.calcRecoil(); } })}
+            ${this._numField({ id: 'recoil-powder-gr', label: 'Powder charge', unitText: 'gr', si: v.powderGr, min: 1, max: 300, dec: 1, out: 'recoil', live: true, set: (x) => { v.powderGr = x; this.calcRecoil(); } })}
           </div>
-          ${this._numField({ id: 'recoil-mv-ms', label: 'Muzzle velocity', unit: u.vel, si: v.mvMs, min: 150, max: 1500, live: true, set: (x) => { v.mvMs = x; this.calcRecoil(); }, hint: 'Powder gas is assumed to leave the muzzle at 1.5 × muzzle velocity, a common rule of thumb. Muzzle brakes and suppressors are not included.' })}
+          ${this._numField({ id: 'recoil-mv-ms', label: 'Muzzle velocity', unit: u.vel, si: v.mvMs, min: 150, max: 1500, out: 'recoil', live: true, set: (x) => { v.mvMs = x; this.calcRecoil(); }, hint: 'Powder gas is assumed to leave the muzzle at 1.5 × muzzle velocity, a common rule of thumb. Muzzle brakes and suppressors are not included.' })}
         </section>
         <div class="tool-results">
           <div id="recoil-results" class="lg-stack" aria-live="polite"></div>
@@ -2050,7 +2197,6 @@ export class ToolsView {
     const meterHost = out.querySelector('#recoil-meter');
 
     if (!meterHost) {
-      // eslint-disable-next-line no-unsanitized/property -- reviewed: constant markup; numbers are filled in below
       out.innerHTML = `
         <div class="lg-card lg-kpi tool-hero">
           <div class="hero-head"><p class="lg-label">Free recoil energy</p><span id="recoil-badge"></span></div>
@@ -2071,7 +2217,7 @@ export class ToolsView {
     ]);
     const value = Number(toUnit(energyJ, eUnit).toFixed(1));
     const max = Number(toUnit(UnitConverter.toSI(30, 'ft-lb'), eUnit).toFixed(1));
-    this._chart('recoil', out.querySelector('#recoil-meter'), 'meter', { label: `Free recoil energy (${unitLabel(eUnit)})`, value, max });
+    this._chart('recoil', out.querySelector('#recoil-meter'), 'meter', { label: `Free recoil energy (${unitLabel(eUnit)})`, value, max });    this._syncStale();
   }
 
   // ---- view shell -------------------------------------------------------------------------------
