@@ -1,0 +1,24 @@
+# --- Baseline: macOS, Claude Code and secrets ---
+.DS_Store
+._*
+.claude/settings.local.json
+.remember/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Node
+node_modules/
+
+# Claude workspaces and local research notes
+.superpowers/
+PRODUCT_RESEARCH_AND_FEATURE_ROADMAP.md
