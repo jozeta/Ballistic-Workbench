@@ -18,6 +18,7 @@ function check(ok, message) {
 }
 
 check(/^\d+\.\d+\.\d+$/.test(version || ''), `manifest.json has a semver version (${version})`);
+check(JSON.parse(read('package.json')).version === version, 'package.json version matches manifest.json');
 check(read('sw.js').includes(`'ballistic-workbench-v${version}'`), 'sw.js cache name matches the version');
 
 if (fs.existsSync(new URL('../README.md', import.meta.url))) {

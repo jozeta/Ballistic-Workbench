@@ -62,7 +62,7 @@ export const CONVERSIONS = {
   // Energy (canonical: J)
   J: 1.0,
   kJ: 1000.0,
-  'ft-lb': 1.3558179483314004,
+  'ft-lb': 1.3558179483314,
 
   // Angles (canonical: rad)
   rad: 1.0,

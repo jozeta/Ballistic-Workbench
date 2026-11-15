@@ -1,8 +1,8 @@
 /**
- * Ballistic Workbench - Offline Field PWA Service Worker
- * Ensures 100% reliable offline operation on remote firing ranges and backcountry match stages.
- * Employs Network-First caching: immediate fresh content updates when connected,
- * with bulletproof offline fallback to cached app shell when in the field.
+ * Ballistic Workbench - service worker for offline use.
+ * Network first (fresh files when online), falling back to the cache offline. Only same-origin
+ * GET responses are cached; query strings are ignored; navigations fall back to the app shell.
+ * tests/sw-assets.mjs checks that STATIC_ASSETS lists every app file.
  */
 
 // Keep in step with "version" in manifest.json (tests/version.mjs checks it). A new version
@@ -12,28 +12,43 @@ const STATIC_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './styles/main.css',
-  './styles/print.css',
-  './src/ui/app.js',
-  './src/ui/workspace.js',
-  './src/ui/solverLab.js',
-  './src/ui/dopeStudio.js',
-  './src/ui/tools.js',
-  './src/ui/libraryManager.js',
-  './src/ui/rifleBuilderModal.js',
-  './src/core/state.js',
-  './src/core/units.js',
+  './assets/art.svg',
+  './assets/icons.svg',
   './src/canvas/charts.js',
+  './src/canvas/palette.js',
   './src/canvas/reticle.js',
   './src/canvas/turret.js',
   './src/canvas/windRose.js',
-  './src/physics/solvers.js',
+  './src/core/escape.js',
+  './src/core/sanitize.js',
+  './src/core/state.js',
+  './src/core/trajectory.js',
+  './src/core/units.js',
+  './src/data/defaultProfiles.js',
+  './src/data/dragTables.js',
+  './src/data/projectiles.js',
   './src/physics/atmosphere.js',
+  './src/physics/solvers.js',
   './src/physics/truing.js',
   './src/physics/wez.js',
-  './src/data/defaultProfiles.js',
-  './src/data/projectiles.js',
-  './src/data/dragTables.js',
+  './src/ui/app.js',
+  './src/ui/dopeStudio.js',
+  './src/ui/fields.js',
+  './src/ui/icons.js',
+  './src/ui/libraryManager.js',
+  './src/ui/notify.js',
+  './src/ui/rifleBuilderModal.js',
+  './src/ui/solverLab.js',
+  './src/ui/tools.js',
+  './src/ui/workspace.js',
+  './styles/main.css',
+  './styles/print.css',
+  './styles/views/dope.css',
+  './styles/views/lab.css',
+  './styles/views/library.css',
+  './styles/views/tools.css',
+  './vendor/lada-glass/2.2.0/lada-glass.css',
+  './vendor/lada-glass/2.2.0/lada-glass.js',
 ];
 
 self.addEventListener('install', (event) => {
@@ -42,9 +57,6 @@ self.addEventListener('install', (event) => {
       .open(CACHE_NAME)
       .then((cache) => cache.addAll(STATIC_ASSETS))
       .then(() => self.skipWaiting())
-      .catch((err) => {
-        // Cache failures should not break service worker installation
-      })
   );
 });
 
@@ -52,34 +64,32 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) =>
-        Promise.all(
-          keys.map((key) => {
-            if (key !== CACHE_NAME) {
-              return caches.delete(key);
-            }
-          })
-        )
-      )
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return; // never cache other sites
+  const cacheKey = url.origin + url.pathname; // ignore query strings
 
-  // Network-First with Cache Fallback for live field operation & dev updates
   event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+    fetch(request)
+      .then((response) => {
+        if (response.ok && response.type === 'basic') {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(cacheKey, copy));
         }
-        return networkResponse;
+        return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(async () => {
+        const cached = await caches.match(cacheKey);
+        if (cached) return cached;
+        if (request.mode === 'navigate') return caches.match(new URL('./index.html', self.location).href);
+        return Response.error();
+      })
   );
 });

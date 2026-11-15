@@ -6,7 +6,6 @@
  */
 
 import { appState } from '../core/state.js';
-import { UnitConverter } from '../core/units.js';
 import { getAtmosphericConditions } from '../physics/atmosphere.js';
 import { solveTrajectory } from '../physics/solvers.js';
 import { BallisticChart } from '../canvas/charts.js';
@@ -15,6 +14,7 @@ import { TurretKnob } from '../canvas/turret.js';
 import { WindRoseVisualizer } from '../canvas/windRose.js';
 import { RifleBuilderModal } from './rifleBuilderModal.js';
 import { esc } from '../core/escape.js';
+import { interpolateAt } from '../core/trajectory.js';
 import { icon } from './icons.js';
 import { bindNumber, rangeError, setFieldError, parseNumber } from './fields.js';
 
@@ -43,8 +43,10 @@ export class WorkspaceView {
       'danger',
     ]);
 
-    // Selected ranges for transfer to DOPE Studio
-    this.selectedRanges = new Set();
+
+    // Ranges ticked for DOPE cards. null = not chosen yet (defaults to every 100 m on first solve)
+    this.selectedRanges = null;
+    this.illuminated = false;
 
     // Remembered across re-renders (unit or profile changes rebuild the view)
     this.openSections = new Set(['target', 'load', 'wind']);
@@ -65,20 +67,33 @@ export class WorkspaceView {
       ) {
         this.render();
         this.initVisualizers();
-        if (this.reticle?.bindEvents) this.reticle.bindEvents();
       }
       this.recompute();
     });
   }
 
+  /** Full rebuild (theme change): canvases redraw with the new colours. */
+  refresh() {
+    this.render();
+    this.initVisualizers();
+    this.recompute();
+  }
+
   destroy() {
     if (this.unsubscribe) this.unsubscribe();
-    if (this.chart?.destroy) this.chart.destroy();
-    if (this.reticle?.destroy) this.reticle.destroy();
-    if (this.turret?.destroy) this.turret.destroy();
+    this._destroyVisualizers();
+  }
+
+  _destroyVisualizers() {
+    for (const key of ['chart', 'reticle', 'turret', 'windRose']) {
+      this[key]?.destroy?.();
+      this[key] = null;
+    }
   }
 
   initVisualizers() {
+    // Old instances hold window listeners and observers: release them before building new ones
+    this._destroyVisualizers();
     const chartCanvas = this.container.querySelector('#chart-canvas');
     if (chartCanvas) {
       this.chart = new BallisticChart(chartCanvas, {
@@ -100,6 +115,8 @@ export class WorkspaceView {
         targetShape: appState.state.target.targetShape,
         targetWidthCm: appState.state.target.targetSizeWidthCm,
         targetHeightCm: appState.state.target.targetSizeHeightCm,
+        illuminated: this.illuminated,
+        distanceUnit: appState.state.displayUnits.distance,
       });
     }
 
@@ -115,6 +132,7 @@ export class WorkspaceView {
         onChange: (dialClicks) => {
           if (profile.optic) {
             profile.optic.zeroElevationClicks = dialClicks;
+            appState.save();
           }
           if (this.reticle) {
             this.reticle.update({ elevationDialClicks: dialClicks });
@@ -203,14 +221,20 @@ export class WorkspaceView {
       speedOfSound: atmos.speedOfSoundMs,
       algorithm: config.activeAlgorithm,
       stepM: config.stepM,
-      maxRangeM: config.maxRangeM,
+      // Always solve at least a little past the target, so the solution is never clipped
+      maxRangeM: Math.max(config.maxRangeM, Math.ceil((target.distanceM + config.stepM) / 100) * 100),
+      includeSpinDrift: config.includeSpinDrift,
+      includeCoriolis: config.includeCoriolis,
+      includeAerodynamicJump: config.includeAerodynamicJump,
     });
     this.activeSolution = solution;
 
-    // 3. Find target point
-    const targetPoint = solution.trajectory.reduce((prev, curr) =>
-      Math.abs(curr.distanceM - target.distanceM) < Math.abs(prev.distanceM - target.distanceM) ? curr : prev
-    );
+    // 3. The solution at the exact target distance (interpolated between table rows), with clicks
+    //    from the optic's click value
+    const clickRad = profile.optic?.clickValueRad || 0.0001;
+    const targetPoint = interpolateAt(solution.trajectory, target.distanceM);
+    targetPoint.elevationClicks = Math.round(targetPoint.elevationRad / clickRad);
+    targetPoint.windageClicks = Math.round(targetPoint.windageRad / clickRad);
 
     // 4. Update Telemetry HUD
     this._updateTelemetryHud(solution, targetPoint, atmos, sysUnits, dispUnits);
@@ -231,6 +255,7 @@ export class WorkspaceView {
         windageDialClicks: profile.optic?.zeroWindageClicks || 0,
         clickValueRad: profile.optic?.clickValueRad || 0.0001,
         isMrad,
+        distanceUnit: dispUnits.distance,
       });
     }
 
@@ -246,12 +271,10 @@ export class WorkspaceView {
       this._updateTurretReadout(profile.optic?.zeroElevationClicks || 0);
 
       const targetNeededEl = this.container.querySelector('#turret-target-needed');
-      const targetUnitEl = this.container.querySelector('#turret-target-unit');
-      if (targetNeededEl) {
+        if (targetNeededEl) {
         const elVal = isMrad ? targetPoint.elevationMrad : targetPoint.elevationMoa;
-        targetNeededEl.textContent = `${elVal.toFixed(1)} (${targetPoint.elevationClicks} clicks)`;
+        targetNeededEl.textContent = `${elVal.toFixed(1)} ${isMrad ? 'MRAD' : 'MOA'} (${targetPoint.elevationClicks} clicks)`;
       }
-      if (targetUnitEl) targetUnitEl.textContent = isMrad ? 'MRAD' : 'MOA';
     }
 
     // 7. Update Chart
@@ -299,6 +322,7 @@ export class WorkspaceView {
     const regimeClass = { supersonic: 'ok', transonic: 'warn', subsonic: 'bad' }[regime];
     const clickName = esc(appState.getActiveProfile().optic?.clickName || (isMrad ? '0.1 MRAD' : '1/4 MOA'));
 
+    // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants and esc()'d strings only
     hud.innerHTML = `
       <div class="solution-head">
         <h2 id="solution-heading" class="solution-title">${icon('crosshair')} Firing solution</h2>
@@ -331,161 +355,169 @@ export class WorkspaceView {
     }
   }
 
-  _renderTrajectoryTable(trajectory, targetDistM, sysUnits, dispUnits) {
-    const thead = this.container.querySelector('#trajectory-thead');
-    const cols = this.visibleColumns;
-
-    if (thead) {
-      let thHtml = '<tr>';
-      if (cols.has('range')) thHtml += `<th><input type="checkbox" id="chk-select-all-ranges" title="Select all ranges" ${this.selectedRanges.size >= trajectory.length ? 'checked' : ''} /> Range (${dispUnits.distance})</th>`;
-      if (cols.has('drop')) thHtml += `<th>Drop (${dispUnits.dropOffset})</th>`;
-      if (cols.has('elevation')) thHtml += `<th>Elev (${dispUnits.elevationAngle})</th>`;
-      if (cols.has('elevClicks')) thHtml += `<th>Clicks</th>`;
-      if (cols.has('drift')) thHtml += `<th>Drift (${dispUnits.windDriftOffset})</th>`;
-      if (cols.has('wind')) thHtml += `<th>Wind (${dispUnits.windageAngle})</th>`;
-      if (cols.has('windClicks')) thHtml += `<th>Clicks</th>`;
-      if (cols.has('velocity')) thHtml += `<th>Vel (${dispUnits.velocity})</th>`;
-      if (cols.has('mach')) thHtml += `<th>Mach</th>`;
-      if (cols.has('energy')) thHtml += `<th>Energy (${dispUnits.energy})</th>`;
-      if (cols.has('tof')) thHtml += `<th>ToF</th>`;
-      if (cols.has('danger')) thHtml += `<th>Danger (${dispUnits.distance})</th>`;
-      thHtml += '</tr>';
-      thead.innerHTML = thHtml;
-    }
-
-    const tbody = this.container.querySelector('#trajectory-tbody');
-    if (!tbody) return;
-
+  /** Display conversions for the table and CSV (physics is SI; the table follows the units setting). */
+  _formatters(sysUnits, dispUnits) {
     const isMetric = sysUnits === 'metric';
-    const distUnit = dispUnits.distance;
+    const yd = dispUnits.distance === 'yd';
     const isMrad = dispUnits.elevationAngle === 'MRAD';
-
-    // If selected ranges is empty initially, select all ranges by default
-    if (this.selectedRanges.size === 0) {
-      trajectory.forEach((p) => this.selectedRanges.add(p.distanceM));
-    }
-
-    let html = '';
-    for (const pt of trajectory) {
-      const isTarget = Math.abs(pt.distanceM - targetDistM) < 12.5;
-      const isZero = pt.distanceM === appState.getActiveProfile().zeroDistanceM;
-      const isChecked = this.selectedRanges.has(pt.distanceM);
-
-      const rowClass = isTarget ? 'traj-row target-row' : isZero ? 'traj-row zero-row' : 'traj-row';
-
-      const dispDist = distUnit === 'yd' ? Math.round(pt.distanceM * 1.09361) : pt.distanceM;
-      const dropLin = isMetric ? (pt.dropM * 100).toFixed(1) : (pt.dropM * 39.3701).toFixed(1);
-
-      const elAngle = isMrad ? pt.elevationMrad.toFixed(2) : pt.elevationMoa.toFixed(2);
-      const windAngle = isMrad ? Math.abs(pt.windageMrad).toFixed(2) : Math.abs(pt.windageMoa).toFixed(2);
-      const windLin = isMetric ? (Math.abs(pt.driftM) * 100).toFixed(1) : (Math.abs(pt.driftM) * 39.3701).toFixed(1);
-
-      const vel = isMetric ? Math.round(pt.velocityMs) : Math.round(pt.velocityMs * 3.28084);
-      const energy = isMetric ? Math.round(pt.energyJ) : Math.round(pt.energyJ * 0.737562);
-      const dangerSpace = distUnit === 'yd' ? Math.round(pt.dangerSpaceM * 1.09361) : Math.round(pt.dangerSpaceM);
-
-      const machClass =
-        pt.mach >= 1.2 ? 'badge-mach-supersonic' : pt.mach >= 1.0 ? 'badge-mach-transonic' : 'badge-mach-subsonic';
-
-      html += `<tr class="${rowClass}" data-dist="${pt.distanceM}">`;
-      if (cols.has('range')) html += `<td class="font-bold"><input type="checkbox" class="chk-range-select" data-dist="${pt.distanceM}" ${isChecked ? 'checked' : ''} /> ${dispDist} ${isZero ? '🎯' : isTarget ? '📍' : ''}</td>`;
-      if (cols.has('drop')) html += `<td>${dropLin}</td>`;
-      if (cols.has('elevation')) html += `<td class="font-semibold text-cyan">${elAngle}</td>`;
-      if (cols.has('elevClicks')) html += `<td>${pt.elevationClicks}</td>`;
-      if (cols.has('drift')) html += `<td>${windLin}</td>`;
-      if (cols.has('wind')) html += `<td class="font-semibold text-amber">${windAngle}</td>`;
-      if (cols.has('windClicks')) html += `<td>${Math.abs(pt.windageClicks)}</td>`;
-      if (cols.has('velocity')) html += `<td>${vel}</td>`;
-      if (cols.has('mach')) html += `<td><span class="badge ${machClass}">${pt.mach.toFixed(2)}</span></td>`;
-      if (cols.has('energy')) html += `<td>${energy}</td>`;
-      if (cols.has('tof')) html += `<td>${pt.tofS.toFixed(3)}s</td>`;
-      if (cols.has('danger')) html += `<td>${dangerSpace}</td>`;
-      html += '</tr>';
-    }
-    tbody.innerHTML = html;
-
-    this._bindTableSelectionEvents(trajectory);
+    return {
+      dist: (m) => (yd ? Math.round(m * 1.09361) : Math.round(m)),
+      lin: (m) => (isMetric ? m * 100 : m * 39.3701),
+      ang: (p, key) => (isMrad ? p[`${key}Mrad`] : p[`${key}Moa`]),
+      vel: (ms) => (isMetric ? ms : ms * 3.28084),
+      energy: (j) => (isMetric ? j : j * 0.737562),
+      units: {
+        dist: dispUnits.distance,
+        lin: isMetric ? 'cm' : 'in',
+        ang: isMrad ? 'MRAD' : 'MOA',
+        vel: isMetric ? 'm/s' : 'fps',
+        energy: isMetric ? 'J' : 'ft·lb',
+      },
+    };
   }
 
-  _bindTableSelectionEvents(trajectory) {
-    // Select All Checkbox
+  _renderTrajectoryTable(trajectory, targetDistM, sysUnits, dispUnits) {
+    const thead = this.container.querySelector('#trajectory-thead');
+    const tbody = this.container.querySelector('#trajectory-tbody');
+    if (!thead || !tbody) return;
+    const cols = this.visibleColumns;
+    const f = this._formatters(sysUnits, dispUnits);
+    const u = f.units;
+    const clickRad = appState.getActiveProfile().optic?.clickValueRad || 0.0001;
+    const zeroM = appState.getActiveProfile().zeroDistanceM;
+    const rows = trajectory.filter((p) => p.distanceM > 0);
+
+    // First solve: tick every 100 m. Afterwards keep the user's choice, pruned to rows that exist.
+    if (this.selectedRanges === null) {
+      this.selectedRanges = new Set(rows.filter((p) => p.distanceM % 100 === 0).map((p) => p.distanceM));
+    } else {
+      const present = new Set(rows.map((p) => p.distanceM));
+      this.selectedRanges = new Set([...this.selectedRanges].filter((d) => present.has(d)));
+    }
+
+    // The single row nearest the target gets the "Target" tag
+    const targetRow = rows.reduce((best, p) => (Math.abs(p.distanceM - targetDistM) < Math.abs(best.distanceM - targetDistM) ? p : best), rows[0]);
+
+    const allChecked = rows.length > 0 && rows.every((p) => this.selectedRanges.has(p.distanceM));
+    const head = [
+      `<th scope="col"><label class="check-inline"><input type="checkbox" id="chk-select-all-ranges" ${allChecked ? 'checked' : ''} aria-label="Include all ranges on DOPE cards" /> Range (${u.dist})</label></th>`,
+    ];
+    const colDefs = [
+      ['drop', `Drop (${u.lin})`],
+      ['elevation', `Elevation (${u.ang})`],
+      ['elevClicks', 'Clicks'],
+      ['drift', `Wind drift (${u.lin})`],
+      ['wind', `Windage (${u.ang})`],
+      ['windClicks', 'Clicks'],
+      ['velocity', `Velocity (${u.vel})`],
+      ['mach', 'Mach'],
+      ['energy', `Energy (${u.energy})`],
+      ['tof', 'Time (s)'],
+      ['danger', `Danger space (${u.dist})`],
+    ];
+    for (const [key, label] of colDefs) if (cols.has(key)) head.push(`<th scope="col">${label}</th>`);
+    // eslint-disable-next-line no-unsanitized/property -- reviewed: unit labels are constants
+    thead.innerHTML = `<tr>${head.join('')}</tr>`;
+
+    const signed = (v, d) => {
+      const r = Number(v.toFixed(d));
+      return (r === 0 ? 0 : r).toFixed(d); // no "-0.00"
+    };
+
+    // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers and constant tags only
+    tbody.innerHTML = rows
+      .map((p) => {
+        const isTarget = p === targetRow;
+        const isZero = Math.abs(p.distanceM - zeroM) < 0.5;
+        const dist = f.dist(p.distanceM);
+        const elevClicks = Math.round(p.elevationRad / clickRad);
+        const windClicks = Math.round(p.windageRad / clickRad);
+        const machClass = p.mach >= 1.2 ? 'badge-ok' : p.mach >= 1.0 ? 'badge-warn' : 'badge-bad';
+        const cells = [
+          `<th scope="row"><label class="check-inline"><input type="checkbox" class="chk-range-select" data-dist="${p.distanceM}" ${this.selectedRanges.has(p.distanceM) ? 'checked' : ''} aria-label="Include ${dist} ${u.dist} on DOPE cards" /> ${dist}</label>${isZero ? '<span class="row-tag row-tag-zero">Zero</span>' : ''}${isTarget ? '<span class="row-tag row-tag-target">Target</span>' : ''}</th>`,
+        ];
+        if (cols.has('drop')) cells.push(`<td>${signed(f.lin(p.dropM), 1)}</td>`);
+        if (cols.has('elevation')) cells.push(`<td class="text-cyan">${signed(f.ang(p, 'elevation'), 2)}</td>`);
+        if (cols.has('elevClicks')) cells.push(`<td>${elevClicks === 0 ? 0 : elevClicks}</td>`);
+        if (cols.has('drift')) cells.push(`<td>${signed(f.lin(Math.abs(p.driftM)), 1)}</td>`);
+        if (cols.has('wind')) cells.push(`<td class="text-amber">${signed(Math.abs(f.ang(p, 'windage')), 2)}</td>`);
+        if (cols.has('windClicks')) cells.push(`<td>${Math.abs(windClicks)}</td>`);
+        if (cols.has('velocity')) cells.push(`<td>${Math.round(f.vel(p.velocityMs))}</td>`);
+        if (cols.has('mach')) cells.push(`<td><span class="badge ${machClass}">${p.mach.toFixed(2)}</span></td>`);
+        if (cols.has('energy')) cells.push(`<td>${Math.round(f.energy(p.energyJ))}</td>`);
+        if (cols.has('tof')) cells.push(`<td>${p.tofS.toFixed(3)}</td>`);
+        if (cols.has('danger')) cells.push(`<td>${f.dist(p.dangerSpaceM)}</td>`);
+        return `<tr class="traj-row${isTarget ? ' target-row' : ''}${isZero ? ' zero-row' : ''}" data-dist="${p.distanceM}">${cells.join('')}</tr>`;
+      })
+      .join('');
+
+    this._bindTableSelectionEvents(rows);
+  }
+
+  _bindTableSelectionEvents(rows) {
     const chkAll = this.container.querySelector('#chk-select-all-ranges');
     chkAll?.addEventListener('change', (e) => {
-      const checked = e.target.checked;
-      this.selectedRanges.clear();
-      if (checked) {
-        trajectory.forEach((p) => this.selectedRanges.add(p.distanceM));
-      }
-      const itemChecks = this.container.querySelectorAll('.chk-range-select');
-      itemChecks.forEach((chk) => (chk.checked = checked));
+      this.selectedRanges = new Set(e.target.checked ? rows.map((p) => p.distanceM) : []);
+      this.container.querySelectorAll('.chk-range-select').forEach((chk) => (chk.checked = e.target.checked));
       this._updateSelectedRangesCount();
     });
-
-    // Individual Range Checkboxes
-    const itemChecks = this.container.querySelectorAll('.chk-range-select');
-    itemChecks.forEach((chk) => {
+    this.container.querySelectorAll('.chk-range-select').forEach((chk) => {
       chk.addEventListener('change', (e) => {
         const dist = parseFloat(chk.dataset.dist);
-        if (e.target.checked) {
-          this.selectedRanges.add(dist);
-        } else {
-          this.selectedRanges.delete(dist);
-        }
-        if (chkAll) {
-          chkAll.checked = this.selectedRanges.size >= trajectory.length;
-        }
+        if (e.target.checked) this.selectedRanges.add(dist);
+        else this.selectedRanges.delete(dist);
+        if (chkAll) chkAll.checked = rows.every((p) => this.selectedRanges.has(p.distanceM));
         this._updateSelectedRangesCount();
       });
     });
-
     this._updateSelectedRangesCount();
   }
 
   _updateSelectedRangesCount() {
+    const n = this.selectedRanges?.size || 0;
     const countEl = this.container.querySelector('#selected-ranges-count');
-    if (countEl) countEl.textContent = `${this.selectedRanges.size}`;
+    if (countEl) countEl.textContent = `${n}`;
+    const btn = this.container.querySelector('#btn-send-to-dope');
+    if (btn) btn.disabled = n === 0;
   }
 
   exportCsv() {
     if (!this.activeSolution) return;
-    const traj = this.activeSolution.trajectory;
+    const { systemUnits, displayUnits } = appState.state;
+    const f = this._formatters(systemUnits, displayUnits);
+    const u = f.units;
+    const clickRad = appState.getActiveProfile().optic?.clickValueRad || 0.0001;
     const headers = [
-      'Distance (m)',
-      'Drop (m)',
-      'Elevation (MRAD)',
-      'Elevation Clicks',
-      'Wind Drift (m)',
-      'Windage (MRAD)',
-      'Windage Clicks',
-      'Velocity (m/s)',
-      'Mach',
-      'Energy (J)',
-      'ToF (s)',
-      'Danger Space (m)',
+      `Range (${u.dist})`, `Drop (${u.lin})`, `Elevation (${u.ang})`, 'Elevation clicks', `Wind drift (${u.lin})`,
+      `Windage (${u.ang})`, 'Windage clicks', `Velocity (${u.vel})`, 'Mach', `Energy (${u.energy})`, 'Time of flight (s)',
+      `Danger space (${u.dist})`,
     ];
-    const rows = traj.map((p) => [
-      p.distanceM,
-      p.dropM.toFixed(3),
-      p.elevationMrad.toFixed(2),
-      p.elevationClicks,
-      p.driftM.toFixed(3),
-      p.windageMrad.toFixed(2),
-      p.windageClicks,
-      p.velocityMs.toFixed(1),
-      p.mach.toFixed(2),
-      p.energyJ.toFixed(0),
-      p.tofS.toFixed(3),
-      p.dangerSpaceM.toFixed(1),
-    ]);
-
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    const rows = this.activeSolution.trajectory
+      .filter((p) => p.distanceM > 0)
+      .map((p) => [
+        f.dist(p.distanceM),
+        f.lin(p.dropM).toFixed(1),
+        f.ang(p, 'elevation').toFixed(2),
+        Math.round(p.elevationRad / clickRad),
+        f.lin(p.driftM).toFixed(1),
+        f.ang(p, 'windage').toFixed(2),
+        Math.round(p.windageRad / clickRad),
+        f.vel(p.velocityMs).toFixed(0),
+        p.mach.toFixed(2),
+        f.energy(p.energyJ).toFixed(0),
+        p.tofS.toFixed(3),
+        f.dist(p.dangerSpaceM),
+      ]);
+    // Only numbers and fixed headers go into the file, so no spreadsheet formula injection
+    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ballistic_trajectory_${Date.now()}.csv`;
+    a.download = `ballistic-table-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.append(a);
     a.click();
-    URL.revokeObjectURL(url);
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   /** Shows one of the result panels (reticle, chart, table); the choice survives re-renders. */
@@ -507,8 +539,8 @@ export class WorkspaceView {
     const target = appState.state.target;
     const config = appState.state.solverConfig;
     const isImp = appState.state.systemUnits === 'imperial';
-    const isMrad = appState.state.displayUnits.elevationAngle === 'MRAD';
-    const clickUnitName = isMrad ? '0.1' : '0.25';
+    // Turret steps follow the optic (its click value and angular unit), not the display units
+    const opticUnit = /moa/i.test(profile.optic?.clickName || '') ? 'MOA' : 'MRAD';
 
     // Display formatted values according to active units
     const targetDistDisp = isImp ? Math.round(target.distanceM * 1.09361) : target.distanceM;
@@ -534,6 +566,7 @@ export class WorkspaceView {
       .map((e) => `<option value="${esc(e.id)}" ${e.id === env.id ? 'selected' : ''}>${esc(e.name)}</option>`)
       .join('');
 
+    // eslint-disable-next-line no-unsanitized/property -- reviewed: profile/env names go through esc(); the rest are numbers and constants
     this.container.innerHTML = `
       <div class="solver-layout">
         <!-- SETUP: everything that drives the solution -->
@@ -592,6 +625,10 @@ export class WorkspaceView {
                     <option value="G1" ${profile.bullet.dragModel === 'G1' ? 'selected' : ''}>G1 (flat-base)</option>
                   </select>
                 </div>
+                <div>
+                  <label class="field-label" for="bc-input">BC (${esc(profile.bullet.dragModel === 'G1' ? 'G1' : 'G7')})</label>
+                  <input type="number" id="bc-input" class="form-input" min="0.05" max="1.5" step="0.001" value="${profile.bullet.dragModel === 'G1' ? profile.bullet.bcG1 : profile.bullet.bcG7}" />
+                </div>
                 <div class="field-span-2">
                   <label class="field-label" for="algorithm-select">Solver model</label>
                   <select id="algorithm-select" class="form-select">
@@ -600,10 +637,6 @@ export class WorkspaceView {
                     <option value="MPM" ${config.activeAlgorithm === 'MPM' ? 'selected' : ''}>Modified point mass (adds spin drift, jump, Coriolis)</option>
                     <option value="4DOF" ${config.activeAlgorithm === '4DOF' ? 'selected' : ''}>4DOF (also models bullet spin)</option>
                   </select>
-                </div>
-                <div>
-                  <label class="field-label" for="bc-input">BC (${esc(profile.bullet.dragModel === 'G1' ? 'G1' : 'G7')})</label>
-                  <input type="number" id="bc-input" class="form-input" min="0.05" max="1.5" step="0.001" value="${profile.bullet.dragModel === 'G1' ? profile.bullet.bcG1 : profile.bullet.bcG7}" />
                 </div>
                 <div>
                   <label class="field-label" for="sh-input">Sight height (${shUnit})</label>
@@ -652,7 +685,7 @@ export class WorkspaceView {
             <summary>${icon('wind')}<span>Wind</span><span class="section-summary">${windSpeedDisp} ${windSpeedUnit} · ${env.windDirectionDeg}°</span></summary>
             <div class="section-body">
               <div class="wind-clock-wrapper">
-                <canvas id="wind-clock-canvas" width="200" height="200" role="img" aria-label="Wind clock. Drag to set the wind direction."></canvas>
+                <canvas id="wind-clock-canvas" width="200" height="200" aria-label="Wind direction"></canvas>
               </div>
               <div class="field-grid-2">
                 <div>
@@ -713,7 +746,7 @@ export class WorkspaceView {
                 <option value="FFP" ${profile.optic?.focalPlane === 'FFP' ? 'selected' : ''}>First focal plane</option>
                 <option value="SFP" ${profile.optic?.focalPlane === 'SFP' ? 'selected' : ''}>Second focal plane</option>
               </select>
-              <label class="check-inline"><input type="checkbox" id="illum-check" ${this.reticle?.options.illuminated ? 'checked' : ''} /> Illuminated</label>
+              <label class="check-inline"><input type="checkbox" id="illum-check" ${this.illuminated ? 'checked' : ''} /> Illuminated</label>
               <label class="mag-control" for="mag-slider">Magnification <strong id="mag-display">${profile.optic?.currentMagnification || 15}×</strong>
                 <input type="range" id="mag-slider" min="${profile.optic?.minMagnification || 4}" max="${profile.optic?.maxMagnification || 36}" step="1" value="${profile.optic?.currentMagnification || 15}" />
               </label>
@@ -728,21 +761,21 @@ export class WorkspaceView {
                   <span class="turret-resolution" id="turret-resolution-label">${esc(profile.optic?.clickName || '0.1 MRAD')} per click</span>
                 </div>
                 <div class="turret-canvas-wrapper">
-                  <canvas id="turret-canvas" role="img" aria-label="Elevation turret"></canvas>
+                  <canvas id="turret-canvas" aria-label="Elevation turret"></canvas>
                 </div>
                 <div class="turret-readout" aria-live="polite">
                   Dialed <strong><span id="turret-dialed-val">0.0</span> <span id="turret-dialed-unit">MRAD</span></strong>
                   <span id="turret-dialed-clicks" class="turret-subtext">(0 clicks)</span>
                 </div>
                 <div class="turret-btn-row">
-                  <button id="btn-turret-minus-major" class="btn-turret" type="button" aria-label="Down 1 ${isMrad ? 'MRAD' : 'MOA'}">−1</button>
-                  <button id="btn-turret-minus" class="btn-turret" type="button" aria-label="Down one click">−${clickUnitName}</button>
-                  <button id="btn-turret-zero" class="btn-turret" type="button" aria-label="Back to zero">0</button>
-                  <button id="btn-turret-plus" class="btn-turret" type="button" aria-label="Up one click">+${clickUnitName}</button>
-                  <button id="btn-turret-plus-major" class="btn-turret" type="button" aria-label="Up 1 ${isMrad ? 'MRAD' : 'MOA'}">+1</button>
+                  <button id="btn-turret-minus-major" class="btn-turret" type="button" aria-label="Down 1 ${opticUnit}" title="Down 1 ${opticUnit}">−1</button>
+                  <button id="btn-turret-minus" class="btn-turret" type="button" aria-label="Down one click" title="Down one click">−1c</button>
+                  <button id="btn-turret-zero" class="btn-turret" type="button" aria-label="Back to zero" title="Back to zero">0</button>
+                  <button id="btn-turret-plus" class="btn-turret" type="button" aria-label="Up one click" title="Up one click">+1c</button>
+                  <button id="btn-turret-plus-major" class="btn-turret" type="button" aria-label="Up 1 ${opticUnit}" title="Up 1 ${opticUnit}">+1</button>
                 </div>
                 <button id="btn-turret-match-target" class="btn-primary-sm btn-block" type="button">
-                  ${icon('turret')} Dial the solution (<span id="turret-target-needed">0.0</span>)
+                  ${icon('turret')} Dial <span id="turret-target-needed">0.0</span>
                 </button>
               </div>
             </div>
@@ -803,21 +836,13 @@ export class WorkspaceView {
     // Profile Switcher
     const profSel = this.container.querySelector('#profile-select');
     profSel?.addEventListener('change', (e) => {
-      appState.setActiveProfile(e.target.value);
-      this.render();
-      this.initVisualizers();
-      if (this.reticle?.bindEvents) this.reticle.bindEvents();
-      this.recompute();
+      appState.setActiveProfile(e.target.value); // the subscription re-renders
     });
 
     // Quick Add New Rifle Modal Trigger
     const quickAddBtn = this.container.querySelector('#btn-quick-add-rifle');
     quickAddBtn?.addEventListener('click', () => {
-      new RifleBuilderModal(() => {
-        this.render();
-        this.initVisualizers();
-        this.recompute();
-      }).open();
+      new RifleBuilderModal(() => this.refresh()).open();
     });
 
     // Target Range Slider
@@ -935,25 +960,29 @@ export class WorkspaceView {
     retTypeSel?.addEventListener('change', (e) => {
       const p = appState.getActiveProfile();
       if (p.optic) p.optic.reticle = e.target.value;
+      appState.save();
       this.reticle?.update({ reticleType: e.target.value });
     });
     const fpSel = this.container.querySelector('#focal-plane-select');
     fpSel?.addEventListener('change', (e) => {
       const p = appState.getActiveProfile();
       if (p.optic) p.optic.focalPlane = e.target.value;
+      appState.save();
       this.reticle?.update({ focalPlane: e.target.value });
     });
     const illumCheck = this.container.querySelector('#illum-check');
     illumCheck?.addEventListener('change', (e) => {
+      this.illuminated = e.target.checked;
       this.reticle?.update({ illuminated: e.target.checked });
     });
     const magSlider = this.container.querySelector('#mag-slider');
     const magDisp = this.container.querySelector('#mag-display');
     magSlider?.addEventListener('input', (e) => {
       const val = Number(e.target.value);
-      magDisp.textContent = `${val}X`;
+      magDisp.textContent = `${val}×`;
       const p = appState.getActiveProfile();
       if (p.optic) p.optic.currentMagnification = val;
+      appState.save();
       this.reticle?.update({ magnification: val });
     });
 
@@ -971,10 +1000,10 @@ export class WorkspaceView {
       this.turret?.adjustClicks(-1);
     });
     const profile = appState.getActiveProfile();
-    const isMrad = appState.state.displayUnits.elevationAngle === 'MRAD';
     const clickValRad = profile.optic?.clickValueRad || 0.0001;
     // 1.0 MRAD or 1.0 MOA worth of clicks
-    const majorClicks = isMrad
+    const opticIsMrad = !/moa/i.test(profile.optic?.clickName || '');
+    const majorClicks = opticIsMrad
       ? Math.max(1, Math.round(0.001 / clickValRad))
       : Math.max(1, Math.round((Math.PI / (180 * 60)) / clickValRad));
 
@@ -1035,11 +1064,8 @@ export class WorkspaceView {
     // Send Selected Ranges to DOPE Studio
     const sendDopeBtn = this.container.querySelector('#btn-send-to-dope');
     sendDopeBtn?.addEventListener('click', () => {
-      const selected = Array.from(this.selectedRanges).sort((a, b) => a - b);
-      if (selected.length > 0) {
-        appState.state.customDopeRanges = selected;
-      }
-      window.dispatchEvent(new CustomEvent('navigate-view', { detail: { view: 'dopeStudio' } }));
+      appState.state.customDopeRanges = Array.from(this.selectedRanges || []).sort((x, y) => x - y);
+      appState.save();
       window.location.hash = '#dopeStudio';
     });
 

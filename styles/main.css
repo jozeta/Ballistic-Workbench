@@ -575,7 +575,7 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .mag-control { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-size: 12px; color: var(--lg-muted); min-width: 220px; }
 .mag-control strong { color: var(--lg-text); font-variant-numeric: tabular-nums; min-width: 34px; }
 .reticle-turret-split { display: grid; grid-template-columns: minmax(0, 1fr) 260px; }
-.reticle-canvas-container { position: relative; min-height: 420px; aspect-ratio: 4 / 3; max-height: 560px; background: #0b0d10; }
+.reticle-canvas-container { position: relative; height: clamp(360px, 52vh, 560px); }
 .reticle-canvas-container canvas { display: block; width: 100%; height: 100%; }
 .turret-knob-container { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-left: 1px solid var(--lg-line); }
 .turret-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -583,6 +583,7 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .turret-resolution { color: var(--lg-muted); font-size: 12px; }
 .turret-canvas-wrapper { display: flex; justify-content: center; }
 #turret-canvas { width: 200px; height: 200px; max-width: 100%; touch-action: none; }
+#turret-canvas:focus-visible, #wind-clock-canvas:focus-visible { outline: none; } /* the canvases draw their own focus ring */
 .turret-readout { text-align: center; font-variant-numeric: tabular-nums; }
 .turret-subtext { display: block; color: var(--lg-muted); font-size: 12px; }
 .turret-btn-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
@@ -623,6 +624,61 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
   box-shadow: var(--lg-shadow);
 }
 .column-picker-menu label { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; cursor: pointer; }
+
+/* ---- responsive ---------------------------------------------------------------------------- */
+@media (max-width: 1180px) {
+  .nav-link span { display: none; }           /* icons only; the links keep their accessible name */
+  .nav-link { padding: 6px 10px; }
+  .cmd-palette-text { display: none; }
+}
+@media (max-width: 1180px) and (min-width: 721px) {
+  .nav-link { position: relative; }
+}
+@media (max-width: 980px) {
+  .solver-layout { grid-template-columns: minmax(0, 1fr); }
+  /* One column: answer first, then the inputs, then the details (reticle, chart, table) */
+  .solver-result { display: contents; }
+  .solution-card { order: 1; }
+  .solver-setup { position: static; max-height: none; overflow: visible; order: 2; }
+  .result-tabs { order: 3; }
+  .result-panel { order: 4; }
+  .reticle-turret-split { grid-template-columns: minmax(0, 1fr); }
+  .turret-knob-container { border-left: 0; border-top: 1px solid var(--lg-line); }
+  .solution-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  :root { --header-height: 104px; }
+  .app-header { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+  .brand-title span { display: none; }
+  .header-actions { margin-left: auto; gap: 6px; }
+  .btn-units-toggle, .btn-theme-toggle { padding: 6px 8px; }
+  #theme-toggle-label, .kbd-shortcut { display: none; }
+  .nav-links { order: 3; width: 100%; margin: 0; justify-content: space-between; overflow-x: auto; }
+  .nav-link { flex: 1; justify-content: center; }
+  #app-main-content { padding: 12px; }
+  .solution-card { padding: 14px; }
+  .solution-holds { gap: 8px; }
+  .hold { padding: 10px 12px; }
+  .hold-value { font-size: 32px; }
+  .hold-unit { font-size: 13px; margin-left: 4px; }
+  .hold-clicks { font-size: 13px; }
+  .hold-clicks .lg-muted { display: none; }
+  .reticle-canvas-container { min-height: 300px; }
+  .chart-canvas-container { height: 320px; }
+  .mag-control { margin-left: 0; min-width: 0; width: 100%; }
+  .table-scrollable { max-height: 70vh; }
+  .field-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 380px) {
+  .field-grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .field-span-2 { grid-column: auto; }
+}
+@media (pointer: coarse) {
+  .form-input, .form-select, .btn-primary-sm, .btn-secondary-sm, .btn-accent-sm, .btn-ghost-sm, .btn-turret, .nav-link,
+  .btn-units-toggle, .btn-theme-toggle, .btn-cmd-palette, .tab-btn, .lg-tab, .form-select-sm, .form-input-sm { min-height: 44px; }
+  .btn-icon-only { min-width: 44px; }
+  input[type="checkbox"] { width: 20px; height: 20px; }
+}
 
 /* UTILITY CLASSES (replace inline style attributes, which the CSP blocks) */
 .w-45px { width: 45px; }

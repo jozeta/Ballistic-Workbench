@@ -68,6 +68,7 @@ function clampNumber(key, value, fallback) {
 function cleanText(value, fallback) {
   if (typeof value !== 'string') return fallback;
   // Drop control characters; cap the length
+  // eslint-disable-next-line no-control-regex -- intentionally matches control characters to strip them
   return value.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, MAX_TEXT);
 }
 

@@ -48,7 +48,7 @@ await new Promise((resolve) => server.listen(PORT, resolve));
 console.log(`📡 Local test server running at http://localhost:${PORT}`);
 
 // 2. Launch Google Chrome in Headless Debug Mode
-const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const chromePath = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const chromeProcess = spawn(
   chromePath,
   [

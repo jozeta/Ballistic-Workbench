@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+<!-- Line-art graphics for Ballistic Workbench (Låda Glass style: thin strokes in currentColor, so the
+     colour comes from --lg-art and works in both themes). -->
+<symbol id="backdrop" viewBox="0 0 400 400" fill="none" stroke="currentColor" stroke-linecap="round">
+  <g stroke-width="1.2">
+    <circle cx="300" cy="300" r="40"/>
+    <circle cx="300" cy="300" r="80"/>
+    <circle cx="300" cy="300" r="120"/>
+    <circle cx="300" cy="300" r="160"/>
+    <circle cx="300" cy="300" r="200" stroke-dasharray="2 8"/>
+  </g>
+  <path d="M300 80v60M300 460v-60M80 300h60M520 300h-60" stroke-width="1.2"/>
+  <path d="M10 330C90 150 190 110 300 300" stroke-width="1.6"/>
+  <path d="M10 330C90 150 190 110 300 300" stroke-width="5" stroke-dasharray="0.5 26" opacity=".7"/>
+  <g stroke-width="1.2">
+    <path d="M40 390v-14M80 390v-8M120 390v-14M160 390v-8M200 390v-14M240 390v-8M280 390v-14M320 390v-8M360 390v-14"/>
+    <path d="M20 390h380"/>
+  </g>
+  <circle cx="300" cy="300" r="4" fill="currentColor" stroke="none"/>
+</symbol>
+<symbol id="empty" viewBox="0 0 120 80" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+  <circle cx="84" cy="40" r="22"/>
+  <circle cx="84" cy="40" r="12"/>
+  <circle cx="84" cy="40" r="3"/>
+  <path d="M6 58C26 18 52 12 78 36" stroke-dasharray="3 5"/>
+  <path d="M6 72h108"/>
+</symbol>
+</svg>
