@@ -453,7 +453,7 @@ export class ToolsView {
               <span class="sens-val">${s.variancePercent}%</span>
             </div>
             <div class="sens-bar-track">
-              <div class="sens-bar-fill bar-${s.category.toLowerCase()}" style="width: ${Math.min(100, Math.max(2, s.variancePercent))}%;"></div>
+              <div class="sens-bar-fill bar-${s.category.toLowerCase()}" data-width-pct="${Math.min(100, Math.max(2, s.variancePercent))}"></div>
             </div>
           </div>
         `).join('')}
@@ -463,6 +463,10 @@ export class ToolsView {
         ${topFactor.category === 'Wind' ? 'Upgrading wind reading resolution or firing in calm windows yields maximum hit rate gain.' : topFactor.category === 'Ammo' ? 'Improving powder charge uniformity to reduce MV SD below 2.0 m/s will significantly tighten vertical dispersion.' : 'Focus on rifle stability, trigger control, and natural point of aim to reduce angular dispersion.'}
       </p>
     `;
+    // Bar widths via the CSSOM: the CSP blocks inline style attributes in rendered HTML.
+    sensDiv.querySelectorAll('[data-width-pct]').forEach((bar) => {
+      bar.style.width = `${parseFloat(bar.dataset.widthPct)}%`;
+    });
   }
 
   // --- 3. TARGET GROUP ANALYZER & COMPUTER VISION DETECTOR ---
@@ -476,7 +480,7 @@ export class ToolsView {
 
         <div class="cv-toolbar-bar">
           <div class="cv-toolbar-group">
-            <input type="file" id="group-file-input" accept="image/*" style="display:none;" />
+            <input type="file" id="group-file-input" accept="image/*" hidden />
             <button id="btn-upload-photo" class="btn-primary-sm">📷 Upload Target Photo</button>
             <button id="btn-load-sample-photo" class="btn-secondary-sm">🎯 Load Sample Target</button>
             <button id="btn-calibrate-scale" class="btn-secondary-sm">📐 Calibrate Scale</button>
@@ -506,7 +510,7 @@ export class ToolsView {
 
             <label class="cv-label-inline">
               Distance:
-              <input type="number" id="group-distance" class="form-input-sm" min="25" max="1500" step="25" value="100" style="width: 70px;" /> m
+              <input type="number" id="group-distance" class="form-input-sm w-70px" min="25" max="1500" step="25" value="100" /> m
             </label>
           </div>
         </div>

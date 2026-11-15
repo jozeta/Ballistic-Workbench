@@ -254,7 +254,7 @@ export class LibraryManagerView {
             <button id="btn-add-rifle-profile" class="btn-accent-sm">➕ Add New Rifle</button>
             <button id="btn-export-profiles" class="btn-secondary-sm">📤 Export Library (JSON)</button>
             <button id="btn-import-profiles-trigger" class="btn-secondary-sm">📥 Import JSON</button>
-            <input type="file" id="import-json-file" accept=".json" style="display:none;" />
+            <input type="file" id="import-json-file" accept=".json" hidden />
           </div>
         </div>
 

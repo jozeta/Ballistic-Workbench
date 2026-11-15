@@ -103,12 +103,25 @@ const pending = new Map();
 const consoleErrors = [];
 const consoleLogs = [];
 
-function send(method, params = {}) {
+function rawSend(method, params = {}) {
   const id = msgId++;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
     ws.send(JSON.stringify({ id, method, params }));
   });
+}
+
+// Every Runtime.evaluate runs in its own block scope (so a `const` in one step can't collide with
+// the same name in a later step) and an exception inside the page fails the test instead of
+// being silently ignored.
+async function send(method, params = {}) {
+  if (method !== 'Runtime.evaluate') return rawSend(method, params);
+  const result = await rawSend(method, { ...params, expression: `{\n${params.expression}\n}` });
+  if (result.exceptionDetails) {
+    const d = result.exceptionDetails;
+    throw new Error(`Page-side exception: ${d.exception?.description || d.text}\nin: ${params.expression.trim().slice(0, 200)}`);
+  }
+  return result;
 }
 
 ws.onmessage = (event) => {
@@ -132,6 +145,10 @@ ws.onmessage = (event) => {
       consoleErrors.push(text);
     }
   }
+  // Browser-level errors: CSP violations ("Refused to apply inline style..."), failed loads, etc.
+  if (data.method === 'Log.entryAdded' && data.params.entry.level === 'error') {
+    consoleErrors.push(`[${data.params.entry.source}] ${data.params.entry.text}`);
+  }
 };
 
 await new Promise((resolve) => {
@@ -141,6 +158,7 @@ await new Promise((resolve) => {
 // Enable CDP Domains
 await send('Page.enable');
 await send('Runtime.enable');
+await send('Log.enable');
 await send('DOM.enable');
 
 console.log('⏳ Waiting for initial load and render...');
@@ -201,14 +219,28 @@ await send('Runtime.evaluate', {
 });
 await new Promise((r) => setTimeout(r, 300));
 
-for (const fmt of ['wrist-coach', 'stock-tape', 'prs-stage', 'a4-sheet', 'scope-cap']) {
+for (const fmt of ['wrist-coach', 'stock-tape', 'turret-tape', 'prs-stage', 'a4-sheet', 'scope-cap']) {
   await send('Runtime.evaluate', {
-    expression: `
+    // IIFE: a top-level const would be redeclared on the next evaluate and throw silently
+    expression: `(() => {
       const btn = document.querySelector('.btn-format[data-format="${fmt}"]');
-      if (btn) btn.click();
-    `,
+      if (!btn) return false;
+      btn.click();
+      return document.querySelector('.btn-format.active')?.dataset.format === '${fmt}';
+    })()`,
   });
   await new Promise((r) => setTimeout(r, 200));
+  if (fmt === 'turret-tape') {
+    // Tape size comes from user input and is set through the CSSOM (the CSP blocks inline styles)
+    const tape = await send('Runtime.evaluate', {
+      expression: `(() => { const w = document.querySelector('.turret-tape-preview-wrapper');
+        return w ? w.style.getPropertyValue('--tape-circ-mm') + '|' + w.style.getPropertyValue('--tape-height-mm') : ''; })()`,
+    });
+    console.log(`🎯 Turret tape size vars: ${tape.result.value}`);
+    if (!/^\d+(\.\d+)?mm\|\d+(\.\d+)?mm$/.test(tape.result.value || '')) {
+      throw new Error(`Turret tape size CSS vars not applied: ${tape.result.value}`);
+    }
+  }
 }
 
 // Test 3a: Scope Cap Enlarged Preview, Calibration Ruler, and Butler Creek Presets
@@ -566,6 +598,16 @@ const wezHitRate = await send('Runtime.evaluate', {
 console.log(`🎯 WEZ Hit Rate simulated: ${wezHitRate.result.value}`);
 if (!wezHitRate.result.value || !wezHitRate.result.value.includes('%')) {
   throw new Error(`Invalid WEZ hit rate: ${wezHitRate.result.value}`);
+}
+
+// Sensitivity bar widths are set through the CSSOM (the CSP blocks inline style attributes)
+const sensBars = await send('Runtime.evaluate', {
+  expression: `JSON.stringify(Array.from(document.querySelectorAll('.sens-bar-fill')).map((b) => [b.dataset.widthPct, b.style.width]))`,
+});
+const bars = JSON.parse(sensBars.result.value || '[]');
+console.log(`📊 Sensitivity bars (pct, width): ${JSON.stringify(bars)}`);
+if (bars.length === 0 || bars.some(([pct, width]) => width !== `${parseFloat(pct)}%`)) {
+  throw new Error(`Sensitivity bar widths not applied: ${JSON.stringify(bars)}`);
 }
 
 // Test 4b-2: Computer Vision Target Group Detector in #tools

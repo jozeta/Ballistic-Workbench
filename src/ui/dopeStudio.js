@@ -721,7 +721,7 @@ export class DopeStudioView {
             </button>
             <button class="btn-secondary-sm" id="btn-copy-prs-brief" title="Copy text brief to clipboard">📋 Copy Brief</button>
             <button class="btn-secondary-sm" id="btn-export-prs-png" title="Export card as PNG image for phone">💾 Save PNG</button>
-            <button class="btn-print" onclick="window.print()">🖨️ Print Arm Card</button>
+            <button class="btn-print">🖨️ Print Arm Card</button>
           </div>
         </div>
 
@@ -815,16 +815,16 @@ export class DopeStudioView {
             <table class="builder-target-table">
               <thead>
                 <tr>
-                  <th style="width: 45px;">TGT</th>
-                  <th style="width: 95px;">SHAPE</th>
+                  <th class="w-45px">TGT</th>
+                  <th class="w-95px">SHAPE</th>
                   <th>TARGET NAME</th>
-                  <th style="width: 85px;">DIST (${isImperial ? 'yd' : 'm'})</th>
-                  <th style="width: 75px;">SIZE (${isImperial ? 'in' : 'cm'})</th>
-                  <th style="width: 85px;">OFFSET (m)</th>
-                  <th style="width: 55px;">RNDS</th>
+                  <th class="w-85px">DIST (${isImperial ? 'yd' : 'm'})</th>
+                  <th class="w-75px">SIZE (${isImperial ? 'in' : 'cm'})</th>
+                  <th class="w-85px">OFFSET (m)</th>
+                  <th class="w-55px">RNDS</th>
                   <th>PROP / BARRICADE</th>
                   <th>HOLD NOTES</th>
-                  <th style="width: 125px; text-align: center;">ACTIONS</th>
+                  <th class="w-125px text-center">ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
@@ -1146,7 +1146,7 @@ export class DopeStudioView {
           <div class="meta-left">
             <span class="meta-title">Scope Cap Disk</span>
             <span class="meta-badge">Diameter: ${d}mm</span>
-            <label class="tape-ctrl-label" style="margin-left: 10px;">
+            <label class="tape-ctrl-label ml-10px">
               Preset:
               <select id="scope-cap-preset-select" class="form-select-sm">
                 ${presets.map((p) => `<option value="${p.mm}" ${Math.abs(p.mm - d) < 0.2 ? 'selected' : ''}>${p.label}</option>`).join('')}
@@ -1155,16 +1155,16 @@ export class DopeStudioView {
             </label>
             <label class="tape-ctrl-label">
               Size (mm):
-              <input type="number" id="scope-cap-diameter-input" min="25" max="85" step="0.1" value="${d}" class="form-input-sm" style="width: 65px;" />
+              <input type="number" id="scope-cap-diameter-input" min="25" max="85" step="0.1" value="${d}" class="form-input-sm w-65px" />
             </label>
           </div>
           <div class="meta-right">
-            <button class="btn-print" onclick="window.print()">🖨️ Print Scope Cap (${d}mm)</button>
+            <button class="btn-print">🖨️ Print Scope Cap (${d}mm)</button>
           </div>
         </div>
 
         <div class="scope-cap-preview-wrapper">
-          <div class="scope-cap-print-container" style="--cap-diameter-mm: ${d}mm;">
+          <div class="scope-cap-print-container" data-cap-diameter-mm="${d}">
             <svg viewBox="0 0 500 500" width="100%" height="100%" class="scope-cap-svg">
               <!-- Cutout Boundary Circle -->
               <circle cx="250" cy="250" r="246" fill="#ffffff" stroke="#000000" stroke-width="2.5" stroke-dasharray="6,4" />
@@ -1243,7 +1243,7 @@ export class DopeStudioView {
             ${customRanges && customRanges.length > 0 ? `<span class="meta-badge">${customRanges.length} custom ranges</span>` : ''}
           </div>
           <div class="meta-right">
-            <button class="btn-print" onclick="window.print()">🖨️ Print Wrist Coach (3"×5")</button>
+            <button class="btn-print">🖨️ Print Wrist Coach (3"×5")</button>
           </div>
         </div>
 
@@ -1348,7 +1348,7 @@ export class DopeStudioView {
             ${customRanges && customRanges.length > 0 ? `<span class="meta-badge">${customRanges.length} custom ranges</span>` : ''}
           </div>
           <div class="meta-right">
-            <button class="btn-print" onclick="window.print()">🖨️ Print Stock Tape (180mm × 32mm)</button>
+            <button class="btn-print">🖨️ Print Stock Tape (180mm × 32mm)</button>
           </div>
         </div>
 
@@ -1521,26 +1521,26 @@ export class DopeStudioView {
           <div class="meta-left">
             <span class="meta-title">🎯 Calibrated Turret Tape / Wrap</span>
             <span class="meta-badge">${dope.profile.name}</span>
-            <label class="tape-ctrl-label" style="margin-left: 10px;">Preset:
+            <label class="tape-ctrl-label ml-10px">Preset:
               <select id="turret-tape-preset-select" class="form-select-sm">
                 ${presets.map((p) => `<option value="${p.circ}" ${Math.abs(p.circ - circMm) < 0.3 ? 'selected' : ''}>${p.label}</option>`).join('')}
                 <option value="custom" ${isCustom ? 'selected' : ''}>Custom mm</option>
               </select>
             </label>
             <label class="tape-ctrl-label">Circumference (mm):
-              <input type="number" id="tape-circ-input" class="form-input-sm" min="60" max="180" step="0.1" value="${circMm}" style="width:65px;" />
+              <input type="number" id="tape-circ-input" class="form-input-sm w-65px" min="60" max="180" step="0.1" value="${circMm}" />
             </label>
             <label class="tape-ctrl-label">Height (mm):
-              <input type="number" id="tape-height-input" class="form-input-sm" min="8" max="25" value="${heightMm}" style="width:55px;" />
+              <input type="number" id="tape-height-input" class="form-input-sm w-55px" min="8" max="25" value="${heightMm}" />
             </label>
           </div>
           <div class="meta-right">
             <button id="btn-download-tape-svg" class="btn-secondary-sm">📥 Download SVG</button>
-            <button class="btn-print" onclick="window.print()">🖨️ Print 1:1 Scale Wrap</button>
+            <button class="btn-print">🖨️ Print 1:1 Scale Wrap</button>
           </div>
         </div>
 
-        <div class="turret-tape-preview-wrapper print-sheet" style="--tape-circ-mm: ${circMm}mm; --tape-height-mm: ${heightMm}mm;">
+        <div class="turret-tape-preview-wrapper print-sheet" data-tape-circ-mm="${circMm}" data-tape-height-mm="${heightMm}">
           <div class="turret-tape-label-bar no-print">
             <span>Cut along perimeter border. Calibrated for <strong>${circMm}mm</strong> circumference (~${(circMm / Math.PI).toFixed(1)}mm turret diameter) with UP ▲ dial direction.</span>
           </div>
@@ -1692,7 +1692,7 @@ export class DopeStudioView {
             ${customRanges && customRanges.length > 0 ? `<span class="meta-badge">${customRanges.length} custom ranges</span>` : ''}
           </div>
           <div class="meta-right">
-            <button class="btn-print" onclick="window.print()">🖨️ Print A4 Data Sheet</button>
+            <button class="btn-print">🖨️ Print A4 Data Sheet</button>
           </div>
         </div>
         <div class="a4-data-sheet print-sheet">
@@ -2229,6 +2229,20 @@ export class DopeStudioView {
     }
   }
 
+  /**
+   * Card sizes come from user input, so they are set through the CSSOM after rendering:
+   * the Content-Security-Policy blocks inline style attributes in rendered HTML.
+   */
+  applyDynamicStyles() {
+    this.container.querySelectorAll('[data-cap-diameter-mm]').forEach((el) => {
+      el.style.setProperty('--cap-diameter-mm', `${parseFloat(el.dataset.capDiameterMm)}mm`);
+    });
+    this.container.querySelectorAll('[data-tape-circ-mm]').forEach((el) => {
+      el.style.setProperty('--tape-circ-mm', `${parseFloat(el.dataset.tapeCircMm)}mm`);
+      el.style.setProperty('--tape-height-mm', `${parseFloat(el.dataset.tapeHeightMm)}mm`);
+    });
+  }
+
   render() {
     const dope = this.computeDope(25, 1200);
 
@@ -2275,6 +2289,8 @@ export class DopeStudioView {
         ${contentHtml}
       </div>
     `;
+
+    this.applyDynamicStyles();
 
     // Bind format switcher
     const formatBtns = this.container.querySelectorAll('.btn-format');

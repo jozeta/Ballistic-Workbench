@@ -21,6 +21,7 @@ class BallisticWorkbenchApp {
     this.initRouter();
     this.initCommandPalette();
     this.initVersion();
+    this.initPrintButtons();
 
     const initialHash = (typeof window !== 'undefined' ? window.location.hash.replace('#', '') : '') || 'workspace';
     const validViews = ['workspace', 'solverLab', 'dopeStudio', 'tools', 'libraryManager'];
@@ -121,6 +122,13 @@ class BallisticWorkbenchApp {
       .catch(() => {
         // Offline without a cached manifest: the footer simply shows no version
       });
+  }
+
+  /** One delegated handler for every view's print buttons (inline onclick is blocked by the CSP). */
+  initPrintButtons() {
+    document.addEventListener('click', (e) => {
+      if (e.target.closest?.('.btn-print')) window.print();
+    });
   }
 
   initServiceWorker() {
