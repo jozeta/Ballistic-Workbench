@@ -152,21 +152,20 @@ export class WorkspaceView {
   }
 
   _updateTurretReadout(dialClicks) {
+    // In the scope's own unit (MRAD or MOA), so it matches the numbers on the turret
     const profile = appState.getActiveProfile();
-    const isMrad = appState.state.displayUnits.elevationAngle === 'MRAD';
     const clickValRad = profile.optic?.clickValueRad || 0.0001;
-
-    const dialedMrad = dialClicks * clickValRad * 1000;
-    const dialedVal = isMrad ? dialedMrad : dialedMrad * ((180 * 60) / (Math.PI * 1000));
-
+    const opticIsMoa = /moa/i.test(profile.optic?.clickName || '');
+    const rad = dialClicks * clickValRad;
+    const dialedVal = opticIsMoa ? rad * ((180 * 60) / Math.PI) : rad * 1000;
     const valEl = this.container.querySelector('#turret-dialed-val');
     const clicksEl = this.container.querySelector('#turret-dialed-clicks');
     const unitEl = this.container.querySelector('#turret-dialed-unit');
-
-    if (valEl) valEl.textContent = dialedVal.toFixed(1);
+    if (valEl) valEl.textContent = dialedVal.toFixed(opticIsMoa ? 2 : 1);
     if (clicksEl) clicksEl.textContent = `(${dialClicks} clicks)`;
-    if (unitEl) unitEl.textContent = isMrad ? 'MRAD' : 'MOA';
+    if (unitEl) unitEl.textContent = opticIsMoa ? 'MOA' : 'MRAD';
   }
+
 
   recompute() {
     const profile = appState.getActiveProfile();
@@ -798,7 +797,7 @@ export class WorkspaceView {
                   <button class="lg-tab" role="tab" type="button" data-turret-mode="manual" aria-selected="${this.turretMode === 'manual'}">Manual</button>
                 </div>
                 <div class="turret-header">
-                  <span class="turret-title">Elevation turret</span>
+                  <p class="lg-label turret-title">Elevation turret</p>
                   <span class="turret-resolution" id="turret-resolution-label">${esc(profile.optic?.clickName || '0.1 MRAD')} per click</span>
                 </div>
                 <div class="turret-canvas-wrapper">

@@ -198,6 +198,11 @@ export class WindRoseVisualizer {
     return `${Math.round(share * 100)}% value`;
   }
 
+  /**
+   * A clean compass rose in the Låda graphic language: hairline rim, 12 hour ticks
+   * with 11 px numbers, a dashed line of fire to the target at 12, and the wind as the one accent
+   * mark (an arrow from the rim towards the shooter, with a drag handle on the rim).
+   */
   render() {
     if (!this.ctx || !this.size) return;
     const ctx = this.ctx;
@@ -205,116 +210,110 @@ export class WindRoseVisualizer {
     const s = this.size;
     const cx = s / 2;
     const cy = s / 2;
-    const r = s / 2 - 5;
+    const r = s / 2 - 10;
 
     const dirDeg = normDeg(this.options.windDirectionDeg || 0);
     const dirRad = (dirDeg * Math.PI) / 180;
     const hour = clockHour(dirDeg);
     const speed = this._speedText();
+    const share = this._valueText(dirRad);
 
     this.canvas.setAttribute('aria-valuenow', String(dirDeg));
-    this.canvas.setAttribute('aria-valuetext', `From ${hour} o'clock (${dirDeg}°), ${speed}`);
+    this.canvas.setAttribute('aria-valuetext', `From ${hour} o'clock (${dirDeg}°), ${speed}, ${share.toLowerCase()}`);
 
     ctx.clearRect(0, 0, s, s);
+    ctx.lineCap = 'round';
+    const at = (rad, a) => [cx + rad * Math.sin(a), cy - rad * Math.cos(a)];
 
-    // 1. Face
+    // 1. Face: a flat glass disc with a hairline rim
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = pal.mix(pal.surface, pal.elevated, 0.6);
+    ctx.fillStyle = pal.mix(pal.surface, pal.text, pal.isLight ? 0.03 : 0.045);
     ctx.fill();
     ctx.strokeStyle = pal.line2;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = pal.stroke.mark;
     ctx.stroke();
 
-    // 2. Hour ticks and numbers
+    // 2. Hour ticks and numbers (the wind's hour in the text colour, the rest muted)
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (let h = 1; h <= 12; h++) {
       const a = (h / 12) * Math.PI * 2;
       const quarter = h % 3 === 0;
-      const t1 = r - (quarter ? 9 : 6);
-      ctx.strokeStyle = quarter ? pal.alpha(pal.text, 0.6) : pal.line2;
-      ctx.lineWidth = quarter ? 2 : 1;
+      ctx.strokeStyle = quarter ? pal.alpha(pal.muted, 0.9) : pal.line2;
+      ctx.lineWidth = pal.stroke.mark;
       ctx.beginPath();
-      ctx.moveTo(cx + t1 * Math.sin(a), cy - t1 * Math.cos(a));
-      ctx.lineTo(cx + (r - 2) * Math.sin(a), cy - (r - 2) * Math.cos(a));
+      ctx.moveTo(...at(r - (quarter ? 7 : 5), a));
+      ctx.lineTo(...at(r - 1, a));
       ctx.stroke();
-
-      const tr = r - 19;
-      ctx.font = quarter ? pal.font(12, 600) : pal.font(11);
-      ctx.fillStyle = h === hour ? pal.warnText : quarter ? pal.text : pal.muted;
-      ctx.fillText(String(h), cx + tr * Math.sin(a), cy - tr * Math.cos(a));
+      const current = h === hour;
+      ctx.font = pal.font(11, current || quarter ? 600 : 500);
+      ctx.fillStyle = current ? pal.text : pal.muted;
+      ctx.fillText(String(h), ...at(r - 17, a));
     }
 
-    // 3. Line of fire towards the target at 12 o'clock
+    // 3. Line of fire to the target at 12 o'clock, and the shooter in the middle
     ctx.save();
-    ctx.strokeStyle = pal.alpha(pal.accent, 0.45);
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = pal.line2;
+    ctx.lineWidth = pal.stroke.mark;
+    ctx.setLineDash([2, 4]);
     ctx.beginPath();
-    ctx.moveTo(cx, cy - r + 30);
-    ctx.lineTo(cx, cy);
+    ctx.moveTo(cx, cy - r + 28);
+    ctx.lineTo(cx, cy - 8);
     ctx.stroke();
     ctx.restore();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = pal.muted;
+    ctx.fill();
 
-    // Shooter: a small arrowhead pointing at the target
+    // 4. Wind arrow from the rim towards the centre (the accent), handle on the rim
+    const ox = at(r - 30, dirRad);
+    const tip = at(14, dirRad);
+    ctx.save();
+    ctx.strokeStyle = pal.accent;
     ctx.fillStyle = pal.accent;
+    ctx.lineWidth = pal.stroke.bold;
+    ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(cx, cy - 11);
-    ctx.lineTo(cx - 6, cy + 6);
-    ctx.lineTo(cx, cy + 2);
-    ctx.lineTo(cx + 6, cy + 6);
-    ctx.closePath();
-    ctx.fill();
-
-    // 4. Wind arrow: from the rim towards the centre
-    const startR = r - 32;
-    const endR = 16;
-    const ox = cx + startR * Math.sin(dirRad);
-    const oy = cy - startR * Math.cos(dirRad);
-    const ex = cx + endR * Math.sin(dirRad);
-    const ey = cy - endR * Math.cos(dirRad);
-    ctx.save();
-    ctx.strokeStyle = pal.warn;
-    ctx.fillStyle = pal.warn;
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(ox, oy);
-    ctx.lineTo(ex, ey);
+    ctx.moveTo(...ox);
+    ctx.lineTo(...tip);
     ctx.stroke();
-    const head = Math.atan2(ey - oy, ex - ox);
-    const hl = 10;
+    const head = Math.atan2(tip[1] - ox[1], tip[0] - ox[0]);
+    const hl = 8;
     ctx.beginPath();
-    ctx.moveTo(ex + 2 * Math.cos(head), ey + 2 * Math.sin(head));
-    ctx.lineTo(ex - hl * Math.cos(head - Math.PI / 6), ey - hl * Math.sin(head - Math.PI / 6));
-    ctx.lineTo(ex - hl * Math.cos(head + Math.PI / 6), ey - hl * Math.sin(head + Math.PI / 6));
-    ctx.closePath();
-    ctx.fill();
-    // Drag handle
+    ctx.moveTo(tip[0] - hl * Math.cos(head - Math.PI / 6), tip[1] - hl * Math.sin(head - Math.PI / 6));
+    ctx.lineTo(tip[0], tip[1]);
+    ctx.lineTo(tip[0] - hl * Math.cos(head + Math.PI / 6), tip[1] - hl * Math.sin(head + Math.PI / 6));
+    ctx.stroke();
     ctx.beginPath();
-    ctx.arc(ox, oy, 7, 0, Math.PI * 2);
+    ctx.arc(ox[0], ox[1], 6, 0, Math.PI * 2);
+    ctx.fillStyle = pal.surface;
     ctx.fill();
-    ctx.strokeStyle = pal.surface;
-    ctx.lineWidth = 2;
     ctx.stroke();
     ctx.restore();
 
-    // 5. Readout in the half of the face away from the arrow (kept narrow to clear the numbers)
-    const textY = Math.cos(dirRad) > 0 ? cy + r * 0.3 : cy - r * 0.38;
-    ctx.font = pal.font(13, 700);
+    // 5. Readout in the half of the face away from the arrow
+    const textY = Math.cos(dirRad) > 0 ? cy + r * 0.3 : cy - r * 0.36;
+    ctx.font = pal.font(15, 600);
     ctx.fillStyle = pal.text;
     ctx.fillText(speed, cx, textY);
-    ctx.font = pal.font(11);
+    ctx.font = pal.font(11, 500);
     ctx.fillStyle = pal.muted;
-    ctx.fillText(`${dirDeg}° · ${this._valueText(dirRad)}`, cx, textY + 15);
+    ctx.fillText(`${dirDeg}° · ${share}`, cx, textY + 16);
 
-    // 6. Focus ring
-    if (typeof document !== 'undefined' && document.activeElement === this.canvas) {
+    // 6. Focus ring for keyboard focus
+    let focused = false;
+    try {
+      focused = typeof document !== 'undefined' && document.activeElement === this.canvas && this.canvas.matches(':focus-visible');
+    } catch {
+      focused = typeof document !== 'undefined' && document.activeElement === this.canvas;
+    }
+    if (focused) {
       ctx.strokeStyle = pal.accent;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = pal.stroke.bold;
       ctx.beginPath();
-      ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
+      ctx.arc(cx, cy, s / 2 - 2, 0, Math.PI * 2);
       ctx.stroke();
     }
   }

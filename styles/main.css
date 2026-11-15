@@ -464,7 +464,8 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .turret-knob-container { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-left: 1px solid var(--lg-line); }
 .turret-mode { display: flex; width: 100%; }
 .turret-mode .lg-tab { flex: 1; justify-content: center; }
-.turret-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.turret-header { display: grid; gap: 2px; }
+.turret-header .lg-label { margin: 0; }
 .turret-title { font-weight: 600; }
 .turret-resolution { color: var(--lg-muted); font-size: 12px; }
 .turret-canvas-wrapper { display: flex; justify-content: center; }
@@ -473,18 +474,6 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .turret-readout { text-align: center; font-variant-numeric: tabular-nums; }
 .turret-subtext { display: block; color: var(--lg-muted); font-size: 12px; }
 .turret-btn-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
-.btn-turret {
-  min-height: 36px;
-  border-radius: var(--lg-radius-small);
-  border: 1px solid var(--lg-line-2);
-  background: var(--lg-field);
-  color: var(--lg-text);
-  font: inherit;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-}
-.btn-turret:hover { border-color: color-mix(in srgb, var(--lg-accent) 55%, var(--lg-line-2)); }
 
 /* Chart (Låda Glass line chart) */
 .chart-host { padding: var(--lg-space-m) var(--lg-space-l) var(--lg-space-xs); }
@@ -572,7 +561,7 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
   .field-span-2 { grid-column: auto; }
 }
 @media (pointer: coarse) {
-  .form-input, .form-select, .btn-primary-sm, .btn-secondary-sm, .btn-accent-sm, .btn-ghost-sm, .btn-turret, .nav-link,
+  .form-input, .form-select, .btn-primary-sm, .btn-secondary-sm, .btn-accent-sm, .btn-ghost-sm, .nav-link,
   .btn-units-toggle, .btn-theme-toggle, .btn-cmd-palette, .tab-btn, .lg-tab, .form-select-sm, .form-input-sm { min-height: 44px; }
   .btn-icon-only { min-width: 44px; }
   input[type="checkbox"] { width: 20px; height: 20px; }

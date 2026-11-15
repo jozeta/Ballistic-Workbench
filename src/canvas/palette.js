@@ -119,5 +119,41 @@ export function getPalette() {
   p.mix = mix;
   p.font = (size, weight = 400) => `${weight} ${size}px ${p.fontFamily}`;
   p.monoFont = (size, weight = 400) => `${weight} ${size}px ${p.monoFamily}`;
+  // Older callers interpolate pal.font / pal.mono as a family name (`12px ${pal.font}`); keep that working.
+  p.font.toString = () => p.fontFamily;
+  p.monoFont.toString = () => p.monoFamily;
+  // Låda graphic language for custom canvases (matches .lg-chart-* in lada-glass.css)
+  p.gridline = p.line; // .lg-chart-gridline
+  p.track = p.line2; // .lg-chart-track (meter track)
+  p.stroke = STROKE;
   return p;
+}
+
+/** Stroke widths for custom graphics: Låda charts use 1.5 to 2 px marks and 1 px hairline grids. */
+export const STROKE = Object.freeze({ hair: 1, mark: 1.6, bold: 2 });
+
+/**
+ * Draws a `.lg-label`-style caption (11 px, 600, uppercase, .08em tracking) at (x, y).
+ * align: 'left' | 'right' | 'center'. Returns the drawn width in px.
+ */
+export function drawLabel(ctx, pal, text, x, y, { align = 'left', color = pal.muted, baseline = 'alphabetic' } = {}) {
+  const t = String(text).toUpperCase();
+  ctx.save();
+  ctx.font = pal.font(11, 600);
+  ctx.fillStyle = color;
+  ctx.textBaseline = baseline;
+  ctx.textAlign = align;
+  const tracking = 0.88; // .08em of 11 px
+  let width;
+  if ('letterSpacing' in ctx) {
+    ctx.letterSpacing = `${tracking}px`;
+    width = ctx.measureText(t).width;
+    // letterSpacing adds trailing space after the last glyph; shift right-aligned text to compensate
+    ctx.fillText(t, align === 'right' ? x + tracking : x, y);
+  } else {
+    width = ctx.measureText(t).width;
+    ctx.fillText(t, x, y);
+  }
+  ctx.restore();
+  return width;
 }

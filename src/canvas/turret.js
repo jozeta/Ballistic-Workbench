@@ -1,7 +1,7 @@
 /**
  * Ballistic Workbench - elevation turret (canvas)
- * A knurled elevation turret engraved in the optic's own unit. One revolution is 10 MRAD for MRAD
- * optics and 25 MOA for MOA optics, so the number of clicks per turn follows the click size.
+ * The elevation turret drawn as a Låda meter dial in the optic's own unit. One revolution is 10 MRAD
+ * for MRAD optics and 25 MOA for MOA optics, so the number of clicks per turn follows the click size.
  * Operate it by dragging up/down, the mouse wheel, or the keyboard (it is an ARIA slider):
  *   Arrow up/right: one click up      Arrow down/left: one click down
  *   Page up/down: one major mark (1 MRAD or 2.5 MOA)
@@ -48,7 +48,7 @@ export class TurretKnob {
         clicks: 0, // Current dialed elevation clicks
         clickValueRad: 0.0001, // 0.1 MRAD per click
         clickName: '0.1 MRAD',
-        isMrad: true, // Display unit for the readout (the engraving uses the optic's unit)
+        isMrad: true, // Display unit for aria-valuetext (the dial's scale and centre value use the optic's unit)
         targetClicks: 0, // Clicks the firing solution needs
         maxClicks: null, // null = derived (at least 3 revolutions)
         minClicks: null, // null = derived (0, or lower if the solution needs it)
@@ -125,6 +125,8 @@ export class TurretKnob {
 
   _initAudio() {
     if (!this.options.sound) return;
+    // Browsers only allow audio after a user gesture; skip until there has been one
+    if (typeof navigator !== 'undefined' && navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
     if (!this.audioCtx) {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (AudioContextClass) {
@@ -195,7 +197,9 @@ export class TurretKnob {
     const val = isMrad ? mrad : (mrad * MRAD_RAD) / MOA_RAD;
     const dir = this.options.clicks < 0 ? 'down' : 'up';
     const n = Math.abs(this.options.clicks);
-    return `${Math.abs(val).toFixed(1)} ${isMrad ? 'MRAD' : 'MOA'} ${dir}, ${n} ${n === 1 ? 'click' : 'clicks'}`;
+    const t = Number(this.options.targetClicks);
+    const sol = Number.isFinite(t) ? (t === this.options.clicks ? ', on the solution' : `, solution ${t} clicks`) : '';
+    return `${Math.abs(val).toFixed(1)} ${isMrad ? 'MRAD' : 'MOA'} ${dir}, ${n} ${n === 1 ? 'click' : 'clicks'}${sol}`;
   }
 
   _updateAria() {
@@ -317,6 +321,11 @@ export class TurretKnob {
 
   // ---- drawing -----------------------------------------------------------------------------------
 
+  /**
+   * A Låda meter dial: a fixed scale (one revolution, 0 at 12 o'clock) with a track that fills in
+   * the accent clockwise as you dial up, a handle at the dialed position, a small marker for the
+   * solution and the value in the middle. Completed revolutions tint the track and are counted.
+   */
   render() {
     if (!this.ctx || !this.size) return;
     this._updateAria();
@@ -325,151 +334,126 @@ export class TurretKnob {
     const s = this.size;
     const cx = s / 2;
     const cy = s / 2;
-    const r = s / 2 - 10;
     const rev = this.clicksPerRev;
     const major = this.majorClicks;
-    const medium = Math.max(1, Math.round(major / 2));
     const clicks = this.options.clicks;
     const isMoaOptic = this.isMoaOptic;
     const clickInOptic = (this.options.clickValueRad || 0.0001) / (isMoaOptic ? MOA_RAD : MRAD_RAD);
+    const TOP = -Math.PI / 2;
+    const angleOf = (c) => TOP + (c / rev) * Math.PI * 2;
 
     ctx.clearRect(0, 0, s, s);
+    ctx.lineCap = 'round';
 
-    // The dial turns clockwise as clicks increase; the engraving moves under the fixed index mark
-    const rotAngle = (clicks / rev) * Math.PI * 2;
-    const metal = pal.mix(pal.surface, pal.text, pal.isLight ? 0.1 : 0.06);
-    const metalEdge = pal.mix(pal.surface, pal.text, pal.isLight ? 0.28 : 0.2);
+    const R = s / 2 - 14; // track centre line (room for the handle and the focus ring)
+    const thick = Math.max(6, Math.round(R * 0.11));
+    const inner = R - thick / 2;
 
-    ctx.save();
-    ctx.translate(cx, cy);
-
-    // 1. Knurled grip ring
-    const outerR = r;
-    const innerR = r - 12;
+    // 1. Track (.lg-chart-track); a completed revolution underneath tints it with the accent
+    const turnIndex = Math.floor(Math.abs(clicks) / rev); // whole revolutions already dialed
+    ctx.lineWidth = thick;
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = turnIndex > 0 ? pal.alpha(pal.accent, 0.3) : pal.track;
     ctx.beginPath();
-    ctx.arc(0, 0, outerR, 0, Math.PI * 2);
-    ctx.fillStyle = metalEdge;
-    ctx.fill();
-    ctx.strokeStyle = pal.alpha(pal.surface, 0.9);
-    ctx.lineWidth = 2;
-    const notchCount = 60;
-    for (let i = 0; i < notchCount; i++) {
-      const a = (i / notchCount) * Math.PI * 2 + rotAngle;
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 2. Fill: from 0 to the dialed position within this revolution (counter-clockwise below zero)
+    const within = Math.abs(clicks) % rev;
+    const full = clicks !== 0 && within === 0;
+    const sign = clicks < 0 ? -1 : 1;
+    if (full || within > 0) {
+      ctx.strokeStyle = pal.accent;
       ctx.beginPath();
-      ctx.moveTo(Math.cos(a) * (innerR + 1), Math.sin(a) * (innerR + 1));
-      ctx.lineTo(Math.cos(a) * (outerR - 1), Math.sin(a) * (outerR - 1));
+      if (full) ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      else ctx.arc(cx, cy, R, TOP, angleOf(sign * within), sign < 0);
       ctx.stroke();
     }
 
-    // 2. Dial face
-    ctx.beginPath();
-    ctx.arc(0, 0, innerR, 0, Math.PI * 2);
-    const grad = ctx.createRadialGradient(-innerR * 0.3, -innerR * 0.4, innerR * 0.1, 0, 0, innerR);
-    grad.addColorStop(0, pal.mix(metal, pal.elevated, 0.5));
-    grad.addColorStop(1, metal);
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.strokeStyle = pal.line2;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // 3. Graduations (thin out minor ticks when there are many clicks per turn)
-    const minorEvery = rev > 120 ? 2 : 1;
+    // 3. Scale inside the track: hairline ticks every major mark, numbers in 11 px muted text
     const showNumbers = s >= 140;
-    for (let i = 0; i < rev; i++) {
-      const isMajor = i % major === 0;
-      const isMedium = !isMajor && i % medium === 0;
-      if (!isMajor && !isMedium && i % minorEvery !== 0) continue;
-      const angle = (i / rev) * Math.PI * 2 - Math.PI / 2 - rotAngle;
-      const len = isMajor ? 9 : isMedium ? 6 : 3.5;
+    const numberEvery = s >= 170 || rev / major <= 10 ? 1 : 2;
+    ctx.lineCap = 'round';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = pal.font(11, 500);
+    const tickOuter = inner - 4;
+    for (let i = 0, n = 0; i < rev; i += major, n++) {
+      const a = angleOf(i);
+      const isNumbered = n % numberEvery === 0;
+      const len = isNumbered ? 5 : 3;
+      ctx.strokeStyle = isNumbered ? pal.alpha(pal.muted, 0.9) : pal.line2;
+      ctx.lineWidth = pal.stroke.mark;
       ctx.beginPath();
-      ctx.strokeStyle = isMajor ? pal.text : isMedium ? pal.alpha(pal.text, 0.7) : pal.alpha(pal.text, 0.4);
-      ctx.lineWidth = isMajor ? 1.5 : 1;
-      ctx.moveTo(Math.cos(angle) * (innerR - 2), Math.sin(angle) * (innerR - 2));
-      ctx.lineTo(Math.cos(angle) * (innerR - 2 - len), Math.sin(angle) * (innerR - 2 - len));
+      ctx.moveTo(cx + Math.cos(a) * tickOuter, cy + Math.sin(a) * tickOuter);
+      ctx.lineTo(cx + Math.cos(a) * (tickOuter - len), cy + Math.sin(a) * (tickOuter - len));
       ctx.stroke();
-
-      if (isMajor && showNumbers) {
-        const textR = innerR - 20;
-        ctx.save();
-        ctx.translate(Math.cos(angle) * textR, Math.sin(angle) * textR);
-        ctx.rotate(angle + Math.PI / 2);
-        ctx.font = pal.monoFont(11, 600);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = i === 0 ? pal.accent : pal.text;
-        ctx.fillText(fmt(i * clickInOptic, 1), 0, 0);
-        ctx.restore();
+      if (showNumbers && isNumbered) {
+        const tr = tickOuter - len - 9;
+        ctx.fillStyle = i === 0 ? pal.text : pal.muted;
+        ctx.fillText(fmt(i * clickInOptic, 1), cx + Math.cos(a) * tr, cy + Math.sin(a) * tr);
       }
     }
 
-    // Solution mark: where the dial needs to be (shown as a small ring on the dial edge)
+    // 4. Solution marker: a small chevron outside the track pointing in, in the text colour
     const target = Number(this.options.targetClicks);
-    if (Number.isFinite(target) && target !== clicks) {
-      // Engraving value v sits at angle (v - clicks) / rev turns from the index at 12 o'clock
-      const ta = ((target - clicks) / rev) * Math.PI * 2 - Math.PI / 2;
-      const tx = Math.cos(ta) * (innerR + 6);
-      const ty = Math.sin(ta) * (innerR + 6);
+    if (Number.isFinite(target)) {
+      const ta = angleOf(target);
+      const mr = R + thick / 2 + 3;
+      ctx.save();
+      ctx.translate(cx + Math.cos(ta) * mr, cy + Math.sin(ta) * mr);
+      ctx.rotate(ta + Math.PI); // point towards the centre
       ctx.beginPath();
-      ctx.arc(tx, ty, 4, 0, Math.PI * 2);
-      ctx.fillStyle = pal.ok;
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-7, -5);
+      ctx.lineTo(-7, 5);
+      ctx.closePath();
+      ctx.fillStyle = target === clicks ? pal.accent : pal.text;
       ctx.fill();
-      ctx.strokeStyle = pal.surface;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
+      ctx.restore();
     }
 
-    // 4. Centre cap with the dialed value
-    const capR = innerR * 0.5;
+    // 5. Handle at the dialed position (white-on-accent ring like a slider thumb)
+    const ha = angleOf(clicks);
+    const hx = cx + Math.cos(ha) * R;
+    const hy = cy + Math.sin(ha) * R;
     ctx.beginPath();
-    ctx.arc(0, 0, capR, 0, Math.PI * 2);
-    ctx.fillStyle = pal.elevated;
+    ctx.arc(hx, hy, thick / 2 + 3, 0, Math.PI * 2);
+    ctx.fillStyle = pal.surface;
     ctx.fill();
-    ctx.strokeStyle = pal.line2;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = pal.stroke.bold;
+    ctx.strokeStyle = pal.accent;
     ctx.stroke();
 
-    const isMrad = this.options.isMrad !== false;
-    const dialedMrad = clicks * (this.options.clickValueRad || 0.0001) * 1000;
-    const dialedVal = isMrad ? dialedMrad : (dialedMrad * MRAD_RAD) / MOA_RAD;
+    // 6. Value in the middle (meter style): number, unit and direction, revolution
+    // In the optic's unit, so the number matches the scale around it (the readout below the dial
+    // and aria-valuetext use the display unit, options.isMrad)
+    const isMrad = !isMoaOptic;
+    const dialedVal = clicks * clickInOptic;
+    const big = s >= 170 ? 22 : 18;
     ctx.fillStyle = pal.text;
-    ctx.font = pal.monoFont(Math.max(13, Math.round(capR * 0.42)), 700);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(Math.abs(dialedVal).toFixed(1), 0, -capR * 0.22);
+    ctx.font = pal.font(big, 600);
+    ctx.fillText(Math.abs(dialedVal).toFixed(1), cx, cy - 6);
     ctx.fillStyle = pal.muted;
     ctx.font = pal.font(11, 500);
-    ctx.fillText(`${isMrad ? 'MRAD' : 'MOA'} ${clicks < 0 ? 'down' : 'up'}`, 0, capR * 0.28);
-
-    // Turn counter (multi-turn turret)
-    const turn = Math.floor(Math.max(0, clicks) / rev) + 1;
-    if (turn > 1 && showNumbers) {
-      ctx.font = pal.font(11, 600);
-      ctx.fillStyle = pal.accent;
-      ctx.fillText(`Turn ${turn}`, 0, capR * 0.66);
+    ctx.fillText(`${isMrad ? 'MRAD' : 'MOA'} ${clicks < 0 ? 'down' : 'up'}`, cx, cy + big / 2 + 4);
+    if (showNumbers) {
+      ctx.fillText(`Turn ${turnIndex + (within > 0 || clicks === 0 ? 1 : 0)}`, cx, cy + big / 2 + 19);
     }
-    ctx.restore();
 
-    // 5. Fixed index mark at 12 o'clock
-    ctx.save();
-    ctx.fillStyle = pal.accent;
-    ctx.beginPath();
-    ctx.moveTo(cx, 10 + 9);
-    ctx.lineTo(cx - 5, 1);
-    ctx.lineTo(cx + 5, 1);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    // 6. Focus ring (the canvas is keyboard operable)
-    if (typeof document !== 'undefined' && document.activeElement === this.canvas) {
-      ctx.save();
+    // 7. Focus ring for keyboard focus (the canvas is an ARIA slider)
+    let focused = false;
+    try {
+      focused = typeof document !== 'undefined' && document.activeElement === this.canvas && this.canvas.matches(':focus-visible');
+    } catch {
+      focused = typeof document !== 'undefined' && document.activeElement === this.canvas;
+    }
+    if (focused) {
       ctx.strokeStyle = pal.accent;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = pal.stroke.bold;
       ctx.beginPath();
-      ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
+      ctx.arc(cx, cy, s / 2 - 1.5, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.restore();
     }
   }
 }

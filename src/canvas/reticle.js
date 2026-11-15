@@ -1,7 +1,10 @@
 /**
  * Ballistic Workbench - reticle view (canvas)
- * Simulates the sight picture through the scope: a daylight scene, the target at its true angular
- * size, the reticle and the hold mark for the firing solution.
+ * Draws the sight picture through the scope in the Låda Glass graphic language: a flat glass field
+ * with muted range rings (every 5 MRAD), the target at its true angular size, the reticle in the text
+ * colour (muted red token when illuminated, no glow) and the hold mark in the accent. A caption band
+ * above and a readout band below ("Dialed 4.4 MRAD · hold 1.0 right MRAD", target size) keep text
+ * off the field. Token colours come from palette.js, so both themes work.
  * - FFP (first focal plane): the reticle grows with magnification, so its marks are true at any zoom.
  * - SFP (second focal plane): the reticle stays the same size; its marks are only true at the
  *   calibrated magnification (calibratedMag). The hold mark is always drawn at the true angle.
@@ -21,7 +24,7 @@
  *   .options.illuminated   opts.distanceUnit ('m' | 'yd', default 'm') is used in the aria-label.
  */
 
-import { getPalette } from './palette.js';
+import { getPalette, drawLabel } from './palette.js';
 
 const MOA_PER_MRAD = 3.437746770784939;
 
@@ -31,8 +34,8 @@ export function holdMarkPosition(cx, cy, ppm, elevationHoldMrad, windageHoldMrad
 }
 
 function fmtHold(v) {
-  const s = v.toFixed(2);
-  return s === '-0.00' ? '0.00' : s;
+  const s = v.toFixed(1);
+  return s === '-0.0' ? '0.0' : s;
 }
 
 export class ReticleRenderer {
@@ -57,7 +60,7 @@ export class ReticleRenderer {
         clickValueRad: 0.0001,
         isMrad: true,
         illuminated: false,
-        illuminationColor: '#e5484d', // Illuminated reticle red (part of the scene, not the UI)
+        illuminationColor: null, // Illuminated reticle colour; null = the --lg-bad token
       },
       options
     );
@@ -128,14 +131,20 @@ export class ReticleRenderer {
     return { worldPpm, reticlePpm, mag, cal };
   }
 
-  /** Remaining hold after the dialed clicks, in MRAD. */
+  /**
+   * Remaining hold after the dialed clicks, in MRAD. A residual within half a click is what the
+   * turret cannot resolve, so it counts as no hold (the target then sits exactly on the crosshair
+   * instead of jittering by a pixel as the distance changes).
+   */
   _holds() {
-    const click = this.options.clickValueRad || 0.0001;
-    const dialedEl = (this.options.elevationDialClicks || 0) * click * 1000;
-    const dialedWind = (this.options.windageDialClicks || 0) * click * 1000;
+    const click = (this.options.clickValueRad || 0.0001) * 1000;
+    const snap = (v) => (Math.abs(v) <= click / 2 + 1e-9 ? 0 : v);
+    const dialedEl = (this.options.elevationDialClicks || 0) * click;
+    const dialedWind = (this.options.windageDialClicks || 0) * click;
     return {
-      el: (this.options.elevationHoldMrad || 0) - dialedEl,
-      wind: (this.options.windageHoldMrad || 0) - dialedWind,
+      el: snap((this.options.elevationHoldMrad || 0) - dialedEl),
+      wind: snap((this.options.windageHoldMrad || 0) - dialedWind),
+      dialedEl,
     };
   }
 
@@ -149,9 +158,15 @@ export class ReticleRenderer {
     const unit = isMrad ? 'MRAD' : 'MOA';
     const el = hold.el * k;
     const wind = hold.wind * k;
-    const elPart = Math.abs(el) < 0.005 ? 'no elevation' : `${fmtHold(Math.abs(el))} ${el > 0 ? 'up' : 'down'}`;
-    const windPart = Math.abs(wind) < 0.005 ? 'no wind' : `${fmtHold(Math.abs(wind))} ${wind > 0 ? 'right' : 'left'}`;
-    return { elPart, windPart, unit, none: elPart === 'no elevation' && windPart === 'no wind' };
+    const elPart = Math.abs(el) < 0.05 ? 'no elevation' : `${fmtHold(Math.abs(el))} ${el > 0 ? 'up' : 'down'}`;
+    const windPart = Math.abs(wind) < 0.05 ? 'no wind' : `${fmtHold(Math.abs(wind))} ${wind > 0 ? 'right' : 'left'}`;
+    const none = elPart === 'no elevation' && windPart === 'no wind';
+    const parts = [elPart, windPart].filter((x) => !x.startsWith('no '));
+    const holdValue = `${parts.join(', ')} ${unit}`;
+    const holdPart = none ? 'no hold' : `hold ${holdValue}`;
+    const dialed = (hold.dialedEl || 0) * k;
+    const dialPart = Math.abs(dialed) < 0.05 ? '' : `Dialed ${fmtHold(Math.abs(dialed))} ${unit}${dialed < 0 ? ' down' : ''}`;
+    return { elPart, windPart, unit, none, holdPart, holdValue, dialPart };
   }
 
   render() {
@@ -160,51 +175,60 @@ export class ReticleRenderer {
     const pal = getPalette();
     const w = this.w;
     const h = this.h;
-    const s = this.size;
-    const cx = w / 2;
-    const cy = h / 2;
-    const r = s / 2 - 12; // eyepiece radius
-    this._r = r;
-    this._numFont = pal.monoFont(11, 500);
+    this._numFont = pal.font(11, 500);
+    this._fine = 1.5; // fine reticle lines (Låda marks are 1.5 to 1.7 px)
 
-    const { worldPpm, reticlePpm, mag, cal } = this._scales(r);
     const hold = this._holds();
+    const holdText = this._holdText(hold);
+    const mag = Math.max(1, Number(this.options.magnification) || 15);
+
+    // Layout: a caption band above and a readout band below the field, so text never covers it
+    const narrow = w < 440;
+    const valueLines = this._valueLines(holdText, narrow);
+    const topBand = 30;
+    const bottomBand = 28 + valueLines.length * 18;
+    const cx = w / 2;
+    const r = Math.max(60, Math.min(w / 2 - 12, (h - topBand - bottomBand) / 2 - 4));
+    const cy = topBand + 4 + r;
+    this._r = r;
+
+    const { worldPpm, reticlePpm, cal } = this._scales(r);
     const mark = holdMarkPosition(cx, cy, worldPpm, hold.el, hold.wind);
 
-    // 1. Around the eyepiece: the card surface, so the view sits in the panel in both themes
+    // The card shows through around the field (flat glass, no fill outside)
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = pal.surface;
-    ctx.fillRect(0, 0, w, h);
 
+    // 1. Field of view: a flat, slightly lifted glass disc with a hairline edge
+    const field = pal.mix(pal.surface, pal.text, pal.isLight ? 0.03 : 0.045);
+    this._field = field;
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = field;
+    ctx.fill();
     ctx.clip();
 
-    // 2. Daylight scene (fixed colours: this is a picture through glass, not UI)
-    const scene = ctx.createLinearGradient(0, cy - r, 0, cy + r);
-    scene.addColorStop(0, '#9fb6c8');
-    scene.addColorStop(0.47, '#c9d3d6');
-    scene.addColorStop(0.5, '#8d9070');
-    scene.addColorStop(1, '#5f6648');
-    ctx.fillStyle = scene;
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    // Muted range rings every 5 MRAD of the scene, like chart gridlines
+    ctx.strokeStyle = pal.gridline;
+    ctx.lineWidth = pal.stroke.hair;
+    for (let m = 5; m * worldPpm < r; m += 5) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, m * worldPpm, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
-    // 3. Target, placed on the hold mark: this is the sight picture when you hold correctly
-    this._renderTarget(ctx, mark.x, mark.y, worldPpm);
+    // 2. Target, placed on the hold mark: this is the sight picture when you hold correctly
+    this._renderTarget(ctx, pal, mark.x, mark.y, worldPpm);
 
-    // 4. Reticle
-    const reticleColor = this.options.illuminated ? this.options.illuminationColor : '#141414';
+    // 3. Reticle (text colour, or the muted red token when illuminated; no glow)
+    const reticleColor = this.options.illuminated ? this.options.illuminationColor || pal.bad : pal.text;
+    ctx.save();
     ctx.strokeStyle = reticleColor;
     ctx.fillStyle = reticleColor;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._fine;
+    ctx.lineCap = 'round';
     const ppm = reticlePpm;
     const rType = (this.options.reticleType || '').toLowerCase();
-    ctx.save();
-    if (this.options.illuminated) {
-      ctx.shadowColor = reticleColor;
-      ctx.shadowBlur = 4;
-    }
     if (rType.includes('skmr4')) this._renderSkMr4(ctx, cx, cy, ppm, reticleColor, r);
     else if (rType.includes('pr2')) this._renderPr2Mil(ctx, cx, cy, ppm, reticleColor, r);
     else if (rType.includes('ebr-2c') || rType.includes('moa')) this._renderEbr2cMoa(ctx, cx, cy, ppm, reticleColor, r);
@@ -216,89 +240,87 @@ export class ReticleRenderer {
     else this._renderEbr8(ctx, cx, cy, ppm, reticleColor, r);
     ctx.restore();
 
-    // 5. Hold mark
+    // 4. Hold mark (the accent: the one mark that matters)
     this._renderHoldMark(ctx, pal, mark, cx, cy, r);
     ctx.restore();
 
-    // 6. Eyepiece: dark tube ring with a soft inner edge
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r + 5, 0, Math.PI * 2);
-    ctx.lineWidth = 12;
-    ctx.strokeStyle = '#16181b';
-    ctx.stroke();
-    const vignette = ctx.createRadialGradient(cx, cy, r * 0.82, cx, cy, r);
-    vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    vignette.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
+    // Field edge
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = vignette;
-    ctx.fill();
-    ctx.restore();
+    ctx.strokeStyle = pal.line2;
+    ctx.lineWidth = pal.stroke.mark;
+    ctx.stroke();
 
-    // 7. Overlays (UI, token colours)
-    const holdText = this._holdText(hold);
-    this._renderBadges(ctx, pal, holdText, mag, cal);
+    // 5. Captions and readout in the Låda type scale
+    this._renderText(ctx, pal, { holdText, valueLines, mag, cal, cy, r, topBand });
     this._updateAriaLabel(holdText, mag);
   }
 
-  /** Two pills: optic settings (top left) and the hold (bottom left). */
-  _renderBadges(ctx, pal, holdText, mag, cal) {
-    const pad = 12;
-    const lines1 = [
-      { text: `${mag}x · ${this.options.focalPlane}`, font: pal.font(13, 700), color: pal.text },
-      { text: String(this.options.reticleType || ''), font: pal.font(11), color: pal.muted },
-    ];
-    if (this.options.focalPlane === 'SFP' && Math.abs(mag - cal) > 0.01) {
-      lines1.push({ text: `Marks true at ${cal}x`, font: pal.font(11, 600), color: pal.warnText });
-    }
-    this._card(ctx, pal, pad, pad, lines1, 'top');
-
-    const narrow = this.w < 520;
-    let lines2;
-    if (holdText.none) {
-      lines2 = [{ text: 'No hold needed', font: pal.font(12, 600), color: pal.text }];
-    } else if (narrow) {
-      lines2 = [
-        { text: `Hold (${holdText.unit})`, font: pal.font(11, 600), color: pal.muted },
-        { text: holdText.elPart, font: pal.monoFont(12, 600), color: pal.text },
-        { text: holdText.windPart, font: pal.monoFont(12, 600), color: pal.text },
-      ];
-    } else {
-      lines2 = [
-        { text: 'Hold', font: pal.font(11, 600), color: pal.muted },
-        { text: `${holdText.elPart}, ${holdText.windPart} ${holdText.unit}`, font: pal.monoFont(12, 600), color: pal.text },
-      ];
-    }
-    this._card(ctx, pal, pad, this.h - pad, lines2, 'bottom');
+  /** Readout lines for the band below the field ("Dialed 4.4 MRAD · hold 1.0 right"). */
+  _valueLines(holdText, narrow) {
+    const { dialPart, holdPart } = holdText;
+    // Hold only: the caption already says "Hold", so the value is "4.4 up, 1.0 right MRAD"
+    if (!dialPart) return [holdText.none ? 'None needed' : holdText.holdValue];
+    const one = `${dialPart} · ${holdPart}`;
+    if (!narrow || one.length <= 34) return [one];
+    return [dialPart, holdPart.charAt(0).toUpperCase() + holdPart.slice(1)];
   }
 
-  _card(ctx, pal, x, y, lines, anchor) {
-    ctx.save();
-    const lh = 16;
-    let tw = 0;
-    for (const l of lines) {
-      ctx.font = l.font;
-      tw = Math.max(tw, ctx.measureText(l.text).width);
+  _renderText(ctx, pal, { holdText, valueLines, mag, cal, cy, r, topBand }) {
+    const w = this.w;
+    const pad = 12;
+    const plane = this.options.focalPlane === 'SFP' ? 'SFP' : 'FFP';
+    drawLabel(ctx, pal, `Sight picture · ${mag}× ${plane}`, pad, topBand - 10);
+    if (plane === 'SFP' && Math.abs(mag - cal) > 0.01) {
+      ctx.save();
+      ctx.font = pal.font(11, 500);
+      ctx.fillStyle = pal.warnText;
+      ctx.textAlign = 'right';
+      ctx.fillText(`Marks true at ${cal}×`, w - pad, topBand - 10);
+      ctx.restore();
     }
-    const bw = Math.min(this.w - 2 * x, tw + 20);
-    const bh = lines.length * lh + 12;
-    const by = anchor === 'bottom' ? y - bh : y;
-    ctx.fillStyle = pal.alpha(pal.elevated, 0.9);
-    ctx.strokeStyle = pal.line2;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(x + 0.5, by + 0.5, bw, bh, 8);
-    ctx.fill();
-    ctx.stroke();
+
+    const top = cy + r + 22;
+    drawLabel(ctx, pal, holdText.dialPart ? 'Dial and hold' : 'Hold', pad, top);
+    ctx.save();
+    ctx.font = pal.font(13, 600);
+    ctx.fillStyle = pal.text;
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    lines.forEach((l, i) => {
-      ctx.font = l.font;
-      ctx.fillStyle = l.color;
-      ctx.fillText(l.text, x + 10, by + 6 + lh / 2 + i * lh, bw - 20);
+    let leftW = 0;
+    valueLines.forEach((line, i) => {
+      ctx.fillText(line, pad, top + 18 + i * 18, w - 2 * pad);
+      leftW = Math.max(leftW, ctx.measureText(line).width);
     });
     ctx.restore();
+
+    // Target size in the hold unit (right), only when it fits beside the hold readout
+    const sizeText = this._targetSizeText();
+    ctx.save();
+    ctx.font = pal.font(13, 500);
+    const sw = ctx.measureText(sizeText).width;
+    ctx.restore();
+    if (pad + leftW + 24 + Math.max(sw, 50) <= w - pad) {
+      drawLabel(ctx, pal, 'Target', w - pad, top, { align: 'right' });
+      ctx.save();
+      ctx.font = pal.font(13, 500);
+      ctx.fillStyle = pal.muted;
+      ctx.textAlign = 'right';
+      ctx.fillText(sizeText, w - pad, top + 18);
+      ctx.restore();
+    }
+  }
+
+  /** Angular size of the target in the hold unit, e.g. "0.75 × 1.25 MRAD". */
+  _targetSizeText() {
+    const isMrad = this._holdUnitIsMrad();
+    const k = isMrad ? 1 : MOA_PER_MRAD;
+    const d = Math.max(10, this.options.targetDistanceM || 600);
+    const a = (cm) => ((cm / 100 / d) * 1000 * k).toFixed(isMrad ? 2 : 1);
+    const wcm = this.options.targetWidthCm || 45;
+    const hcm = this.options.targetHeightCm || 75;
+    const shape = this.options.targetShape || 'ipsc';
+    const unit = isMrad ? 'MRAD' : 'MOA';
+    return shape === 'circle' ? `${a(wcm)} ${unit} wide` : `${a(wcm)} × ${a(hcm)} ${unit}`;
   }
 
   _updateAriaLabel(holdText, mag) {
@@ -306,16 +328,16 @@ export class ReticleRenderer {
     const plane = this.options.focalPlane === 'SFP' ? 'second focal plane' : 'first focal plane';
     const yd = this.options.distanceUnit === 'yd';
     const dist = Math.round((this.options.targetDistanceM || 0) * (yd ? 1.0936133 : 1));
-    const hold = holdText.none
-      ? 'No hold needed.'
-      : `Hold ${holdText.elPart} and ${holdText.windPart} ${holdText.unit}.`;
+    const dial = holdText.dialPart ? `${holdText.dialPart}. ` : '';
+    const hold = holdText.none ? 'No hold needed.' : `Hold ${holdText.elPart} and ${holdText.windPart} ${holdText.unit}.`;
     this.canvas.setAttribute(
       'aria-label',
-      `Reticle view: ${this.options.reticleType} at ${mag}x, ${plane}. Target at ${dist} ${yd ? 'yd' : 'm'}. ${hold}`
+      `Reticle view: ${this.options.reticleType} at ${mag}x, ${plane}. Target at ${dist} ${yd ? 'yd' : 'm'}, ${this._targetSizeText()}. ${dial}${hold}`
     );
   }
 
-  _renderTarget(ctx, targetX, targetY, worldPpm) {
+  /** Target at its true angular size: a flat, neutral shape with a hairline outline. */
+  _renderTarget(ctx, pal, targetX, targetY, worldPpm) {
     const distM = Math.max(10, this.options.targetDistanceM || 600);
     const targetW_M = (this.options.targetWidthCm || 45) / 100.0;
     const targetH_M = (this.options.targetHeightCm || 75) / 100.0;
@@ -325,9 +347,10 @@ export class ReticleRenderer {
     const pxH = (targetH_M / distM) * 1000.0 * worldPpm;
 
     ctx.save();
-    ctx.fillStyle = '#eceae4'; // painted steel
-    ctx.strokeStyle = '#2b2b2b';
-    ctx.lineWidth = 1.5;
+    ctx.fillStyle = pal.alpha(pal.text, pal.isLight ? 0.1 : 0.14);
+    ctx.strokeStyle = pal.alpha(pal.text, 0.5);
+    ctx.lineWidth = pal.stroke.mark;
+    ctx.lineJoin = 'round';
 
     const shape = this.options.targetShape || 'ipsc';
     if (shape === 'circle') {
@@ -336,10 +359,12 @@ export class ReticleRenderer {
       ctx.fill();
       ctx.stroke();
     } else if (shape === 'square') {
-      ctx.fillRect(targetX - pxW / 2, targetY - pxH / 2, pxW, pxH);
-      ctx.strokeRect(targetX - pxW / 2, targetY - pxH / 2, pxW, pxH);
+      ctx.beginPath();
+      ctx.rect(targetX - pxW / 2, targetY - pxH / 2, pxW, pxH);
+      ctx.fill();
+      ctx.stroke();
     } else {
-      // IPSC Torso: 45 x 75 cm with 15x15 cm head box
+      // IPSC torso: 45 x 75 cm with a head box
       const halfW = pxW / 2;
       const halfH = pxH / 2;
       const headHalfW = halfW * 0.35;
@@ -358,11 +383,14 @@ export class ReticleRenderer {
       ctx.fill();
       ctx.stroke();
 
-      // Center hit zone diamond
-      ctx.strokeStyle = 'rgba(160, 60, 50, 0.45)';
-      ctx.beginPath();
-      ctx.arc(targetX, targetY - halfH * 0.1, pxW * 0.15, 0, Math.PI * 2);
-      ctx.stroke();
+      // A-zone
+      if (pxW > 14) {
+        ctx.strokeStyle = pal.alpha(pal.text, 0.3);
+        ctx.lineWidth = pal.stroke.hair;
+        ctx.beginPath();
+        ctx.arc(targetX, targetY - halfH * 0.1, pxW * 0.15, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }
@@ -379,7 +407,7 @@ export class ReticleRenderer {
 
     // 1. Thick Duplex Stadium Posts (Outer Heavy Bars)
     ctx.save();
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 4;
     ctx.strokeStyle = color;
 
     ctx.beginPath();
@@ -398,7 +426,7 @@ export class ReticleRenderer {
     ctx.stroke();
 
     // 2. Fine Center Hairlines
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._fine;
     ctx.beginPath();
     ctx.moveTo(cx - stadiumOffset, cy);
     ctx.lineTo(cx + stadiumOffset, cy);
@@ -458,7 +486,7 @@ export class ReticleRenderer {
     ctx.stroke();
 
     // Fine center crosshair with center dot gap
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._fine;
     ctx.beginPath();
     ctx.moveTo(cx - outerGap, cy);
     ctx.lineTo(cx - 2, cy);
@@ -569,7 +597,7 @@ export class ReticleRenderer {
     ctx.stroke();
 
     // Fine center hairline
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._fine;
     ctx.beginPath();
     ctx.moveTo(cx - outerGap, cy);
     ctx.lineTo(cx - 2, cy);
@@ -651,7 +679,7 @@ export class ReticleRenderer {
     ctx.stroke();
 
     // Fine lines
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._fine;
     ctx.beginPath();
     ctx.moveTo(cx - outerGap, cy);
     ctx.lineTo(cx + outerGap, cy);
@@ -724,7 +752,7 @@ export class ReticleRenderer {
     ctx.strokeStyle = color;
 
     // 1. Three Heavy Thick Stadium Bars (9 o'clock, 3 o'clock, 6 o'clock)
-    const barWidth = 8;
+    const barWidth = 6;
     // Left bar
     ctx.fillRect(cx - r, cy - barWidth / 2, r - gate, barWidth);
     // Right bar
@@ -733,7 +761,7 @@ export class ReticleRenderer {
     ctx.fillRect(cx - barWidth / 2, cy + gate, barWidth, r - gate);
 
     // 2. Fine Center Hairlines (Note: 12 o'clock has fine line extending all the way to top)
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._fine;
     ctx.beginPath();
     // Horizontal fine crosshair connecting through center
     ctx.moveTo(cx - gate, cy);
@@ -760,7 +788,7 @@ export class ReticleRenderer {
     ctx.save();
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = this._fine;
 
     // 1. Center Aiming Chevron (Point of aim is chevron apex at cx, cy)
     ctx.beginPath();
@@ -777,7 +805,7 @@ export class ReticleRenderer {
     ctx.stroke();
 
     // 3. Horizontal stadia with ranging bars
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._fine;
     ctx.beginPath();
     ctx.moveTo(cx - r * 0.85, cy);
     ctx.lineTo(cx - hsR - 4, cy);
@@ -846,7 +874,7 @@ export class ReticleRenderer {
     ctx.stroke();
 
     // Fine center crosshair
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._fine;
     ctx.beginPath();
     ctx.moveTo(cx - outerGap, cy);
     ctx.lineTo(cx + outerGap, cy);
@@ -913,7 +941,7 @@ export class ReticleRenderer {
   }
 
   _renderMilXT(ctx, cx, cy, ppm, color) {
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._fine;
     ctx.strokeStyle = color;
 
     ctx.beginPath();
@@ -957,7 +985,7 @@ export class ReticleRenderer {
   }
 
   _renderTremor3(ctx, cx, cy, ppm, color) {
-    ctx.lineWidth = 1;
+    ctx.lineWidth = this._fine;
     ctx.strokeStyle = color;
 
     ctx.beginPath();
@@ -992,43 +1020,43 @@ export class ReticleRenderer {
     }
   }
 
-  /** Ring around the hold mark (clamped to the eyepiece edge with an arrow if it is outside the view). */
+  /** Accent ring on the hold mark, or an accent chevron at the edge when it is outside the view. */
   _renderHoldMark(ctx, pal, mark, cx, cy, r) {
     const dx = mark.x - cx;
     const dy = mark.y - cy;
     const dist = Math.hypot(dx, dy);
     const inside = dist <= r - 12;
+    const halo = pal.alpha(this._field || pal.surface, 0.85);
     ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     if (inside) {
-      ctx.lineWidth = 3.5;
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
       ctx.beginPath();
       ctx.arc(mark.x, mark.y, 9, 0, Math.PI * 2);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = halo;
       ctx.stroke();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = pal.warn;
+      ctx.lineWidth = pal.stroke.bold;
+      ctx.strokeStyle = pal.accent;
       ctx.stroke();
-      ctx.fillStyle = pal.warn;
       ctx.beginPath();
-      ctx.arc(mark.x, mark.y, 2, 0, Math.PI * 2);
+      ctx.arc(mark.x, mark.y, 2.25, 0, Math.PI * 2);
+      ctx.fillStyle = pal.accent;
       ctx.fill();
     } else {
-      // Outside the field of view: an arrow at the edge pointing towards it
       const ux = dx / (dist || 1);
       const uy = dy / (dist || 1);
-      const ax = cx + ux * (r - 18);
-      const ay = cy + uy * (r - 18);
-      ctx.translate(ax, ay);
+      ctx.translate(cx + ux * (r - 16), cy + uy * (r - 16));
       ctx.rotate(Math.atan2(uy, ux));
-      ctx.fillStyle = pal.warn;
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
-      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(10, 0);
-      ctx.lineTo(-6, -7);
-      ctx.lineTo(-6, 7);
-      ctx.closePath();
-      ctx.fill();
+      ctx.moveTo(-5, -7);
+      ctx.lineTo(4, 0);
+      ctx.lineTo(-5, 7);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = halo;
+      ctx.stroke();
+      ctx.lineWidth = pal.stroke.bold;
+      ctx.strokeStyle = pal.accent;
       ctx.stroke();
     }
     ctx.restore();
