@@ -528,8 +528,7 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 }
 @media (max-width: 460px) {
   .app-nav .nav-link span { display: none; }
-  #theme-switch .lg-tab[data-theme-set="system"] { font-size: 0; }
-  #theme-switch .lg-tab[data-theme-set="system"]::after { content: "Auto"; font-size: 12px; }
+  .sidebar-switch .lg-tab { padding-left: 4px; padding-right: 4px; }
 }
 @media (max-width: 1240px) {
   .solver-layout { grid-template-columns: minmax(0, 1fr); }

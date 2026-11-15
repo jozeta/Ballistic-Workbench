@@ -256,8 +256,8 @@ try {
     const t = await ev(`({ sel: document.querySelector('.tool-tab[data-tool="${tool}"]').getAttribute('aria-selected'), text: document.getElementById('app-main-content').innerText })`);
     check(t.sel === 'true' && !/\bNaN\b|Infinity|undefined/.test(t.text), `tool "${tool}" opens cleanly`);
     if (tool === 'wez') {
-      const wez = await ev(`({ hit: document.querySelector('#wez-metrics-container .stat-val')?.textContent || '', bars: [...document.querySelectorAll('.sens-bar-fill')].map((b) => b.style.width) })`);
-      check(/%/.test(wez.hit) && wez.bars.length > 0 && wez.bars.every((w) => /%$/.test(w)), `hit probability ${wez.hit}, ${wez.bars.length} error bars sized`);
+      const wez = await ev(`({ hit: document.querySelector('#wez-metrics-container .stat-val')?.textContent || '', bars: document.querySelectorAll('#wez-sens-chart .lg-chart-bar, #wez-sens-chart path').length })`);
+      check(/%/.test(wez.hit) && wez.bars > 0, `hit probability ${wez.hit}, error breakdown drawn as a Låda bar chart`);
     }
     if (tool === 'chrono') {
       await setValue('#chrono-input', '825,4 827,1 826');

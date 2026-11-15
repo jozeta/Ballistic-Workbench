@@ -8,6 +8,11 @@
  * 5. Range estimation (distance from a known size and its size in the reticle)
  * 6. Free recoil energy and velocity
  *
+ * Built from Låda Glass parts: lg-tabs to switch tools, lg-card panels with lg-label titles, lg-kpi
+ * result numbers, lg-alert notices, lg-table for the shot list and LadaGlass.chart for data charts.
+ * The two custom canvases (hit-probability scatter, group target) use the Låda graphic language
+ * with colours from src/canvas/palette.js.
+ *
  * Physics runs in SI. Inputs and results follow the unit settings (appState.state.systemUnits and
  * displayUnits). Every string from the user, storage or imports goes through esc().
  */
@@ -20,6 +25,7 @@ import { trueMuzzleVelocity, trueDropScaleFactor } from '../physics/truing.js';
 import { runWezSimulation } from '../physics/wez.js';
 import { solveTrajectory } from '../physics/solvers.js';
 import { interpolateAt } from '../core/trajectory.js';
+import { getPalette } from '../canvas/palette.js';
 import { icon } from './icons.js';
 import { bindNumber, parseNumber } from './fields.js';
 import { toast } from './notify.js';
@@ -44,6 +50,8 @@ const SAMPLE_SHOTS = [
 ];
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+const MAX_SHOTS = 50;
+const SHOT_COUNTS = [500, 1000, 2000];
 
 const WEZ_TARGETS = {
   ipsc: { label: 'IPSC target', w: 45, h: 75 },
@@ -70,11 +78,19 @@ const CALIBERS = [
 ];
 
 const SENSITIVITY_TEXT = {
-  Wind: { name: 'Wind reading', advice: 'Better wind calls or shooting in lulls would help most.' },
-  Ammo: { name: 'Muzzle velocity variation', advice: 'More consistent ammunition (lower MV SD) would help most.' },
-  Precision: { name: 'Rifle and shooter precision', advice: 'A steadier position or a more precise rifle would help most.' },
-  Ranging: { name: 'Distance error', advice: 'A more accurate distance reading would help most.' },
+  Wind: { short: 'Wind', name: 'Wind reading', advice: 'Better wind calls or shooting in lulls would help most.' },
+  Ammo: { short: 'Muzzle velocity', name: 'Muzzle velocity variation', advice: 'More consistent ammunition (lower MV SD) would help most.' },
+  Precision: { short: 'Precision', name: 'Rifle and shooter precision', advice: 'A steadier position or a more precise rifle would help most.' },
+  Ranging: { short: 'Distance', name: 'Distance error', advice: 'A more accurate distance reading would help most.' },
 };
+
+/** Sample chronograph strings (ten shots of a 6.5 Creedmoor load) per unit. */
+const CHRONO_SAMPLE = {
+  'm/s': '825.4 827.1 824.8 826.5 825.9 824.2 827.8 825.0 826.2 825.8',
+  fps: '2708 2714 2706 2712 2710 2704 2716 2707 2711 2709',
+};
+
+const GROUP_HINT = 'Click the target to add a shot. Drag a shot or the aim point to move it. Right-click or long-press a shot to delete it.';
 
 // ---- small helpers -------------------------------------------------------------------------
 
@@ -86,8 +102,11 @@ const toUnit = (si, unit) => (unit ? UnitConverter.fromSI(si, unit) : si);
 const fromUnit = (v, unit) => (unit ? UnitConverter.toSI(v, unit) : v);
 /** A value in SI formatted in a display unit, e.g. fmtU(825, 'fps') -> "2707 fps". */
 const fmtU = (si, unit, dec = DECIMALS[unit] ?? 1) => `${fixed(toUnit(si, unit), dec)} ${unitLabel(unit)}`;
+/** The same, as KPI markup with a smaller unit. */
+const kpiU = (si, unit, dec = DECIMALS[unit] ?? 1) => `${fixed(toUnit(si, unit), dec)}<span class="kpi-unit">${unitLabel(unit)}</span>`;
 const signed = (n, d) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(d)}`;
 const grouped = (n) => Math.round(n).toLocaleString('en-US');
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** The display units the Tools view uses, from the unit settings. */
 function units() {
@@ -119,33 +138,52 @@ function atmosphere(env) {
   });
 }
 
-/** Colours for canvases, read from the Låda Glass tokens so both themes work. */
-function themeColors() {
-  const cs = typeof getComputedStyle === 'function' ? getComputedStyle(document.documentElement) : null;
-  const g = (name, fallback) => (cs?.getPropertyValue(name).trim()) || fallback;
-  return {
-    text: g('--lg-text', 'white'),
-    muted: g('--lg-muted', 'gray'),
-    line: g('--lg-line', 'rgba(128,128,128,.25)'),
-    line2: g('--lg-line-2', 'rgba(128,128,128,.4)'),
-    accent: g('--lg-accent', 'steelblue'),
-    accent2: g('--lg-accent-2', 'orchid'),
-    ok: g('--lg-ok', 'seagreen'),
-    warn: g('--lg-warn', 'orange'),
-    bad: g('--lg-bad', 'crimson'),
-    bg: g('--lg-elevated', 'black'),
-  };
-}
+const badge = (tone, text) => `<span class="lg-badge lg-badge-${tone}">${esc(text)}</span>`;
 
-function toneBadge(tone, text) {
-  return `<span class="lg-badge lg-badge-${tone}">${esc(text)}</span>`;
-}
+/** A Låda alert: tone is info | ok | warn | bad. `text` must already be escaped. */
+const alertBox = (tone, iconName, title, text) => `
+  <div class="lg-alert lg-alert-${tone}" role="${tone === 'bad' ? 'alert' : 'status'}">${icon(iconName)}<div>${title ? `<strong>${title}</strong>` : ''}<p>${text}</p></div></div>`;
+
+/** The hero result: a KPI card with a label, a tone badge, the one big number and a plain verdict. */
+const hero = ({ label, tone, chance, value, valueId = '', valueCls = '', text = '', note = '', extra = '' }) => `
+  <div class="lg-card lg-kpi tool-hero">
+    <div class="hero-head"><p class="lg-label">${label}</p>${chance ? badge(tone, chance) : ''}</div>
+    <div class="lg-kpi-value hero-value ${valueCls}"${valueId ? ` id="${valueId}"` : ''}>${value}</div>
+    ${text ? `<p class="hero-text">${text}</p>` : ''}
+    ${note ? `<p class="lg-muted lg-small hero-note">${note}</p>` : ''}
+    ${extra}
+  </div>`;
+
+/** A row of small KPI cards: items are [label, value, sub]. */
+const kpis = (items) => `
+  <div class="kpi-grid">
+    ${items.map(([label, value, sub]) => `
+      <div class="lg-card lg-kpi"><p class="lg-label">${label}</p><div class="lg-kpi-value">${value}</div>${sub ? `<span class="lg-muted lg-small">${sub}</span>` : ''}</div>`).join('')}
+  </div>`;
+
+const emptyState = (title, text) => `
+  <div class="lg-empty tool-empty"><svg class="empty-art" aria-hidden="true" focusable="false"><use href="./assets/art.svg#empty"></use></svg><strong>${title}</strong>${text}</div>`;
+
+/** Small inline SVG legend swatches for the custom canvases (colours set in tools.css). */
+const SWATCH = {
+  hit: '<svg class="lg-chart-swatch" viewBox="0 0 16 10" aria-hidden="true" focusable="false"><circle class="sw-fill-accent" cx="8" cy="5" r="3"/></svg>',
+  miss: '<svg class="lg-chart-swatch" viewBox="0 0 16 10" aria-hidden="true" focusable="false"><circle class="sw-ring-bad" cx="8" cy="5" r="3"/></svg>',
+  half: '<svg class="lg-chart-swatch" viewBox="0 0 16 10" aria-hidden="true" focusable="false"><line class="sw-line-accent" x1="1" y1="5" x2="15" y2="5"/></svg>',
+  r95: '<svg class="lg-chart-swatch" viewBox="0 0 16 10" aria-hidden="true" focusable="false"><line class="sw-line-muted sw-dash" x1="1" y1="5" x2="15" y2="5"/></svg>',
+  aim: '<svg class="lg-chart-swatch" viewBox="0 0 16 10" aria-hidden="true" focusable="false"><path class="sw-line-text" d="M8 1 L12 5 L8 9 L4 5 Z"/></svg>',
+  shot: '<svg class="lg-chart-swatch" viewBox="0 0 16 10" aria-hidden="true" focusable="false"><circle class="sw-shot" cx="8" cy="5" r="3.5"/></svg>',
+  centre: '<svg class="lg-chart-swatch" viewBox="0 0 16 10" aria-hidden="true" focusable="false"><path class="sw-line-accent2" d="M4 5 H12 M8 1 V9"/></svg>',
+  ellipse: '<svg class="lg-chart-swatch" viewBox="0 0 16 10" aria-hidden="true" focusable="false"><ellipse class="sw-line-accent2" cx="8" cy="5" rx="6.5" ry="3.5"/></svg>',
+  spread: '<svg class="lg-chart-swatch" viewBox="0 0 16 10" aria-hidden="true" focusable="false"><line class="sw-line-muted sw-dash" x1="1" y1="5" x2="15" y2="5"/></svg>',
+};
+const legend = (items) => `<div class="lg-chart-legend canvas-legend" aria-hidden="true">${items.map(([k, text]) => `<span class="lg-chart-key">${SWATCH[k]}<span class="lg-chart-key-label">${text}</span></span>`).join('')}</div>`;
 
 export class ToolsView {
   constructor(containerElement) {
     this.container = containerElement;
     this.activeTool = 'truing';
     this.wezData = null;
+    this.charts = {};
 
     const u = appState.state;
     const profile = appState.getActiveProfile();
@@ -164,11 +202,13 @@ export class ToolsView {
         dirSdDeg: 12,
         precisionRad: 0.5 * CONVERSIONS.MOA,
       },
-      chrono: { text: '825.4 827.1 824.8 826.5 825.9 824.2 827.8 825.0 826.2 825.8', unit: null },
-      milling: { preset: 'ipsc-w', sizeM: 0.45, angleRad: 0.00075 },
+      // unit: null follows the velocity display unit; edited: false keeps the sample in that unit
+      chrono: { text: '', unit: null, edited: false },
+      // ang: the reticle unit (null follows the elevation display unit)
+      milling: { preset: 'ipsc-w', sizeM: 0.45, angleRad: 0.00075, ang: null },
       recoil: this._recoilDefaults(profile),
     };
-    this.results = { mv: null, dsf: null, chrono: null };
+    this.results = { mv: null, dsf: null };
 
     // Group analysis state. Shots and the aim point are in mm from the canvas centre ("sheet"
     // coordinates, right and up positive); statistics are measured from the aim point.
@@ -187,7 +227,6 @@ export class ToolsView {
       clearTimeout(this._resizeTimer);
       this._resizeTimer = setTimeout(() => {
         if (this.activeTool === 'wez' && this.wezData) this.drawWezDispersion(this.wezData, this._wezTarget);
-        if (this.activeTool === 'group') this._drawGroup();
       }, 120);
     };
     window.addEventListener('resize', this._onResize);
@@ -201,9 +240,13 @@ export class ToolsView {
         this.values.recoil = this._recoilDefaults(appState.getActiveProfile());
         this.values.truing.mvElevRad = null;
         this.values.truing.dsfElevRad = null;
-        this.results = { mv: null, dsf: null, chrono: this.results.chrono };
+        this.results = { mv: null, dsf: null };
       }
-      if (key === 'units') this.values.chrono.unit = null;
+      if (key === 'units' || key === 'displayUnits') {
+        // Readings the user typed keep the unit they were typed in
+        const c = this.values.chrono;
+        if (c.edited && !c.unit && this._chronoUnitShown) c.unit = this._chronoUnitShown;
+      }
       if (['units', 'displayUnits', 'profile', 'profiles', 'activeProfile', 'environment', 'activeEnvironment', 'import'].includes(key)) {
         this.render();
       }
@@ -212,7 +255,7 @@ export class ToolsView {
     this.render();
   }
 
-  /** Full rebuild (after a theme change): canvases redraw with the new colours. */
+  /** Full rebuild (after a theme change): canvases and charts redraw with the new colours. */
   refresh() {
     this.render();
   }
@@ -222,6 +265,8 @@ export class ToolsView {
     window.removeEventListener('resize', this._onResize);
     clearTimeout(this._resizeTimer);
     clearTimeout(this._lpTimer);
+    clearTimeout(this._chronoTimer);
+    this._destroyCharts();
   }
 
   setTool(toolId) {
@@ -257,7 +302,7 @@ export class ToolsView {
     return `
       <div class="field-row">
         <label class="field-label" for="${id}">${esc(label)}${u ? ` (${esc(u)})` : ''}</label>
-        <input type="text" inputmode="decimal" autocomplete="off" id="${id}" class="form-input" min="${lo}" max="${hi}" ${step ? `step="${step}"` : ''} value="${value}"${hint ? ` aria-describedby="${id}-hint"` : ''} />
+        <input type="text" inputmode="decimal" autocomplete="off" id="${id}" class="lg-input" min="${lo}" max="${hi}" ${step ? `step="${step}"` : ''} value="${value}"${hint ? ` aria-describedby="${id}-hint"` : ''} />
         ${hint ? `<p class="field-hint" id="${id}-hint">${hint}</p>` : ''}
       </div>`;
   }
@@ -273,16 +318,42 @@ export class ToolsView {
     }
   }
 
+  /** A Låda segmented control (radio group). options: [[value, label]]. */
+  _segmented(name, label, options, current) {
+    return `
+      <div class="lg-segmented" role="radiogroup" aria-label="${esc(label)}">
+        ${options.map(([value, text]) => `<input type="radio" name="${name}" id="${name}-${String(value).replace(/[^a-z0-9]/gi, '')}" value="${value}" ${String(value) === String(current) ? 'checked' : ''} /><label for="${name}-${String(value).replace(/[^a-z0-9]/gi, '')}">${text}</label>`).join('')}
+      </div>`;
+  }
+
+  /** Context chips: what the tool works with (rifle, atmosphere, ...). Items are trusted markup. */
   _context(items) {
-    return `<p class="tool-context">${items.map((t) => `<span>${t}</span>`).join('')}</p>`;
+    return `<ul class="tool-context" aria-label="Using">${items.map((t) => `<li class="lg-chip lg-plain">${t}</li>`).join('')}</ul>`;
   }
 
   _intro(tool, title, desc) {
     return `
       <div class="tool-intro">
-        <h2 id="tool-title">${icon(tool.icon)} ${esc(title)}</h2>
-        <p>${desc}</p>
+        <h2 class="tool-title" id="tool-title">${icon(tool.icon)}${esc(title)}</h2>
+        <p class="lg-muted">${desc}</p>
       </div>`;
+  }
+
+  /** Creates or updates a LadaGlass chart in host, kept under key for update() and destroy(). */
+  _chart(key, host, kind, data) {
+    if (!host || typeof LadaGlass === 'undefined' || !LadaGlass.chart?.[kind]) return;
+    const old = this.charts[key];
+    if (old && old.host === host) {
+      old.chart.update(data);
+      return;
+    }
+    old?.chart.destroy?.();
+    this.charts[key] = { host, chart: LadaGlass.chart[kind](host, data) };
+  }
+
+  _destroyCharts() {
+    for (const { chart } of Object.values(this.charts || {})) chart.destroy?.();
+    this.charts = {};
   }
 
   // ---- 1. True your data ------------------------------------------------------------------------
@@ -298,7 +369,7 @@ export class ToolsView {
     const odd = !['G1', 'G7'].includes(profile.bullet?.dragModel);
     const start = (distM) => {
       const rad = this._predictElevRad(distM);
-      return Number.isFinite(rad) && rad > 0 ? Math.round(rad * 10000) / 10000 : 0.004;
+      return Number.isFinite(rad) && rad > 0 ? Math.round(rad * 100000) / 100000 : 0.004;
     };
     if (v.mvElevRad == null) v.mvElevRad = start(v.mvDistM);
     if (v.dsfElevRad == null) v.dsfElevRad = start(v.dsfDistM);
@@ -306,41 +377,37 @@ export class ToolsView {
     return `
       ${this._intro(TOOLS[0], 'True your data', 'Match the model to your real drops: first true the muzzle velocity, then the drag at long range.')}
       ${this._context([
-        `${icon('rifle')} <strong>${esc(profile.name)}</strong>`,
-        `MV ${fmtU(profile.muzzleVelocityMs, u.vel)}`,
-        `BC ${model} ${fixed(bc, 3)}`,
+        `${icon('rifle')}<strong>${esc(profile.name)}</strong>`,
+        `<abbr title="Muzzle velocity">MV</abbr> ${fmtU(profile.muzzleVelocityMs, u.vel)}`,
+        `<abbr title="Ballistic coefficient">BC</abbr> ${model} ${fixed(bc, 3)}`,
         `Zero ${fmtU(profile.zeroDistanceM, u.dist)}`,
-        `${icon('thermometer')} ${esc(env.name || 'Current atmosphere')}`,
+        `${icon('thermometer')}${esc(env.name || 'Current atmosphere')}`,
       ])}
       <div class="truing-steps">
-        <section class="panel truing-step" aria-labelledby="truing-mv-title">
-          <div class="panel-header"><h3 id="truing-mv-title"><span class="step-num" aria-hidden="true">1</span> True muzzle velocity (${band(500)}–${band(800)} ${u.dist})</h3></div>
-          <div class="panel-body">
-            <p class="step-desc">Shoot at a known distance and enter the elevation that centred your group.</p>
-            <div class="field-grid-2">
-              ${this._numField({ id: 'true-mv-dist', label: 'Distance', unit: u.dist, si: v.mvDistM, min: 200, max: 1200, set: (x) => { v.mvDistM = x; this._updatePrediction('true-mv-dial', x); } })}
-              ${this._numField({ id: 'true-mv-dial', label: 'Elevation that hit', unit: u.ang, si: v.mvElevRad, min: 0.0001, max: 0.03, step: u.ang === 'MRAD' ? 0.1 : 0.25, set: (x) => (v.mvElevRad = x), hint: this._predictionText(v.mvDistM) })}
-            </div>
-            <button type="button" id="btn-calc-trued-mv" class="btn-primary">${icon('refresh')} Calculate muzzle velocity</button>
-            <div id="trued-mv-result" class="truing-output" aria-live="polite">${this._mvResultHtml()}</div>
+        <section class="lg-card tool-card truing-step" aria-labelledby="truing-mv-title">
+          <h3 class="lg-label" id="truing-mv-title">Step 1: muzzle velocity</h3>
+          <p class="step-desc">Shoot at ${band(500)}–${band(800)} ${u.dist} and enter the elevation that centred your group.</p>
+          <div class="field-grid-2">
+            ${this._numField({ id: 'true-mv-dist', label: 'Distance', unit: u.dist, si: v.mvDistM, min: 200, max: 1200, set: (x) => { v.mvDistM = x; this._updatePrediction('true-mv-dial', x); } })}
+            ${this._numField({ id: 'true-mv-dial', label: 'Elevation that hit', unit: u.ang, si: v.mvElevRad, min: 0.0001, max: 0.03, step: u.ang === 'MRAD' ? 0.1 : 0.25, set: (x) => (v.mvElevRad = x), hint: this._predictionText(v.mvDistM) })}
           </div>
+          <div class="card-actions"><button type="button" id="btn-calc-trued-mv" class="lg-btn lg-btn-primary">${icon('refresh')} Calculate muzzle velocity</button></div>
+          <div id="trued-mv-result" class="step-output" aria-live="polite"></div>
         </section>
 
-        <section class="panel truing-step" aria-labelledby="truing-dsf-title">
-          <div class="panel-header"><h3 id="truing-dsf-title"><span class="step-num" aria-hidden="true">2</span> True drag at long range (${grouped(band(1000))} ${u.dist}+)</h3></div>
-          <div class="panel-body">
-            <p class="step-desc">After step 1, shoot where the bullet slows towards the speed of sound and enter the elevation that hit. This adjusts the BC.</p>
-            <div class="field-grid-2">
-              ${this._numField({ id: 'true-dsf-dist', label: 'Distance', unit: u.dist, si: v.dsfDistM, min: 600, max: 2500, set: (x) => { v.dsfDistM = x; this._updatePrediction('true-dsf-dial', x); } })}
-              ${this._numField({ id: 'true-dsf-dial', label: 'Elevation that hit', unit: u.ang, si: v.dsfElevRad, min: 0.001, max: 0.06, step: u.ang === 'MRAD' ? 0.1 : 0.25, set: (x) => (v.dsfElevRad = x), hint: this._predictionText(v.dsfDistM) })}
-            </div>
-            ${odd ? `<p class="field-hint">${icon('info')} This rifle uses the ${esc(profile.bullet?.dragModel)} drag model. Truing adjusts its G7 BC.</p>` : ''}
-            <button type="button" id="btn-calc-trued-dsf" class="btn-primary">${icon('refresh')} Calculate drag</button>
-            <div id="trued-dsf-result" class="truing-output" aria-live="polite">${this._dsfResultHtml()}</div>
+        <section class="lg-card tool-card truing-step" aria-labelledby="truing-dsf-title">
+          <h3 class="lg-label" id="truing-dsf-title">Step 2: drag at long range</h3>
+          <p class="step-desc">After step 1, shoot at ${grouped(band(1000))} ${u.dist} or further, where the bullet slows towards the speed of sound. This adjusts the <abbr title="Ballistic coefficient">BC</abbr>.</p>
+          <div class="field-grid-2">
+            ${this._numField({ id: 'true-dsf-dist', label: 'Distance', unit: u.dist, si: v.dsfDistM, min: 600, max: 2500, set: (x) => { v.dsfDistM = x; this._updatePrediction('true-dsf-dial', x); } })}
+            ${this._numField({ id: 'true-dsf-dial', label: 'Elevation that hit', unit: u.ang, si: v.dsfElevRad, min: 0.001, max: 0.06, step: u.ang === 'MRAD' ? 0.1 : 0.25, set: (x) => (v.dsfElevRad = x), hint: this._predictionText(v.dsfDistM) })}
           </div>
+          ${odd ? `<p class="field-hint">This rifle uses the ${esc(profile.bullet?.dragModel)} drag model. Truing adjusts its G7 BC.</p>` : ''}
+          <div class="card-actions"><button type="button" id="btn-calc-trued-dsf" class="lg-btn lg-btn-primary">${icon('refresh')} Calculate drag</button></div>
+          <div id="trued-dsf-result" class="step-output" aria-live="polite"></div>
         </section>
       </div>
-      <p class="tool-footnote">${icon('info')} Elevation is what you dialled or held above your zero. Both steps use the atmosphere and zero from the Solver.</p>`;
+      <p class="tool-footnote lg-muted lg-small">${icon('info')}<span>Elevation is what you dialled or held above your zero. Both steps use the atmosphere and zero from the Solver.</span></p>`;
   }
 
   /** The elevation the current model predicts at a distance (radians), for comparison. */
@@ -376,6 +443,10 @@ export class ToolsView {
     if (el) el.textContent = this._predictionText(distM);
   }
 
+  _appliedNote(name) {
+    return `<p class="applied-note">${icon('check-circle')} Applied to ${name}. The Solver uses it now.</p>`;
+  }
+
   _mvResultHtml() {
     const r = this.results.mv;
     if (!r) return '';
@@ -383,22 +454,20 @@ export class ToolsView {
     const name = esc(appState.getActiveProfile().name);
     const delta = r.calibratedMv - r.originalMv;
     const big = Math.abs(delta) > 60;
-    const tone = !r.converged || big ? 'warn' : 'ok';
-    const note = !r.converged
-      ? 'The model could not match this elevation exactly. Check the distance and the elevation, then try again.'
-      : big
-        ? 'That is a big change. Check the distance, the elevation and your zero before you apply it.'
-        : 'Apply it, then check the new elevation at your next distance.';
+    const d = DECIMALS[u.vel];
+    const warn = !r.converged
+      ? alertBox('warn', 'alert', 'No exact match', 'The model could not match this elevation. Check the distance and the elevation, then try again.')
+      : big ? alertBox('warn', 'alert', 'Big change', 'Check the distance, the elevation and your zero before you apply it.') : '';
     return `
-      <div class="tool-verdict tone-${tone}">
-        <span class="verdict-label">Trued muzzle velocity</span>
-        <span class="verdict-value">${fmtU(r.calibratedMv, u.vel)}</span>
-        <span class="verdict-text">Muzzle velocity ${fixed(toUnit(r.originalMv, u.vel), DECIMALS[u.vel])} → ${fmtU(r.calibratedMv, u.vel)} (${signed(toUnit(delta, u.vel), DECIMALS[u.vel])} ${unitLabel(u.vel)})</span>
-        <span class="verdict-note">${note}</span>
-      </div>
-      ${r.applied
-        ? `<p class="applied-note">${icon('check-circle')} Applied to ${name}</p>`
-        : `<button type="button" id="btn-apply-trued-mv" class="btn-secondary-sm">${icon('check')} Apply to ${name}</button>`}`;
+      <div class="step-result">
+        <div class="hero-head"><p class="lg-label">Trued muzzle velocity</p>${badge(warn ? 'warn' : 'ok', warn ? 'Check' : 'Looks right')}</div>
+        <div class="lg-kpi-value">${kpiU(r.calibratedMv, u.vel)}</div>
+        <p class="hero-text">From ${fixed(toUnit(r.originalMv, u.vel), d)} to ${fmtU(r.calibratedMv, u.vel)} (${signed(toUnit(delta, u.vel), d)} ${unitLabel(u.vel)}).</p>
+        ${warn || (r.applied ? '' : '<p class="lg-muted lg-small">Apply it, then check the elevation at your next distance.</p>')}
+        ${r.applied
+          ? this._appliedNote(name)
+          : `<div class="card-actions"><button type="button" id="btn-apply-trued-mv" class="lg-btn lg-btn-primary btn-wrap">${icon('check')} Apply to ${name}</button></div>`}
+      </div>`;
   }
 
   _dsfResultHtml() {
@@ -406,23 +475,23 @@ export class ToolsView {
     if (!r) return '';
     const name = esc(appState.getActiveProfile().name);
     const pct = (r.dsf - 1) * 100;
-    const tone = !r.converged || Math.abs(pct) > 25 ? 'warn' : 'ok';
+    const big = Math.abs(pct) > 25;
     const what = Math.abs(pct) < 0.5
       ? 'Drag matches the BC.'
       : `Drag is ${fixed(Math.abs(pct), 1)}% ${pct > 0 ? 'higher' : 'lower'} than the BC predicts.`;
-    const note = !r.converged
-      ? 'The model could not match this elevation within the allowed range (drag factor 0.6–1.5). Check the distance and true the muzzle velocity first.'
-      : 'Applying changes the BC so the model matches your elevation at this distance.';
+    const warn = !r.converged
+      ? alertBox('warn', 'alert', 'No exact match', 'The model could not match this elevation within the allowed range (drag factor 0.6–1.5). Check the distance and true the muzzle velocity first.')
+      : big ? alertBox('warn', 'alert', 'Big change', 'Check the distance and true the muzzle velocity first.') : '';
     return `
-      <div class="tool-verdict tone-${tone}">
-        <span class="verdict-label">Drag factor</span>
-        <span class="verdict-value">${fixed(r.dsf, 3)}</span>
-        <span class="verdict-text">${what} BC (${r.model}) ${fixed(r.oldBc, 3)} → ${fixed(r.newBc, 3)}</span>
-        <span class="verdict-note">${note}</span>
-      </div>
-      ${r.applied
-        ? `<p class="applied-note">${icon('check-circle')} Applied to ${name}</p>`
-        : `<button type="button" id="btn-apply-trued-dsf" class="btn-secondary-sm">${icon('check')} Apply BC to ${name}</button>`}`;
+      <div class="step-result">
+        <div class="hero-head"><p class="lg-label">New BC (${r.model})</p>${badge(warn ? 'warn' : 'ok', warn ? 'Check' : 'Looks right')}</div>
+        <div class="lg-kpi-value">${fixed(r.newBc, 3)}</div>
+        <p class="hero-text">${what} BC ${fixed(r.oldBc, 3)} to ${fixed(r.newBc, 3)} (drag factor ${fixed(r.dsf, 3)}).</p>
+        ${warn}
+        ${r.applied
+          ? this._appliedNote(name)
+          : `<div class="card-actions"><button type="button" id="btn-apply-trued-dsf" class="lg-btn lg-btn-primary btn-wrap">${icon('check')} Apply BC to ${name}</button></div>`}
+      </div>`;
   }
 
   _initTruing() {
@@ -443,7 +512,7 @@ export class ToolsView {
       this.results.mv = {
         originalMv: Number.isFinite(res.originalMv) ? res.originalMv : base.profile.muzzleVelocityMs,
         calibratedMv: res.calibratedMv,
-        converged: res.converged !== false,
+        converged: res.converged !== false && Number.isFinite(res.calibratedMv),
         applied: false,
       };
       this._updateTruingResults();
@@ -458,19 +527,29 @@ export class ToolsView {
       const oldBc = model === 'G1' ? base.profile.bullet.bcG1 : base.profile.bullet.bcG7;
       const dsf = res.calibratedDsf;
       // truing.js scales drag by the factor, which is the same as dividing the BC by it
-      this.results.dsf = { dsf, model, oldBc, newBc: oldBc / dsf, converged: res.converged !== false, applied: false };
+      this.results.dsf = { dsf, model, oldBc, newBc: oldBc / dsf, converged: res.converged !== false && Number.isFinite(dsf) && dsf > 0, applied: false };
       this._updateTruingResults();
     });
   }
 
   _updateTruingResults() {
-    const mv = this.container.querySelector('#trued-mv-result');
-    const dsf = this.container.querySelector('#trued-dsf-result');
-    // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
-    if (mv) mv.innerHTML = this._mvResultHtml();
-    // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
-    if (dsf) dsf.innerHTML = this._dsfResultHtml();
+    const set = (sel, html, calcSel, pending) => {
+      const el = this.container.querySelector(sel);
+      // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
+      if (el) el.innerHTML = html;
+      // One primary action per step: Calculate until there is a result to apply, then Apply
+      const calc = this.container.querySelector(calcSel);
+      calc?.classList.toggle('lg-btn-primary', !pending);
+    };
+    const mv = this.results.mv;
+    const dsf = this.results.dsf;
+    set('#trued-mv-result', this._mvResultHtml(), '#btn-calc-trued-mv', mv && !mv.applied && mv.converged);
+    set('#trued-dsf-result', this._dsfResultHtml(), '#btn-calc-trued-dsf', dsf && !dsf.applied && dsf.converged);
     const u = units();
+
+    // A result that could not be matched is not offered for applying
+    if (mv && !mv.converged) this.container.querySelector('#btn-apply-trued-mv')?.remove();
+    if (dsf && !dsf.converged) this.container.querySelector('#btn-apply-trued-dsf')?.remove();
 
     this.container.querySelector('#btn-apply-trued-mv')?.addEventListener('click', () => {
       const r = this.results.mv;
@@ -478,6 +557,8 @@ export class ToolsView {
       this._ownChange = true;
       appState.updateActiveProfile({ muzzleVelocityMs: r.calibratedMv, zeroAngleRad: null });
       r.applied = true;
+      // A step 2 result was worked out with the old muzzle velocity
+      if (this.results.dsf && !this.results.dsf.applied) this.results.dsf = null;
       toast('Muzzle velocity updated', 'ok', `${name}: ${fixed(toUnit(r.originalMv, u.vel), DECIMALS[u.vel])} → ${fmtU(r.calibratedMv, u.vel)}`);
       this.render();
     });
@@ -506,61 +587,55 @@ export class ToolsView {
       const dims = key === 'circle' ? `${sizeTxt(t.w)} ${u.size}` : `${sizeTxt(t.w)} × ${sizeTxt(t.h)} ${u.size}`;
       return `<option value="${key}" ${v.shape === key ? 'selected' : ''}>${t.label} (${dims})</option>`;
     };
-    const ring = u.imp ? '5 in' : '10 cm';
 
     return `
-      ${this._intro(TOOLS[1], 'Hit probability', `Simulates ${grouped(v.shots)} shots with your error sources to estimate how often you hit.`)}
+      ${this._intro(TOOLS[1], 'Hit probability', `Simulates <span id="wez-shots-text">${grouped(v.shots)}</span> shots with your error sources to estimate how often you hit.`)}
       ${this._context([
-        `${icon('rifle')} <strong>${esc(appState.getActiveProfile().name)}</strong>`,
-        `${icon('wind')} Wind from the Solver: ${fmtU(env.windSpeedMs || 0, u.wind)} at ${fixed(env.windDirectionDeg || 0, 0)}°`,
+        `${icon('rifle')}<strong>${esc(appState.getActiveProfile().name)}</strong>`,
+        `${icon('wind')}Wind from the Solver: ${fmtU(env.windSpeedMs || 0, u.wind)} at ${fixed(env.windDirectionDeg || 0, 0)}°`,
       ])}
       <div class="tool-layout">
-        <section class="panel tool-inputs" aria-labelledby="wez-setup-title">
-          <div class="panel-header"><h3 id="wez-setup-title">Target and error sources</h3></div>
-          <div class="panel-body">
-            <div class="field-row">
-              <label class="field-label" for="wez-shape">Target</label>
-              <select id="wez-shape" class="form-select">${Object.keys(WEZ_TARGETS).map(shapeOpt).join('')}</select>
-            </div>
-            <div class="field-grid-2">
-              ${this._numField({ id: 'wez-dist', label: 'Distance', unit: u.dist, si: v.distM, min: 50, max: 2500, set: (x) => { v.distM = x; this.runWez(); } })}
-              <div class="field-row">
-                <label class="field-label" for="wez-shots">Simulated shots</label>
-                <select id="wez-shots" class="form-select">
-                  ${[500, 1000, 2000].map((n) => `<option value="${n}" ${v.shots === n ? 'selected' : ''}>${grouped(n)}</option>`).join('')}
-                </select>
-              </div>
-            </div>
-            <h4 class="sub-heading">Error sources (1 SD)</h4>
-            <p class="field-hint sub-hint">One standard deviation: about two out of three shots fall within this much of the average.</p>
-            <div class="field-grid-2">
-              ${this._numField({ id: 'wez-mv-sd', label: 'Muzzle velocity SD', unit: u.vel, si: v.mvSdMs, min: 0, max: 30, set: (x) => { v.mvSdMs = x; this.runWez(); } })}
-              ${this._numField({ id: 'wez-range-sd', label: 'Distance error', unit: u.dist, si: v.rangeSdM, min: 0, max: 50, dec: 1, set: (x) => { v.rangeSdM = x; this.runWez(); } })}
-              ${this._numField({ id: 'wez-wind-sd', label: 'Wind speed error', unit: u.wind, si: v.windSdMs, min: 0, max: 10, set: (x) => { v.windSdMs = x; this.runWez(); } })}
-              ${this._numField({ id: 'wez-dir-sd', label: 'Wind direction error', unitText: '°', si: v.dirSdDeg, min: 0, max: 90, dec: 0, set: (x) => { v.dirSdDeg = x; this.runWez(); } })}
-            </div>
-            ${this._numField({ id: 'wez-shooter-moa', label: 'Rifle and shooter precision', unitText: `1 SD, ${u.ang}`, unit: u.ang, si: v.precisionRad, min: 0.00001, max: 0.003, set: (x) => { v.precisionRad = x; this.runWez(); }, hint: 'How much your shots spread around the aim point on a calm day, in each direction. 0.5 MOA (0.15 MRAD) is a good precision rifle and shooter.' })}
-            <button type="button" id="btn-run-wez" class="btn-primary btn-block">${icon('dice')} Simulate again</button>
+        <section class="lg-card tool-card tool-inputs" aria-labelledby="wez-setup-title">
+          <h3 class="lg-label" id="wez-setup-title">Target</h3>
+          <div class="field-row">
+            <label class="field-label" for="wez-shape">Target type</label>
+            <select id="wez-shape" class="lg-select">${Object.keys(WEZ_TARGETS).map(shapeOpt).join('')}</select>
+          </div>
+          ${this._numField({ id: 'wez-dist', label: 'Distance', unit: u.dist, si: v.distM, min: 50, max: 2500, set: (x) => { v.distM = x; this.runWez(); } })}
+          <div class="field-row">
+            <span class="field-label" id="wez-shots-label">Simulated shots</span>
+            ${this._segmented('wez-shots', 'Simulated shots', SHOT_COUNTS.map((n) => [n, grouped(n)]), v.shots)}
+          </div>
+
+          <h3 class="lg-label card-section" id="wez-err-title">Error sources (1 <abbr title="Standard deviation">SD</abbr>)</h3>
+          <p class="field-hint section-hint">One standard deviation: about two out of three shots fall within this much of the average.</p>
+          <div class="field-grid-2">
+            ${this._numField({ id: 'wez-mv-sd', label: 'Muzzle velocity SD', unit: u.vel, si: v.mvSdMs, min: 0, max: 30, set: (x) => { v.mvSdMs = x; this.runWez(); } })}
+            ${this._numField({ id: 'wez-range-sd', label: 'Distance error', unit: u.dist, si: v.rangeSdM, min: 0, max: 50, dec: 1, set: (x) => { v.rangeSdM = x; this.runWez(); } })}
+            ${this._numField({ id: 'wez-wind-sd', label: 'Wind speed error', unit: u.wind, si: v.windSdMs, min: 0, max: 10, set: (x) => { v.windSdMs = x; this.runWez(); } })}
+            ${this._numField({ id: 'wez-dir-sd', label: 'Wind direction error', unitText: '°', si: v.dirSdDeg, min: 0, max: 90, dec: 0, set: (x) => { v.dirSdDeg = x; this.runWez(); } })}
+          </div>
+          ${this._numField({ id: 'wez-shooter-moa', label: 'Rifle and shooter precision', unitText: u.ang, unit: u.ang, si: v.precisionRad, min: 0.00001, max: 0.003, set: (x) => { v.precisionRad = x; this.runWez(); }, hint: 'How much your shots spread around the aim point on a calm day, in each direction. 0.5 MOA (0.15 MRAD) is a good precision rifle and shooter.' })}
+          <div class="card-actions">
+            <button type="button" id="btn-run-wez" class="lg-btn">${icon('dice')} Run again</button>
+            <span class="lg-muted lg-small">Results update as you type. Each run draws new random shots.</span>
           </div>
         </section>
 
-        <section class="panel tool-results" aria-labelledby="wez-result-title">
-          <div class="panel-header"><h3 id="wez-result-title">Result</h3></div>
-          <div class="panel-body">
-            <div id="wez-metrics-container" aria-live="polite"></div>
-            <figure class="wez-figure">
-              <canvas id="wez-canvas" role="img" aria-label="Simulated impacts on the target"></canvas>
-              <figcaption class="wez-canvas-legend">
-                <span class="legend-item"><span class="legend-dot dot-hit"></span>Hit</span>
-                <span class="legend-item"><span class="legend-dot dot-miss"></span>Miss</span>
-                <span class="legend-item"><span class="legend-ring ring-cep"></span>Half of shots</span>
-                <span class="legend-item"><span class="legend-ring ring-r95"></span>95% of shots</span>
-                <span class="legend-item legend-scale">Rings every ${ring}</span>
-              </figcaption>
-            </figure>
-            <div id="wez-sensitivity-container" class="wez-sensitivity"></div>
-          </div>
-        </section>
+        <div class="tool-results">
+          <div id="wez-metrics-container" class="lg-stack" aria-live="polite"></div>
+          <section class="lg-card tool-card" aria-labelledby="wez-plot-title">
+            <h3 class="lg-label" id="wez-plot-title">Simulated impacts</h3>
+            <canvas id="wez-canvas" class="tool-canvas" role="img" aria-label="Simulated impacts on the target"></canvas>
+            ${legend([['hit', 'Hit'], ['miss', 'Miss'], ['half', 'Half of shots'], ['r95', '95% of shots']])}
+            <p class="lg-muted lg-small canvas-caption">Rings every ${u.imp ? '5 in' : '10 cm'}, centred on the aim point.</p>
+          </section>
+          <section class="lg-card tool-card" aria-labelledby="wez-sens-title">
+            <h3 class="lg-label" id="wez-sens-title">What causes misses (% of spread)</h3>
+            <div class="tool-chart" id="wez-sens-chart"></div>
+            <div id="wez-sensitivity-container"></div>
+          </section>
+        </div>
       </div>`;
   }
 
@@ -572,11 +647,14 @@ export class ToolsView {
       v.shape = WEZ_TARGETS[e.target.value] ? e.target.value : 'ipsc';
       this.runWez();
     });
-    q('#wez-shots')?.addEventListener('change', (e) => {
-      v.shots = [500, 1000, 2000].includes(Number(e.target.value)) ? Number(e.target.value) : 1000;
-      const p = this.container.querySelector('.tool-intro p');
-      if (p) p.textContent = `Simulates ${grouped(v.shots)} shots with your error sources to estimate how often you hit.`;
-      this.runWez();
+    this.container.querySelectorAll('input[name="wez-shots"]').forEach((r) => {
+      r.addEventListener('change', () => {
+        if (!r.checked) return;
+        v.shots = SHOT_COUNTS.includes(Number(r.value)) ? Number(r.value) : 1000;
+        const t = q('#wez-shots-text');
+        if (t) t.textContent = grouped(v.shots);
+        this.runWez();
+      });
     });
     this.runWez();
   }
@@ -624,27 +702,28 @@ export class ToolsView {
     const canvas = this.container.querySelector('#wez-canvas');
     if (!canvas || !res) return;
     const ctx = canvas.getContext('2d');
-    const c = themeColors();
+    const c = getPalette();
     const dpr = window.devicePixelRatio || 1;
     const w = Math.max(240, Math.floor(canvas.clientWidth || 420));
     const h = w;
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
     const cx = w / 2;
     const cy = h / 2;
-    ctx.fillStyle = c.bg;
-    ctx.fillRect(0, 0, w, h);
-
     const maxExtentCm = Math.max(50, (res.r95Cm || 0) * 1.3, (target.targetSizeHeightCm || 75) * 0.7);
     const scale = (w * 0.45) / maxExtentCm; // px per cm
+    const u = units();
 
-    // Distance rings (every 10 cm, or every 5 in)
-    const ringCm = units().imp ? 12.7 : 10;
-    ctx.strokeStyle = c.line;
-    ctx.lineWidth = 1;
-    for (let r = ringCm; r * scale <= w * 0.75; r += ringCm) {
+    // Distance rings (every 10 cm, or every 5 in) and axes: muted grid lines
+    const ringCm = u.imp ? 12.7 : 10;
+    ctx.strokeStyle = c.gridline;
+    ctx.lineWidth = c.stroke.hair;
+    for (let r = ringCm; r * scale <= w * 0.72; r += ringCm) {
       ctx.beginPath();
       ctx.arc(cx, cy, r * scale, 0, Math.PI * 2);
       ctx.stroke();
@@ -656,6 +735,18 @@ export class ToolsView {
     ctx.moveTo(0, cy);
     ctx.lineTo(w, cy);
     ctx.stroke();
+
+    // Ring labels on the right axis (11 px, muted)
+    ctx.font = c.font(11, 400);
+    ctx.fillStyle = c.muted;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.strokeStyle = c.alpha(c.surface, 0.9);
+    ctx.lineWidth = 3;
+    for (let k = 2; k * ringCm * scale <= w / 2 - 28; k += 2) {
+      ctx.strokeText(u.imp ? `${k * 5} in` : `${k * 10} cm`, cx + k * ringCm * scale + 3, cy + 3);
+      ctx.fillText(u.imp ? `${k * 5} in` : `${k * 10} cm`, cx + k * ringCm * scale + 3, cy + 3);
+    }
 
     // Target silhouette
     const halfW = (target.targetSizeWidthCm / 2) * scale;
@@ -678,49 +769,55 @@ export class ToolsView {
       ctx.lineTo(cx - halfW, headBottomY);
       ctx.closePath();
     }
-    ctx.save();
-    ctx.globalAlpha = 0.12;
-    ctx.fillStyle = c.text;
+    ctx.fillStyle = c.alpha(c.text, 0.06);
     ctx.fill();
-    ctx.restore();
     ctx.strokeStyle = c.muted;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = c.stroke.mark;
     ctx.stroke();
 
-    // 95% and 50% circles
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = c.accent2;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(cx, cy, (res.r95Cm || 0) * scale, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([6, 3]);
+    // Shots: hits are filled accent dots, misses hollow rings (shape, not only colour)
+    const hits = [];
+    const misses = [];
+    for (const pt of res.shotCoords || []) (pt.hit ? hits : misses).push(pt);
+    ctx.fillStyle = c.alpha(c.accent, 0.75);
+    for (const pt of hits) {
+      ctx.beginPath();
+      ctx.arc(cx + pt.xCm * scale, cy - pt.yCm * scale, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = c.alpha(c.badText, 0.85);
+    ctx.lineWidth = 1.2;
+    for (const pt of misses) {
+      ctx.beginPath();
+      ctx.arc(cx + pt.xCm * scale, cy - pt.yCm * scale, 2.4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 50% (solid accent) and 95% (dashed muted) circles
+    ctx.lineWidth = c.stroke.mark;
     ctx.strokeStyle = c.accent;
-    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(cx, cy, (res.cepCm || 0) * scale, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = c.text;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.arc(cx, cy, (res.r95Cm || 0) * scale, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
     ctx.setLineDash([]);
-
-    // Shots
-    for (const pt of res.shotCoords || []) {
-      ctx.fillStyle = pt.hit ? c.ok : c.bad;
-      ctx.beginPath();
-      ctx.arc(cx + pt.xCm * scale, cy - pt.yCm * scale, 2.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
 
     // Aim point
     ctx.strokeStyle = c.text;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = c.stroke.mark;
     ctx.beginPath();
-    ctx.moveTo(cx - 8, cy);
-    ctx.lineTo(cx + 8, cy);
-    ctx.moveTo(cx, cy - 8);
-    ctx.lineTo(cx, cy + 8);
+    ctx.moveTo(cx - 7, cy);
+    ctx.lineTo(cx + 7, cy);
+    ctx.moveTo(cx, cy - 7);
+    ctx.lineTo(cx, cy + 7);
     ctx.stroke();
 
-    const u = units();
     canvas.setAttribute(
       'aria-label',
       `Simulated impacts on the target at ${fmtU(target.distanceM, u.dist)}: ${fixed(res.hitProbabilityPercent, 0)}% hit. Half of the shots land within ${fmtU((res.cepCm || 0) / 100, u.size)} of the aim point.`
@@ -739,39 +836,32 @@ export class ToolsView {
         : inTen >= 10 ? 'About 10 in 10 shots hit'
           : `About ${Math.max(1, inTen)} in 10 shots hit`;
     const [tone, chance] = p >= 80 ? ['ok', 'Good chance'] : p >= 50 ? ['warn', 'Fair chance'] : ['bad', 'Low chance'];
-    const angle = (cm) => fmtU(subtends(cm / 100, res.targetDistM || this.values.wez.distM), u.ang);
+    const distM = res.targetDistM || this.values.wez.distM;
+    const angle = (cm) => fmtU(subtends(cm / 100, distM), u.ang);
 
     // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
     metricsDiv.innerHTML = `
-      <div class="tool-verdict tone-${tone}">
-        <span class="verdict-label">Hit probability ${toneBadge(tone, chance)}</span>
-        <span class="verdict-value stat-val">${fixed(p, 0)}%</span>
-        <span class="verdict-text">${verdict} at ${fmtU(res.targetDistM || this.values.wez.distM, u.dist)}.</span>
-      </div>
-      <dl class="result-stats">
-        <div><dt>Half of shots within</dt><dd>${fmtU((res.cepCm || 0) / 100, u.size)} <span class="dd-sub">${angle(res.cepCm || 0)}</span></dd></div>
-        <div><dt>95% of shots within</dt><dd>${fmtU((res.r95Cm || 0) / 100, u.size)} <span class="dd-sub">${angle(res.r95Cm || 0)}</span></dd></div>
-        <div><dt>Average miss distance</dt><dd>${fmtU((res.meanRadiusCm || 0) / 100, u.size)} <span class="dd-sub">from the aim point</span></dd></div>
-      </dl>`;
+      ${hero({ label: 'Hit probability', tone, chance, value: `${fixed(p, 0)}<span class="kpi-unit">%</span>`, valueCls: 'stat-val', text: `${verdict} at ${fmtU(distM, u.dist)}.` })}
+      ${kpis([
+        ['Half of shots within', kpiU((res.cepCm || 0) / 100, u.size), angle(res.cepCm || 0)],
+        ['95% of shots within', kpiU((res.r95Cm || 0) / 100, u.size), angle(res.r95Cm || 0)],
+        ['Average miss distance', kpiU((res.meanRadiusCm || 0) / 100, u.size), 'from the aim point'],
+      ])}`;
 
     const rows = (res.sensitivity || []).filter((s) => Number.isFinite(Number(s.variancePercent)));
     const top = rows[0];
-    const label = (s) => SENSITIVITY_TEXT[s.category]?.name || s.factor;
-    // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
-    sensDiv.innerHTML = `
-      <h4 class="sub-heading">What causes misses</h4>
-      <div class="sensitivity-bars">
-        ${rows.map((s) => `
-          <div class="sens-row">
-            <div class="sens-header"><span>${esc(label(s))}</span><span class="sens-val">${fixed(Number(s.variancePercent), 0)}%</span></div>
-            <div class="sens-bar-track"><div class="sens-bar-fill bar-${esc(String(s.category).toLowerCase())}" data-width-pct="${Math.min(100, Math.max(1, Number(s.variancePercent)))}"></div></div>
-          </div>`).join('')}
-      </div>
-      ${top ? `<p class="wez-advice">${icon('bulb')}<span><strong>Biggest factor: ${esc(label(top))}.</strong> ${esc(SENSITIVITY_TEXT[top.category]?.advice || '')}</span></p>` : ''}`;
-    // Bar widths via the CSSOM: the CSP blocks inline style attributes
-    sensDiv.querySelectorAll('[data-width-pct]').forEach((bar) => {
-      bar.style.width = `${parseFloat(bar.dataset.widthPct)}%`;
+    const shortName = (s) => SENSITIVITY_TEXT[s.category]?.short || String(s.factor || s.category);
+    const longName = (s) => SENSITIVITY_TEXT[s.category]?.name || String(s.factor || s.category);
+    this._chart('wez-sens', this.container.querySelector('#wez-sens-chart'), 'bar', {
+      label: 'What causes misses, percent of the spread',
+      horizontal: true,
+      categories: rows.map(shortName),
+      series: [{ name: 'Share of spread (%)', values: rows.map((s) => Math.round(Number(s.variancePercent))) }],
     });
+    // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
+    sensDiv.innerHTML = top
+      ? alertBox('info', 'bulb', `Biggest factor: ${esc(longName(top))}`, esc(SENSITIVITY_TEXT[top.category]?.advice || ''))
+      : '';
   }
 
   // ---- 3. Group analysis ------------------------------------------------------------------------
@@ -785,79 +875,67 @@ export class ToolsView {
     const calibrating = !!this.isCalibratingScale;
 
     return `
-      ${this._intro(TOOLS[2], 'Group analysis', 'Upload a photo of your target or click to mark hits. The photo stays on your device.')}
+      ${this._intro(TOOLS[2], 'Group analysis', 'Upload a photo of your target, or click the target to mark hits. The photo stays on your device.')}
       <div class="tool-layout group-layout">
-        <section class="panel tool-inputs" aria-labelledby="group-target-title">
-          <div class="panel-header">
-            <h3 id="group-target-title">Target</h3>
-            <div class="panel-actions">
+        <section class="lg-card tool-card tool-inputs" aria-labelledby="group-target-title">
+          <div class="card-head">
+            <h3 class="lg-label" id="group-target-title">Target</h3>
+            <div class="lg-row">
               <input type="file" id="group-file-input" accept="image/png,image/jpeg,image/webp" hidden />
-              <button type="button" id="btn-upload-photo" class="btn-primary-sm">${icon('upload')} Upload photo</button>
-              <button type="button" id="btn-load-sample-photo" class="btn-secondary-sm">${icon('target')} Sample target</button>
+              <button type="button" id="btn-upload-photo" class="lg-btn lg-btn-primary">${icon('upload')} Upload photo</button>
+              <button type="button" id="btn-load-sample-photo" class="lg-btn">${icon('target')} Sample target</button>
             </div>
           </div>
-          <div class="panel-body">
-            <div class="group-settings">
-              ${this._numField({ id: 'group-distance', label: 'Distance', unit: u.dist, si: dist, min: 10, max: 2500, set: (x) => { this.groupDistM = x; this._drawGroup(); } })}
-              <div class="field-row">
-                <label class="field-label" for="group-caliber-select">Bullet diameter</label>
-                <select id="group-caliber-select" class="form-select">
-                  ${CALIBERS.map((c) => `<option value="${c.mm}" ${Math.abs(cal - c.mm) < 0.2 ? 'selected' : ''}>${c.label}</option>`).join('')}
-                </select>
-              </div>
+          <div class="field-grid-2">
+            ${this._numField({ id: 'group-distance', label: 'Distance', unit: u.dist, si: dist, min: 10, max: 2500, set: (x) => { this.groupDistM = x; this._groupChanged(false); } })}
+            <div class="field-row">
+              <label class="field-label" for="group-caliber-select">Bullet diameter</label>
+              <select id="group-caliber-select" class="lg-select">
+                ${CALIBERS.map((c) => `<option value="${c.mm}" ${Math.abs(cal - c.mm) < 0.2 ? 'selected' : ''}>${c.label}</option>`).join('')}
+              </select>
             </div>
+          </div>
 
-            <div class="group-canvas-box">
-              <canvas id="group-canvas" class="${calibrating ? 'is-calibrating' : ''}" role="img" aria-label="Target with marked shots. Use the shot list to add or edit shots with the keyboard."></canvas>
-            </div>
-            <p class="canvas-hint" id="cv-status-hint" aria-live="polite">${calibrating ? 'Click the first end of the reference line.' : 'Click the target to add a shot. Drag a shot or the aim point to move it. Right-click or long-press a shot to delete it.'}</p>
-            <div class="group-legend" aria-hidden="true">
-              <span class="legend-item"><span class="legend-dot dot-aim"></span>Aim point</span>
-              <span class="legend-item"><span class="legend-dot dot-shot"></span>Shot</span>
-              <span class="legend-item"><span class="legend-cross"></span>Group centre</span>
-              <span class="legend-item"><span class="legend-ring ring-ellipse"></span>Spread (1 SD)</span>
-            </div>
+          <canvas id="group-canvas" class="tool-canvas${calibrating ? ' is-calibrating' : ''}" role="img" aria-label="Target with marked shots. Use the shot list to add or edit shots with the keyboard."></canvas>
+          <p class="lg-muted lg-small canvas-caption" id="cv-status-hint" aria-live="polite">${calibrating ? `Set scale: click one end of a ${Math.abs(ref - 10) < 0.1 ? '1 cm' : '1 inch'} line on the target.` : GROUP_HINT}</p>
+          ${legend([['aim', 'Aim point'], ['shot', 'Shot'], ['centre', 'Group centre'], ['ellipse', 'Spread (1 SD)'], ['spread', 'Extreme spread']])}
 
-            <div class="group-tools">
-              <div class="group-tool-row">
-                <span class="group-tool-label">Photo</span>
-                <button type="button" id="btn-run-cv" class="btn-secondary-sm">${icon('search')} Find holes</button>
-                <label class="field-inline" for="cv-sensitivity-slider">Sensitivity <span id="cv-sens-val">${sens}%</span></label>
-                <input type="range" id="cv-sensitivity-slider" min="15" max="95" value="${sens}" step="1" class="cv-range-slider" />
-              </div>
-              <div class="group-tool-row">
-                <span class="group-tool-label">Scale</span>
-                <label class="lg-sr-only" for="cv-scale-unit-select">Reference length</label>
-                <select id="cv-scale-unit-select" class="form-select-sm">
-                  <option value="25.4" ${Math.abs(ref - 25.4) < 0.1 ? 'selected' : ''}>1 inch (25.4 mm)</option>
-                  <option value="10.0" ${Math.abs(ref - 10.0) < 0.1 ? 'selected' : ''}>1 cm (10 mm)</option>
-                </select>
-                <button type="button" id="btn-calibrate-scale" class="btn-secondary-sm" aria-pressed="${calibrating}">${icon('ruler')} Set scale</button>
-              </div>
-              <div class="group-tool-row">
-                <span class="group-tool-label">Shots</span>
-                <button type="button" id="btn-reset-aim-point" class="btn-secondary-sm">${icon('crosshair')} Centre aim point</button>
-                <button type="button" id="btn-reset-sample-group" class="btn-secondary-sm">${icon('refresh')} Sample shots</button>
-                <button type="button" id="btn-clear-group" class="btn-secondary-sm btn-danger-sm">${icon('trash')} Clear</button>
-              </div>
+          <div class="group-tools">
+            <div class="group-tool-row">
+              <span class="lg-label group-tool-label">Photo</span>
+              <button type="button" id="btn-run-cv" class="lg-btn">${icon('search')} Find holes</button>
+              <label class="lg-small lg-muted" for="cv-sensitivity-slider">Sensitivity <span id="cv-sens-val" class="lg-mono">${sens}%</span></label>
+              <input type="range" id="cv-sensitivity-slider" min="15" max="95" value="${sens}" step="1" class="lg-slider cv-range-slider" />
+            </div>
+            <div class="group-tool-row">
+              <span class="lg-label group-tool-label">Scale</span>
+              <label class="lg-sr-only" for="cv-scale-unit-select">Reference length</label>
+              <select id="cv-scale-unit-select" class="lg-select scale-select">
+                <option value="25.4" ${Math.abs(ref - 25.4) < 0.1 ? 'selected' : ''}>1 inch (25.4 mm)</option>
+                <option value="10.0" ${Math.abs(ref - 10.0) < 0.1 ? 'selected' : ''}>1 cm (10 mm)</option>
+              </select>
+              <button type="button" id="btn-calibrate-scale" class="lg-btn" aria-pressed="${calibrating}">${icon('ruler')} ${calibrating ? 'Cancel' : 'Set scale'}</button>
+            </div>
+            <div class="group-tool-row">
+              <span class="lg-label group-tool-label">Shots</span>
+              <button type="button" id="btn-reset-aim-point" class="lg-btn">${icon('crosshair')} Centre aim point</button>
+              <button type="button" id="btn-reset-sample-group" class="lg-btn">${icon('refresh')} Sample shots</button>
+              <button type="button" id="btn-clear-group" class="lg-btn lg-btn-danger">${icon('trash')} Clear</button>
             </div>
           </div>
         </section>
 
-        <section class="panel tool-results" aria-labelledby="group-result-title">
-          <div class="panel-header"><h3 id="group-result-title">Result</h3></div>
-          <div class="panel-body">
-            <div id="group-metrics-summary" aria-live="polite"></div>
-            <div class="shot-list-block">
-              <div class="shot-list-head">
-                <h4 class="sub-heading">Shots</h4>
-                <button type="button" id="btn-add-shot" class="btn-secondary-sm">${icon('plus')} Add shot</button>
-              </div>
-              <p class="field-hint">Measured from the aim point in ${u.size}. Right and up are positive.</p>
-              <div id="shot-list"></div>
+        <div class="tool-results">
+          <div id="group-metrics-summary" class="lg-stack" aria-live="polite"></div>
+          <section class="lg-card tool-card" aria-labelledby="group-shots-title">
+            <div class="card-head">
+              <h3 class="lg-label" id="group-shots-title">Shots</h3>
+              <button type="button" id="btn-add-shot" class="lg-btn">${icon('plus')} Add shot</button>
             </div>
-          </div>
-        </section>
+            <p class="field-hint section-hint">Measured from the aim point in ${u.size}. Right and up are positive.</p>
+            <div id="shot-list"></div>
+          </section>
+        </div>
       </div>`;
   }
 
@@ -880,14 +958,15 @@ export class ToolsView {
     });
     q('#cv-scale-unit-select')?.addEventListener('change', (e) => {
       this.scaleRefLengthMm = parseFloat(e.target.value) === 10 ? 10.0 : 25.4;
-      this._hint(`Reference set to ${this._refName()}. Choose Set scale, then click both ends of a ${this._refName()} line on the target.`);
+      if (this.isCalibratingScale) this._setCalibrating(true);
+      else this._hint(`Reference set to ${this._refName()}. Choose Set scale, then click both ends of a ${this._refName()} line on the target.`);
     });
     q('#btn-calibrate-scale')?.addEventListener('click', () => this._setCalibrating(!this.isCalibratingScale));
     q('#group-caliber-select')?.addEventListener('change', (e) => {
       const mm = parseFloat(e.target.value);
       this.selectedCaliberMm = CALIBERS.some((c) => c.mm === mm) ? mm : 6.7;
       if (this.targetImage) this._detect(this.targetImage);
-      else this._drawGroup();
+      else this._groupChanged(false);
     });
     const slider = q('#cv-sensitivity-slider');
     slider?.addEventListener('input', () => {
@@ -906,6 +985,7 @@ export class ToolsView {
       this.groupShots = [];
       this.targetImage = null;
       this.photoNeedsScale = false;
+      if (this.isCalibratingScale) this._setCalibrating(false);
       this._hint('Shots cleared. Upload a photo, click the target or use Add shot.');
       this._groupChanged(true);
     });
@@ -915,10 +995,12 @@ export class ToolsView {
       this.targetGridScale = 5.0;
       this.targetImage = null;
       this.photoNeedsScale = false;
+      if (this.isCalibratingScale) this._setCalibrating(false);
+      this._hint(GROUP_HINT);
       this._groupChanged(true);
     });
     q('#btn-add-shot')?.addEventListener('click', () => {
-      if (this.groupShots.length >= 50) return toast('A group can have at most 50 shots', 'info');
+      if (this.groupShots.length >= MAX_SHOTS) return toast(`A group can have at most ${MAX_SHOTS} shots`, 'info');
       this.groupShots.push({ x: this.aimPointMm.x, y: this.aimPointMm.y });
       this._groupChanged(true);
       const inputs = this.container.querySelectorAll('#shot-list .shot-input');
@@ -942,11 +1024,13 @@ export class ToolsView {
     this.isCalibratingScale = on;
     this.scaleCalibPoints = [];
     const btn = this.container.querySelector('#btn-calibrate-scale');
-    btn?.setAttribute('aria-pressed', String(on));
+    if (btn) {
+      btn.setAttribute('aria-pressed', String(on));
+      // eslint-disable-next-line no-unsanitized/property -- reviewed: constant icon and text
+      btn.innerHTML = `${icon('ruler')} ${on ? 'Cancel' : 'Set scale'}`;
+    }
     this.container.querySelector('#group-canvas')?.classList.toggle('is-calibrating', on);
-    this._hint(on
-      ? `Set scale: click one end of a ${this._refName()} line on the target.`
-      : 'Click the target to add a shot. Drag a shot or the aim point to move it. Right-click or long-press a shot to delete it.');
+    this._hint(on ? `Set scale: click one end of a ${this._refName()} line on the target.` : GROUP_HINT);
     this._drawGroup();
   }
 
@@ -963,9 +1047,14 @@ export class ToolsView {
     const img = new Image();
     img.onload = () => {
       URL.revokeObjectURL(url);
+      if (!img.width || !img.height) {
+        toast('Could not open the photo', 'bad', 'The image has no size. Try another photo.');
+        return;
+      }
       this.targetImage = img;
       this.photoNeedsScale = true;
       this.aimPointMm = { x: 0, y: 0 };
+      if (this.isCalibratingScale) this._setCalibrating(false);
       this._detect(img);
       toast('Photo loaded', 'ok', `Set the scale for accurate sizes: choose Set scale and click both ends of a ${this._refName()} line.`);
     };
@@ -1040,7 +1129,8 @@ export class ToolsView {
       if (!moved && Math.hypot(pt.x - down.x, pt.y - down.y) < 4) return;
       moved = true;
       clearTimeout(this._lpTimer);
-      const mm = this._toMm(pt);
+      const clamp = (v) => Math.min(GW, Math.max(0, v));
+      const mm = this._toMm({ x: clamp(pt.x), y: clamp(pt.y) });
       if (drag.type === 'shot' && this.groupShots[drag.idx]) this.groupShots[drag.idx] = mm;
       else if (drag.type === 'aim') this.aimPointMm = mm;
       this._groupChanged(false);
@@ -1055,13 +1145,17 @@ export class ToolsView {
       down = null;
       canvas.classList.remove('is-dragging');
       if (longPressed) return;
+      if (e.type === 'pointercancel') {
+        if (wasDrag && moved) this._groupChanged(true);
+        return;
+      }
       if (this.isCalibratingScale) return this._calibrationClick(pt);
       if (wasDrag) {
         if (moved) this._groupChanged(true);
         return;
       }
-      if (e.type === 'pointercancel' || moved) return;
-      if (this.groupShots.length >= 50) return toast('A group can have at most 50 shots', 'info');
+      if (moved) return;
+      if (this.groupShots.length >= MAX_SHOTS) return toast(`A group can have at most ${MAX_SHOTS} shots`, 'info');
       this.groupShots.push(this._toMm(pt));
       this._groupChanged(true);
     };
@@ -1104,7 +1198,7 @@ export class ToolsView {
     this.targetGridScale = newScale;
     this.photoNeedsScale = false;
     this._setCalibrating(false);
-    this._hint(`Scale set: ${this._refName()} = ${distPx.toFixed(0)} px.`);
+    this._hint(`Scale set: ${this._refName()} is ${distPx.toFixed(0)} px on this target.`);
     this._groupChanged(true);
   }
 
@@ -1174,34 +1268,35 @@ export class ToolsView {
     const canvas = this.container.querySelector('#group-canvas');
     if (!canvas) return null;
     const ctx = canvas.getContext('2d');
-    const c = themeColors();
+    const c = getPalette();
     const dpr = window.devicePixelRatio || 1;
     if (canvas.width !== Math.round(GW * dpr)) {
       canvas.width = Math.round(GW * dpr);
       canvas.height = Math.round(GW * dpr);
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     const scale = this.targetGridScale;
     const aim = this._toPx(this.aimPointMm);
     const imp = units().imp;
+    const photo = !!this.targetImage;
 
     ctx.clearRect(0, 0, GW, GW);
-    if (this.targetImage) {
+    if (photo) {
       const r = this._fitRect(this.targetImage);
       ctx.drawImage(this.targetImage, r.x, r.y, r.w, r.h);
     } else {
-      ctx.fillStyle = c.bg;
+      ctx.fillStyle = c.field;
       ctx.fillRect(0, 0, GW, GW);
     }
 
-    // Measurement grid (1 cm, or 1/2 in) centred on the aim point
+    // Measurement grid (1 cm, or 1/2 in) centred on the aim point; a photo brings its own grid
     const stepMm = imp ? 12.7 : 10;
-    ctx.save();
-    ctx.globalAlpha = this.targetImage ? 0.35 : 1;
-    ctx.strokeStyle = c.line;
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = c.gridline;
+    ctx.lineWidth = c.stroke.hair;
     ctx.beginPath();
-    for (let k = -60; k <= 60; k++) {
+    for (let k = -60; k <= 60 && !photo; k++) {
       const x = aim.x + k * stepMm * scale;
       const y = aim.y + k * stepMm * scale;
       if (x >= 0 && x <= GW) {
@@ -1214,73 +1309,97 @@ export class ToolsView {
       }
     }
     ctx.stroke();
-    if (!this.targetImage) {
+    if (!photo) {
       ctx.strokeStyle = c.line2;
-      ctx.lineWidth = 1.5;
-      for (const rMm of imp ? [25.4, 50.8] : [25, 50]) {
+      ctx.lineWidth = c.stroke.mark;
+      const rings = imp ? [25.4, 50.8] : [25, 50];
+      for (const rMm of rings) {
         ctx.beginPath();
         ctx.arc(aim.x, aim.y, rMm * scale, 0, Math.PI * 2);
         ctx.stroke();
       }
+      ctx.font = c.font(11, 400);
+      ctx.fillStyle = c.muted;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      rings.forEach((rMm, i) => ctx.fillText(imp ? `${i + 1} in` : `${(i + 1) * 2.5} cm`, aim.x + rMm * scale * 0.7071 + 3, aim.y - rMm * scale * 0.7071 - 2));
     }
-    ctx.restore();
 
     const stats = this._groupStats();
     const toPxRel = (p) => this._toPx({ x: p.x + this.aimPointMm.x, y: p.y + this.aimPointMm.y });
+    // On a photo, marks get a thin halo in the surface colour so they read on any paper
+    const halo = (draw, width) => {
+      if (!photo) return;
+      ctx.save();
+      ctx.strokeStyle = c.alpha(c.surface, 0.85);
+      ctx.lineWidth = width + 2.5;
+      draw();
+      ctx.restore();
+    };
 
     if (stats.n >= 2) {
       // Extreme spread line
       const a = toPxRel(stats.pair[0]);
       const b = toPxRel(stats.pair[1]);
-      ctx.strokeStyle = c.warn;
-      ctx.lineWidth = 2;
+      const path = () => {
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      };
       ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      halo(path, c.stroke.mark);
+      ctx.strokeStyle = photo ? c.text : c.muted;
+      ctx.lineWidth = c.stroke.mark;
+      path();
       ctx.setLineDash([]);
     }
     const centre = stats.n ? toPxRel({ x: stats.meanX, y: stats.meanY }) : null;
     if (stats.ellipse && stats.ellipse.a > 0) {
+      const path = () => {
+        ctx.beginPath();
+        // Canvas y points down, so the rotation is mirrored
+        ctx.ellipse(centre.x, centre.y, stats.ellipse.a * scale, Math.max(0.5, stats.ellipse.b * scale), -stats.ellipse.angle, 0, Math.PI * 2);
+        ctx.stroke();
+      };
+      halo(path, c.stroke.mark);
       ctx.strokeStyle = c.accent2;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      // Canvas y points down, so the rotation is mirrored
-      ctx.ellipse(centre.x, centre.y, stats.ellipse.a * scale, Math.max(0.5, stats.ellipse.b * scale), -stats.ellipse.angle, 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.lineWidth = c.stroke.mark;
+      path();
     }
 
-    // Aim point (diamond)
-    ctx.fillStyle = c.bad;
-    ctx.strokeStyle = c.bg;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(aim.x, aim.y - 8);
-    ctx.lineTo(aim.x + 8, aim.y);
-    ctx.lineTo(aim.x, aim.y + 8);
-    ctx.lineTo(aim.x - 8, aim.y);
-    ctx.closePath();
+    // Aim point (diamond outline)
+    const diamond = () => {
+      ctx.beginPath();
+      ctx.moveTo(aim.x, aim.y - 8);
+      ctx.lineTo(aim.x + 8, aim.y);
+      ctx.lineTo(aim.x, aim.y + 8);
+      ctx.lineTo(aim.x - 8, aim.y);
+      ctx.closePath();
+    };
+    diamond();
+    ctx.fillStyle = c.alpha(c.surface, photo ? 0.7 : 0.4);
     ctx.fill();
+    ctx.strokeStyle = c.text;
+    ctx.lineWidth = c.stroke.mark;
     ctx.stroke();
 
-    // Shots
+    // Shots: accent rings with a light fill, numbered with 11 px labels
     const rPx = Math.max(3, (this.selectedCaliberMm / 2) * scale);
-    ctx.font = '600 12px system-ui, sans-serif';
+    ctx.font = c.font(11, 600);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
     this.groupShots.forEach((s, idx) => {
       const p = this._toPx(s);
-      ctx.save();
-      ctx.globalAlpha = 0.85;
-      ctx.fillStyle = c.warn;
       ctx.beginPath();
       ctx.arc(p.x, p.y, rPx, 0, Math.PI * 2);
+      ctx.fillStyle = c.alpha(c.accent, photo ? 0.15 : 0.3);
       ctx.fill();
-      ctx.restore();
-      ctx.strokeStyle = c.text;
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = c.accent;
+      ctx.lineWidth = c.stroke.mark;
       ctx.stroke();
       ctx.lineWidth = 3;
-      ctx.strokeStyle = c.bg;
+      ctx.strokeStyle = c.alpha(c.surface, 0.9);
       ctx.strokeText(String(idx + 1), p.x + rPx + 3, p.y - 3);
       ctx.fillStyle = c.text;
       ctx.fillText(String(idx + 1), p.x + rPx + 3, p.y - 3);
@@ -1288,28 +1407,32 @@ export class ToolsView {
 
     // Group centre
     if (centre) {
-      ctx.strokeStyle = c.accent;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(centre.x - 9, centre.y);
-      ctx.lineTo(centre.x + 9, centre.y);
-      ctx.moveTo(centre.x, centre.y - 9);
-      ctx.lineTo(centre.x, centre.y + 9);
-      ctx.stroke();
+      const cross = () => {
+        ctx.beginPath();
+        ctx.moveTo(centre.x - 8, centre.y);
+        ctx.lineTo(centre.x + 8, centre.y);
+        ctx.moveTo(centre.x, centre.y - 8);
+        ctx.lineTo(centre.x, centre.y + 8);
+        ctx.stroke();
+      };
+      halo(cross, c.stroke.bold);
+      ctx.strokeStyle = c.accent2;
+      ctx.lineWidth = c.stroke.bold;
+      cross();
     }
 
     // Scale calibration: first point
     if (this.isCalibratingScale && this.scaleCalibPoints.length === 1) {
       const p = this.scaleCalibPoints[0];
       ctx.strokeStyle = c.accent;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = c.stroke.bold;
       ctx.beginPath();
       ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
       ctx.stroke();
     }
 
     canvas.setAttribute('aria-label', stats.n
-      ? `Target with ${stats.n} marked shot${stats.n === 1 ? '' : 's'}. Use the shot list to add or edit shots with the keyboard.`
+      ? `Target with ${plural(stats.n, 'marked shot')}. Use the shot list to add or edit shots with the keyboard.`
       : 'Empty target. Click to add shots, or use Add shot in the shot list.');
     return stats;
   }
@@ -1328,8 +1451,8 @@ export class ToolsView {
     const summary = this.container.querySelector('#group-metrics-summary');
     if (!summary || !stats) return;
     if (stats.n === 0) {
-      // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
-      summary.innerHTML = `<p class="empty-state">${icon('target')} No shots yet. Click the target, upload a photo or use Add shot.</p>`;
+      // eslint-disable-next-line no-unsanitized/property -- reviewed: constant text only
+      summary.innerHTML = emptyState('No shots yet', 'Click the target, upload a photo or use Add shot.');
       return;
     }
     const u = units();
@@ -1337,33 +1460,37 @@ export class ToolsView {
     const mm = (v) => fmtU(v / 1000, u.size);
     const ang = (v) => fmtU(subtends(v / 1000, distM), u.ang);
     const profile = appState.getActiveProfile();
-    const clickRad = profile.optic?.clickValueRad || 0.0001;
+    const clickRad = profile.optic?.clickValueRad > 0 ? profile.optic.clickValueRad : 0.0001;
     const corr = (v, pos, neg) => {
       const rad = subtends(Math.abs(v) / 1000, distM);
       const clicks = Math.round(rad / clickRad);
       if (clicks === 0) return null;
-      return `${v < 0 ? pos : neg} ${fmtU(rad, u.ang)} (${clicks} click${clicks === 1 ? '' : 's'})`;
+      return `${v < 0 ? pos : neg} ${fmtU(rad, u.ang)} (${plural(clicks, 'click')})`;
     };
     const fix = [corr(stats.meanY, 'up', 'down'), corr(stats.meanX, 'right', 'left')].filter(Boolean);
     const offset = (v, pos, neg) => (Math.abs(v) < 0.05 ? `0 ${u.size}` : `${mm(Math.abs(v))} ${v >= 0 ? pos : neg}`);
     const groupAng = subtends(stats.es / 1000, distM) / CONVERSIONS.MOA;
     const [tone, label] = stats.n < 3 ? ['warn', 'Add more shots'] : groupAng <= 1 ? ['ok', 'Under 1 MOA'] : groupAng <= 2 ? ['warn', '1–2 MOA'] : ['bad', 'Over 2 MOA'];
+    const sd = (v) => (stats.n >= 2 ? kpiU(v / 1000, u.size) : '–');
 
     // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
     summary.innerHTML = `
-      <div class="tool-verdict tone-${tone}">
-        <span class="verdict-label">Group size (extreme spread) ${toneBadge(tone, label)}</span>
-        <span class="verdict-value">${ang(stats.es)}</span>
-        <span class="verdict-text">${stats.n} shot${stats.n === 1 ? '' : 's'} at ${fmtU(distM, u.dist)}: ${mm(stats.es)} centre to centre.</span>
-      </div>
-      <dl class="result-stats">
-        <div><dt>Mean radius</dt><dd>${mm(stats.meanRadius)} <span class="dd-sub">${ang(stats.meanRadius)}</span></dd></div>
-        <div><dt>Vertical SD</dt><dd>${stats.n >= 2 ? mm(stats.sdY) : '–'} <span class="dd-sub">${stats.n >= 2 ? ang(stats.sdY) : ''}</span></dd></div>
-        <div><dt>Horizontal SD</dt><dd>${stats.n >= 2 ? mm(stats.sdX) : '–'} <span class="dd-sub">${stats.n >= 2 ? ang(stats.sdX) : ''}</span></dd></div>
-        <div><dt>Group centre</dt><dd>${offset(stats.meanY, 'high', 'low')}, ${offset(stats.meanX, 'right', 'left')}</dd></div>
-      </dl>
-      <p class="result-note">${icon('turret')}<span>${fix.length ? `To centre the group, dial ${fix.join(' and ')}.` : 'The group is centred on the aim point.'} Clicks use ${esc(profile.optic?.clickName || '0.1 MRAD')}.</span></p>
-      <p class="field-hint">Mean radius is the average distance of the shots from the group centre. SD is the standard deviation (n − 1).${this.photoNeedsScale ? ' <strong>Set the scale for real sizes.</strong>' : ''}</p>`;
+      ${hero({
+        label: 'Group size (extreme spread)',
+        tone,
+        chance: label,
+        value: kpiU(subtends(stats.es / 1000, distM), u.ang),
+        text: `${plural(stats.n, 'shot')} at ${fmtU(distM, u.dist)}: ${mm(stats.es)} centre to centre.`,
+      })}
+      ${kpis([
+        ['Mean radius', kpiU(stats.meanRadius / 1000, u.size), ang(stats.meanRadius)],
+        ['Vertical SD', sd(stats.sdY), stats.n >= 2 ? ang(stats.sdY) : 'needs 2 shots'],
+        ['Horizontal SD', sd(stats.sdX), stats.n >= 2 ? ang(stats.sdX) : 'needs 2 shots'],
+      ])}
+      ${alertBox(fix.length ? 'info' : 'ok', 'turret', fix.length ? 'Correction' : 'Centred',
+        `${fix.length ? `To centre the group, dial ${fix.join(' and ')}.` : 'The group is centred on the aim point.'} Group centre: ${offset(stats.meanY, 'high', 'low')}, ${offset(stats.meanX, 'right', 'left')}. Clicks use ${esc(profile.optic?.clickName || '0.1 MRAD')}.`)}
+      ${this.photoNeedsScale ? alertBox('warn', 'ruler', 'Set the scale', `Sizes from a photo are only right after you set the scale: choose Set scale and click both ends of a ${this._refName()} line.`) : ''}
+      <p class="field-hint">Mean radius is the average distance of the shots from the group centre. SD is the standard deviation (n − 1).</p>`;
   }
 
   _renderShotList() {
@@ -1374,21 +1501,25 @@ export class ToolsView {
     const dec = u.imp ? 2 : 1;
     const limit = u.imp ? 20 : 50; // in / cm
     if (!rel.length) {
-      host.innerHTML = '<p class="text-muted shot-empty">No shots.</p>';
+      host.innerHTML = '<p class="lg-muted lg-small shot-empty">No shots. Use Add shot or click the target.</p>';
       return;
     }
     // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
     host.innerHTML = `
-      <div class="shot-row shot-row-head" aria-hidden="true"><span>#</span><span>Right (${u.size})</span><span>Up (${u.size})</span><span></span></div>
-      <ol class="shot-list">
-        ${rel.map((p, i) => `
-          <li class="shot-row">
-            <span class="shot-num">${i + 1}</span>
-            <input type="text" inputmode="decimal" autocomplete="off" class="form-input-sm shot-input" id="shot-x-${i}" data-idx="${i}" data-axis="x" min="${-limit}" max="${limit}" value="${fixed(toUnit(p.x / 1000, u.size), dec)}" aria-label="Shot ${i + 1}, right (${u.size})" />
-            <input type="text" inputmode="decimal" autocomplete="off" class="form-input-sm shot-input" id="shot-y-${i}" data-idx="${i}" data-axis="y" min="${-limit}" max="${limit}" value="${fixed(toUnit(p.y / 1000, u.size), dec)}" aria-label="Shot ${i + 1}, up (${u.size})" />
-            <button type="button" class="btn-ghost-sm btn-icon-only btn-del-shot" data-idx="${i}" aria-label="Delete shot ${i + 1}">${icon('trash')}</button>
-          </li>`).join('')}
-      </ol>`;
+      <div class="lg-table-wrap lg-table-sticky shot-table-wrap">
+        <table class="lg-table shot-table">
+          <thead><tr><th scope="col" class="num">#</th><th scope="col">Right (${u.size})</th><th scope="col">Up (${u.size})</th><th scope="col"><span class="lg-sr-only">Delete</span></th></tr></thead>
+          <tbody>
+            ${rel.map((p, i) => `
+              <tr>
+                <td class="num shot-num">${i + 1}</td>
+                <td><input type="text" inputmode="decimal" autocomplete="off" class="lg-input shot-input" id="shot-x-${i}" data-idx="${i}" data-axis="x" min="${-limit}" max="${limit}" value="${fixed(toUnit(p.x / 1000, u.size), dec)}" aria-label="Shot ${i + 1}, right (${u.size})" /></td>
+                <td><input type="text" inputmode="decimal" autocomplete="off" class="lg-input shot-input" id="shot-y-${i}" data-idx="${i}" data-axis="y" min="${-limit}" max="${limit}" value="${fixed(toUnit(p.y / 1000, u.size), dec)}" aria-label="Shot ${i + 1}, up (${u.size})" /></td>
+                <td class="shot-del"><button type="button" class="lg-btn lg-btn-ghost lg-btn-icon btn-del-shot" data-idx="${i}" aria-label="Delete shot ${i + 1}">${icon('trash')}</button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
 
     host.querySelectorAll('.shot-input').forEach((input) => {
       bindNumber(input, (v) => {
@@ -1425,7 +1556,10 @@ export class ToolsView {
 
     const gray = new Uint8Array(w * h);
     for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-      gray[j] = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
+      // Transparent pixels (letterbox) count as white paper
+      const a = data[i + 3] / 255;
+      const lum = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
+      gray[j] = Math.round(lum * a + 255 * (1 - a));
     }
 
     // 5x5 separable Gaussian blur
@@ -1531,7 +1665,7 @@ export class ToolsView {
 
     if (detected.length) {
       this.groupShots = detected.map((d) => this._toMm({ x: d.px, y: d.py }));
-      this._hint(`Found ${detected.length} hole${detected.length === 1 ? '' : 's'}. Drag to adjust, or right-click or long-press to delete.`);
+      this._hint(`Found ${plural(detected.length, 'hole')}. Drag to adjust, or right-click or long-press to delete.`);
     } else {
       this._hint('No holes found. Try a higher sensitivity, set the scale, or click to mark shots yourself.');
     }
@@ -1543,6 +1677,7 @@ export class ToolsView {
     this.targetGridScale = 5.0;
     this.photoNeedsScale = false;
     this.aimPointMm = { x: 0, y: 0 };
+    if (this.isCalibratingScale) this._setCalibrating(false);
     const s = document.createElement('canvas');
     s.width = GW;
     s.height = GW;
@@ -1550,8 +1685,8 @@ export class ToolsView {
     const cx = GW / 2;
     const cy = GW / 2;
     const scale = this.targetGridScale;
-    // Paper colours are part of the simulated photo, not the UI theme
-    g.fillStyle = '#f5efe3';
+    // Paper and ink colours belong to the simulated photo, not to the UI theme
+    g.fillStyle = 'rgb(245, 239, 227)';
     g.fillRect(0, 0, GW, GW);
     g.strokeStyle = 'rgba(148, 163, 184, 0.45)';
     g.lineWidth = 1;
@@ -1570,7 +1705,7 @@ export class ToolsView {
       g.arc(cx, cy, rMm * scale, 0, Math.PI * 2);
       g.stroke();
     });
-    g.fillStyle = '#dc2626';
+    g.fillStyle = 'rgb(190, 60, 50)';
     g.beginPath();
     g.moveTo(cx, cy - 8);
     g.lineTo(cx + 8, cy);
@@ -1582,15 +1717,15 @@ export class ToolsView {
     for (const sh of SAMPLE_SHOTS) {
       const hx = cx + sh.x * scale;
       const hy = cy - sh.y * scale;
-      g.fillStyle = '#ded6c6';
+      g.fillStyle = 'rgb(222, 214, 198)';
       g.beginPath();
       g.arc(hx, hy, rPx + 2.5, 0, Math.PI * 2);
       g.fill();
-      g.fillStyle = '#0a0a0c';
+      g.fillStyle = 'rgb(10, 10, 12)';
       g.beginPath();
       g.arc(hx, hy, rPx + 0.8, 0, Math.PI * 2);
       g.fill();
-      g.fillStyle = '#1c1917';
+      g.fillStyle = 'rgb(28, 25, 23)';
       g.beginPath();
       g.arc(hx, hy, rPx, 0, Math.PI * 2);
       g.fill();
@@ -1616,48 +1751,61 @@ export class ToolsView {
     return { values, ignored };
   }
 
+  _chronoUnit() {
+    return this.values.chrono.unit || units().vel;
+  }
+
   renderChrono() {
-    const u = units();
     const v = this.values.chrono;
-    const unit = v.unit || u.vel;
+    const unit = this._chronoUnit();
+    if (!v.edited) v.text = CHRONO_SAMPLE[unit];
+    this._chronoUnitShown = unit;
     return `
       ${this._intro(TOOLS[3], 'Chronograph statistics', 'Paste your chronograph readings to get the average muzzle velocity and how consistent the load is.')}
       <div class="tool-layout">
-        <section class="panel tool-inputs" aria-labelledby="chrono-in-title">
-          <div class="panel-header"><h3 id="chrono-in-title">Readings</h3></div>
-          <div class="panel-body">
-            <div class="field-row">
-              <span class="field-label" id="chrono-unit-label">Velocity unit</span>
-              <div class="lg-tabs unit-toggle" role="group" aria-labelledby="chrono-unit-label">
-                ${['m/s', 'fps'].map((x) => `<button type="button" class="tab-btn" data-unit="${x}" aria-pressed="${unit === x}">${x}</button>`).join('')}
-              </div>
-            </div>
-            <div class="field-row">
-              <label class="field-label" for="chrono-input">Velocities (${unit})</label>
-              <textarea id="chrono-input" class="form-textarea" rows="6" spellcheck="false" aria-describedby="chrono-hint">${esc(v.text)}</textarea>
-              <p class="field-hint" id="chrono-hint">One reading per line, or separated by spaces or semicolons. A comma between digits is a decimal mark (825,4 = 825.4).</p>
-            </div>
-            <button type="button" id="btn-calc-chrono" class="btn-primary btn-block">${icon('chart')} Calculate</button>
+        <section class="lg-card tool-card tool-inputs" aria-labelledby="chrono-in-title">
+          <h3 class="lg-label" id="chrono-in-title">Readings</h3>
+          <div class="field-row">
+            <span class="field-label" id="chrono-unit-label">Readings are in</span>
+            ${this._segmented('chrono-unit', 'Readings are in', [['m/s', 'm/s'], ['fps', 'fps']], unit)}
           </div>
+          <div class="field-row">
+            <label class="field-label" for="chrono-input" id="chrono-input-label">Velocities (${unit})</label>
+            <textarea id="chrono-input" class="lg-input chrono-text" rows="6" spellcheck="false" maxlength="20000" aria-describedby="chrono-hint">${esc(v.text)}</textarea>
+            <p class="field-hint" id="chrono-hint">One reading per line, or separated by spaces, commas or semicolons. A comma between digits is a decimal mark (825,4 = 825.4). Results update as you type.</p>
+          </div>
+          ${v.edited ? '' : '<p class="lg-muted lg-small">These are sample readings. Replace them with your own.</p>'}
         </section>
-        <section class="panel tool-results" aria-labelledby="chrono-out-title">
-          <div class="panel-header"><h3 id="chrono-out-title">Result</h3></div>
-          <div class="panel-body" id="chrono-results" aria-live="polite"></div>
-        </section>
+        <div class="tool-results" id="chrono-results" aria-live="polite"></div>
       </div>`;
   }
 
   _initChrono() {
     const q = (s) => this.container.querySelector(s);
     const ta = q('#chrono-input');
-    ta?.addEventListener('input', () => (this.values.chrono.text = ta.value.slice(0, 20000)));
-    q('#btn-calc-chrono')?.addEventListener('click', () => this.calcChrono());
-    this.container.querySelectorAll('.unit-toggle .tab-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.values.chrono.unit = btn.dataset.unit === 'fps' ? 'fps' : 'm/s';
-        this.container.querySelectorAll('.unit-toggle .tab-btn').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
-        const label = this.container.querySelector('label[for="chrono-input"]');
-        if (label) label.textContent = `Velocities (${this.values.chrono.unit})`;
+    ta?.addEventListener('input', () => {
+      this.values.chrono.text = ta.value.slice(0, 20000);
+      this.values.chrono.edited = true;
+      clearTimeout(this._chronoTimer);
+      this._chronoTimer = setTimeout(() => this.calcChrono(), 250);
+    });
+    ta?.addEventListener('change', () => {
+      this.values.chrono.text = ta.value.slice(0, 20000);
+      this.values.chrono.edited = true;
+      this.calcChrono();
+    });
+    this.container.querySelectorAll('input[name="chrono-unit"]').forEach((r) => {
+      r.addEventListener('change', () => {
+        if (!r.checked) return;
+        const c = this.values.chrono;
+        c.unit = r.value === 'fps' ? 'fps' : 'm/s';
+        this._chronoUnitShown = c.unit;
+        if (!c.edited && ta) {
+          c.text = CHRONO_SAMPLE[c.unit];
+          ta.value = c.text;
+        }
+        const t = q('#chrono-input-label');
+        if (t) t.textContent = `Velocities (${c.unit})`;
         this.calcChrono();
       });
     });
@@ -1667,8 +1815,9 @@ export class ToolsView {
   calcChrono() {
     const out = this.container.querySelector('#chrono-results');
     if (!out) return;
+    clearTimeout(this._chronoTimer);
     const v = this.values.chrono;
-    const unit = v.unit || units().vel;
+    const unit = this._chronoUnit();
     const { values, ignored } = ToolsView.parseVelocities(v.text);
     const toSI = (x) => fromUnit(x, unit);
     const [lo, hi] = unit === 'fps' ? [300, 5000] : [100, 1500];
@@ -1676,13 +1825,17 @@ export class ToolsView {
     const good = values.filter((x) => x >= lo && x <= hi);
     const problems = [
       ignored.length ? `Ignored ${ignored.length} entr${ignored.length === 1 ? 'y' : 'ies'} that ${ignored.length === 1 ? 'is' : 'are'} not a number: ${esc(ignored.slice(0, 5).join(', '))}${ignored.length > 5 ? '…' : ''}.` : '',
-      outOfRange.length ? `Ignored ${outOfRange.length} reading${outOfRange.length === 1 ? '' : 's'} outside ${lo}–${hi} ${unit}: ${outOfRange.slice(0, 5).join(', ')}. Is the unit right?` : '',
+      outOfRange.length ? `Ignored ${plural(outOfRange.length, 'reading')} outside ${lo}–${hi} ${unit}: ${outOfRange.slice(0, 5).join(', ')}. Are the readings in ${unit}?` : '',
     ].filter(Boolean);
-    const problemHtml = problems.length ? `<p class="result-note tone-warn-text">${icon('alert')}<span>${problems.join(' ')}</span></p>` : '';
+    const problemHtml = problems.length ? alertBox('warn', 'alert', 'Some entries were skipped', problems.join(' ')) : '';
 
+    if (this.charts.chrono) {
+      this.charts.chrono.chart.destroy?.();
+      delete this.charts.chrono;
+    }
     if (good.length < 2) {
       // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
-      out.innerHTML = `<p class="empty-state">${icon('chrono')} Enter at least 2 velocities.</p>${problemHtml}`;
+      out.innerHTML = `<div class="lg-stack">${emptyState('Enter at least 2 velocities', `Type or paste the readings from your chronograph, in ${unit}.`)}${problemHtml}</div>`;
       return;
     }
 
@@ -1694,68 +1847,89 @@ export class ToolsView {
     const sorted = [...good].sort((a, b) => a - b);
     const median = n % 2 === 0 ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : sorted[(n - 1) / 2];
     const sdMs = toSI(sd);
-    const [tone, verdict] = sdMs < 3 ? ['ok', 'Very consistent: good for long range.'] : sdMs < 5 ? ['warn', 'Usable. Expect some vertical spread at long range.'] : ['bad', 'Large spread: expect vertical stringing at long range.'];
+    const [tone, chance, verdict] = sdMs < 3
+      ? ['ok', 'Very consistent', 'Good for long range.']
+      : sdMs < 5 ? ['warn', 'Usable', 'Expect some vertical spread at long range.'] : ['bad', 'Large spread', 'Expect vertical stringing at long range.'];
     const d = unit === 'fps' ? 0 : 1;
     const profile = appState.getActiveProfile();
     const meanSI = Number(toSI(mean).toFixed(2));
     const shown = `${mean.toFixed(d)} ${unit}`;
+    const u = units();
 
     // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
     out.innerHTML = `
-      <div class="tool-verdict tone-${tone}">
-        <span class="verdict-label">Average muzzle velocity ${toneBadge(tone, `SD ${sd.toFixed(d === 0 ? 1 : 2)} ${unit}`)}</span>
-        <span class="verdict-value">${shown}</span>
-        <span class="verdict-text">${verdict}</span>
-      </div>
-      <dl class="result-stats">
-        <div><dt>Shots</dt><dd>${n}</dd></div>
-        <div><dt><abbr title="Standard deviation (n − 1)">SD</abbr></dt><dd>${sd.toFixed(2)} ${unit}</dd></div>
-        <div><dt><abbr title="Extreme spread: fastest minus slowest">ES</abbr></dt><dd>${(max - min).toFixed(d)} ${unit}</dd></div>
-        <div><dt>Slowest / fastest</dt><dd>${min.toFixed(d)} / ${max.toFixed(d)}</dd></div>
-        <div><dt>Median</dt><dd>${median.toFixed(d)} ${unit}</dd></div>
-      </dl>
+      ${hero({
+        label: 'Average muzzle velocity',
+        tone,
+        chance,
+        value: `${mean.toFixed(d)}<span class="kpi-unit">${unit}</span>`,
+        text: verdict,
+        extra: `<div class="card-actions"><button type="button" id="btn-apply-chrono-mv" class="lg-btn lg-btn-primary btn-wrap">${icon('check')} Use ${shown} for ${esc(profile.name)}</button></div>
+          <p class="lg-muted lg-small" id="chrono-current-mv">The rifle now uses ${fmtU(profile.muzzleVelocityMs, u.vel)}.</p>`,
+      })}
+      ${kpis([
+        ['<abbr title="Standard deviation (n − 1)">SD</abbr>', `${sd.toFixed(2)}<span class="kpi-unit">${unit}</span>`, 'standard deviation'],
+        ['<abbr title="Extreme spread: fastest minus slowest">ES</abbr>', `${(max - min).toFixed(d)}<span class="kpi-unit">${unit}</span>`, `${min.toFixed(d)} to ${max.toFixed(d)}`],
+        ['Shots', String(n), `median ${median.toFixed(d)} ${unit}`],
+      ])}
       ${problemHtml}
-      <button type="button" id="btn-apply-chrono-mv" class="btn-primary btn-block">${icon('check')} Use ${shown} as muzzle velocity for ${esc(profile.name)}</button>`;
+      <section class="lg-card tool-card" aria-labelledby="chrono-chart-title">
+        <h3 class="lg-label" id="chrono-chart-title">Shot by shot: difference from the average (${unit})</h3>
+        <div class="tool-chart" id="chrono-chart"></div>
+      </section>`;
+
+    const rd = unit === 'fps' ? 0 : 1;
+    this._chart('chrono', out.querySelector('#chrono-chart'), 'bar', {
+      label: `Shot by shot, difference from the average velocity in ${unit}`,
+      categories: good.map((_, i) => String(i + 1)),
+      series: [{ name: `Difference (${unit})`, values: good.map((x) => Number((x - mean).toFixed(rd))) }],
+    });
 
     out.querySelector('#btn-apply-chrono-mv')?.addEventListener('click', () => {
       const before = profile.muzzleVelocityMs;
       this._ownChange = true;
       appState.updateActiveProfile({ muzzleVelocityMs: meanSI, zeroAngleRad: null });
-      const u = units();
-      toast('Muzzle velocity updated', 'ok', `${profile.name}: ${fixed(toUnit(before, u.vel), DECIMALS[u.vel])} → ${fmtU(meanSI, u.vel)}`);
+      const uu = units();
+      toast('Muzzle velocity updated', 'ok', `${profile.name}: ${fixed(toUnit(before, uu.vel), DECIMALS[uu.vel])} → ${fmtU(meanSI, uu.vel)}`);
       const btn = out.querySelector('#btn-apply-chrono-mv');
+      const wrap = btn?.closest('.card-actions');
       // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
-      if (btn) btn.outerHTML = `<p class="applied-note">${icon('check-circle')} Applied to ${esc(profile.name)}</p>`;
+      if (wrap) wrap.outerHTML = this._appliedNote(esc(profile.name));
+      out.querySelector('#chrono-current-mv')?.remove();
     });
   }
 
   // ---- 5. Range estimation ----------------------------------------------------------------------
 
+  _millingAng() {
+    return this.values.milling.ang || units().ang;
+  }
+
   renderMilling() {
     const u = units();
     const v = this.values.milling;
+    const ang = this._millingAng();
     const sizeTxt = (cm) => `${fixed(toUnit(cm / 100, u.size), u.imp ? 1 : 0)} ${u.size}`;
     return `
       ${this._intro(TOOLS[4], 'Range estimation', 'Estimate distance from a target\'s known size and its size in your reticle.')}
       <div class="tool-layout">
-        <section class="panel tool-inputs" aria-labelledby="mill-in-title">
-          <div class="panel-header"><h3 id="mill-in-title">Target and reading</h3></div>
-          <div class="panel-body">
-            <div class="field-row">
-              <label class="field-label" for="milling-preset">Known size</label>
-              <select id="milling-preset" class="form-select">
-                ${RANGE_PRESETS.map((p) => `<option value="${p.id}" ${v.preset === p.id ? 'selected' : ''}>${p.label} (${sizeTxt(p.cm)})</option>`).join('')}
-                <option value="custom" ${v.preset === 'custom' ? 'selected' : ''}>Custom size</option>
-              </select>
-            </div>
-            ${this._numField({ id: 'milling-size-mm', label: 'Target size', unit: u.size, si: v.sizeM, min: 0.05, max: 10, live: true, set: (x) => { v.sizeM = x; this._syncPreset(); this.calcMilling(); } })}
-            ${this._numField({ id: 'milling-mils', label: 'Size in reticle', unit: u.ang, si: v.angleRad, min: 0.00005, max: 0.05, step: u.ang === 'MRAD' ? 0.05 : 0.25, live: true, set: (x) => { v.angleRad = x; this.calcMilling(); }, hint: 'Read it in the same direction as the size: a width across, a height up and down. In a second focal plane scope, read at the magnification the reticle is calibrated for.' })}
+        <section class="lg-card tool-card tool-inputs" aria-labelledby="mill-in-title">
+          <h3 class="lg-label" id="mill-in-title">Target and reading</h3>
+          <div class="field-row">
+            <label class="field-label" for="milling-preset">Known size</label>
+            <select id="milling-preset" class="lg-select">
+              ${RANGE_PRESETS.map((p) => `<option value="${p.id}" ${v.preset === p.id ? 'selected' : ''}>${p.label} (${sizeTxt(p.cm)})</option>`).join('')}
+              <option value="custom" ${v.preset === 'custom' ? 'selected' : ''}>Custom size</option>
+            </select>
           </div>
+          ${this._numField({ id: 'milling-size-mm', label: 'Target size', unit: u.size, si: v.sizeM, min: 0.05, max: 10, live: true, set: (x) => { v.sizeM = x; this._syncPreset(); this.calcMilling(); } })}
+          <div class="field-row">
+            <span class="field-label" id="milling-ang-label">Reticle</span>
+            ${this._segmented('milling-ang', 'Reticle', [['MRAD', 'MRAD'], ['MOA', 'MOA']], ang)}
+          </div>
+          ${this._numField({ id: 'milling-mils', label: 'Size in reticle', unit: ang, si: v.angleRad, min: 0.00005, max: 0.05, step: ang === 'MRAD' ? 0.05 : 0.25, live: true, set: (x) => { v.angleRad = x; this.calcMilling(); }, hint: 'Read it in the same direction as the size: a width across, a height up and down. In a second focal plane scope, read at the magnification the reticle is calibrated for.' })}
         </section>
-        <section class="panel tool-results" aria-labelledby="mill-out-title">
-          <div class="panel-header"><h3 id="mill-out-title">Estimated distance</h3></div>
-          <div class="panel-body" id="milling-out" aria-live="polite"></div>
-        </section>
+        <div class="tool-results" id="milling-out" aria-live="polite"></div>
       </div>`;
   }
 
@@ -1786,6 +1960,14 @@ export class ToolsView {
       }
       this.calcMilling();
     });
+    this.container.querySelectorAll('input[name="milling-ang"]').forEach((r) => {
+      r.addEventListener('change', () => {
+        if (!r.checked) return;
+        this.values.milling.ang = r.value === 'MOA' ? 'MOA' : 'MRAD';
+        this.render();
+        this.container.querySelector(`#milling-ang-${this.values.milling.ang}`)?.focus();
+      });
+    });
     this.calcMilling();
   }
 
@@ -1793,26 +1975,35 @@ export class ToolsView {
     const out = this.container.querySelector('#milling-out');
     if (!out) return;
     const u = units();
+    const ang = this._millingAng();
     const v = this.values.milling;
     const range = (a) => v.sizeM / Math.tan(a);
     const distM = range(v.angleRad);
     const other = u.dist === 'm' ? 'yd' : 'm';
-    const err = u.ang === 'MRAD' ? 0.0001 : 0.25 * CONVERSIONS.MOA;
+    const err = ang === 'MRAD' ? 0.0001 : 0.25 * CONVERSIONS.MOA;
     const near = range(v.angleRad + err);
     const far = v.angleRad - err > 0 ? range(v.angleRad - err) : Infinity;
-    const errTxt = u.ang === 'MRAD' ? '0.1 MRAD' : '0.25 MOA';
-    const formula = u.ang === 'MRAD'
+    const errTxt = ang === 'MRAD' ? '0.1 MRAD' : '0.25 MOA';
+    const formula = ang === 'MRAD'
       ? 'Distance (m) = size (mm) ÷ reading (MRAD)'
       : 'Distance (yd) ≈ size (in) × 95.5 ÷ reading (MOA)';
+    const tooFar = distM > 3000;
     // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
     out.innerHTML = `
-      <div class="tool-verdict tone-accent">
-        <span class="verdict-label">About</span>
-        <span class="verdict-value" id="milling-range-result">${grouped(toUnit(distM, u.dist))} ${u.dist}</span>
-        <span class="verdict-text" id="milling-range-yd">${grouped(toUnit(distM, other))} ${other}</span>
-      </div>
-      <p class="result-note">${icon('info')}<span>A reading ${errTxt} off gives ${grouped(toUnit(near, u.dist))}–${Number.isFinite(far) ? grouped(toUnit(far, u.dist)) : 'very far'} ${u.dist}. Confirm with a rangefinder when you can.</span></p>
-      <p class="formula-box"><code>${formula}</code></p>`;
+      <div class="lg-stack">
+        ${hero({
+          label: 'Estimated distance',
+          value: `${grouped(toUnit(distM, u.dist))}<span class="kpi-unit">${u.dist}</span>`,
+          valueId: 'milling-range-result',
+          text: `<span id="milling-range-yd">About ${grouped(toUnit(distM, other))} ${other}</span>`,
+        })}
+        ${alertBox(tooFar ? 'warn' : 'info', tooFar ? 'alert' : 'info', tooFar ? 'Very far' : 'How exact is this?',
+          `${tooFar ? 'That is beyond most rifles\' reach. Check the size and the reading. ' : ''}A reading ${errTxt} off gives ${grouped(toUnit(near, u.dist))}–${Number.isFinite(far) ? grouped(toUnit(far, u.dist)) : 'very far'} ${u.dist}. Confirm with a rangefinder when you can.`)}
+        <section class="lg-card tool-card" aria-labelledby="mill-formula-title">
+          <h3 class="lg-label" id="mill-formula-title">Formula</h3>
+          <p class="lg-mono formula">${formula}</p>
+        </section>
+      </div>`;
   }
 
   // ---- 6. Recoil --------------------------------------------------------------------------------
@@ -1822,23 +2013,20 @@ export class ToolsView {
     const v = this.values.recoil;
     return `
       ${this._intro(TOOLS[5], 'Recoil', 'Free recoil energy and velocity: how hard the rifle pushes back if nothing holds it.')}
-      ${this._context([`${icon('rifle')} Filled in from <strong>${esc(appState.getActiveProfile().name)}</strong>`])}
+      ${this._context([`${icon('rifle')}Filled in from <strong>${esc(appState.getActiveProfile().name)}</strong>`])}
       <div class="tool-layout">
-        <section class="panel tool-inputs" aria-labelledby="recoil-in-title">
-          <div class="panel-header"><h3 id="recoil-in-title">Rifle and load</h3></div>
-          <div class="panel-body">
-            ${this._numField({ id: 'recoil-rifle-kg', label: 'Rifle weight incl. scope and bipod', unit: u.mass, si: v.rifleKg, min: 1, max: 30, live: true, set: (x) => { v.rifleKg = x; this.calcRecoil(); } })}
-            <div class="field-grid-2">
-              ${this._numField({ id: 'recoil-bullet-gr', label: 'Bullet weight', unitText: 'gr', si: v.bulletGr, min: 20, max: 1000, dec: 1, live: true, set: (x) => { v.bulletGr = x; this.calcRecoil(); } })}
-              ${this._numField({ id: 'recoil-powder-gr', label: 'Powder charge', unitText: 'gr', si: v.powderGr, min: 1, max: 300, dec: 1, live: true, set: (x) => { v.powderGr = x; this.calcRecoil(); } })}
-            </div>
-            ${this._numField({ id: 'recoil-mv-ms', label: 'Muzzle velocity', unit: u.vel, si: v.mvMs, min: 150, max: 1500, live: true, set: (x) => { v.mvMs = x; this.calcRecoil(); }, hint: 'Powder gas is assumed to leave the muzzle at 1.5 × muzzle velocity, a common rule of thumb. Muzzle brakes and suppressors are not included.' })}
+        <section class="lg-card tool-card tool-inputs" aria-labelledby="recoil-in-title">
+          <h3 class="lg-label" id="recoil-in-title">Rifle and load</h3>
+          ${this._numField({ id: 'recoil-rifle-kg', label: 'Rifle weight with scope and bipod', unit: u.mass, si: v.rifleKg, min: 1, max: 30, live: true, set: (x) => { v.rifleKg = x; this.calcRecoil(); } })}
+          <div class="field-grid-2">
+            ${this._numField({ id: 'recoil-bullet-gr', label: 'Bullet weight', unitText: 'gr', si: v.bulletGr, min: 20, max: 1000, dec: 1, live: true, set: (x) => { v.bulletGr = x; this.calcRecoil(); } })}
+            ${this._numField({ id: 'recoil-powder-gr', label: 'Powder charge', unitText: 'gr', si: v.powderGr, min: 1, max: 300, dec: 1, live: true, set: (x) => { v.powderGr = x; this.calcRecoil(); } })}
           </div>
+          ${this._numField({ id: 'recoil-mv-ms', label: 'Muzzle velocity', unit: u.vel, si: v.mvMs, min: 150, max: 1500, live: true, set: (x) => { v.mvMs = x; this.calcRecoil(); }, hint: 'Powder gas is assumed to leave the muzzle at 1.5 × muzzle velocity, a common rule of thumb. Muzzle brakes and suppressors are not included.' })}
         </section>
-        <section class="panel tool-results" aria-labelledby="recoil-out-title">
-          <div class="panel-header"><h3 id="recoil-out-title">Result</h3></div>
-          <div class="panel-body" id="recoil-results" aria-live="polite"></div>
-        </section>
+        <div class="tool-results">
+          <div id="recoil-results" class="lg-stack" aria-live="polite"></div>
+        </div>
       </div>`;
   }
 
@@ -1860,28 +2048,40 @@ export class ToolsView {
         ? ['warn', 'Moderate', 'Typical for PRS rifles.']
         : ['ok', 'Light', 'Easy to spot your own hits through the scope.'];
     const velUnit = u.imp ? 'fps' : 'm/s';
-    // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
-    out.innerHTML = `
-      <div class="tool-verdict tone-${tone}">
-        <span class="verdict-label">Free recoil energy ${toneBadge(tone, level)}</span>
-        <span class="verdict-value">${fmtU(energyJ, u.energy)}</span>
-        <span class="verdict-text">${text}</span>
-      </div>
-      <dl class="result-stats">
-        <div><dt>Recoil velocity</dt><dd>${fixed(toUnit(recoilVelMs, velUnit), 2)} ${velUnit}</dd></div>
-        <div><dt>Recoil impulse</dt><dd>${impulseNs.toFixed(2)} N·s</dd></div>
-      </dl>
-      <div class="recoil-scale" aria-hidden="true">
-        <div class="recoil-track"><span class="recoil-marker" data-pos="${Math.min(100, (ftlb / 30) * 100).toFixed(1)}"></span></div>
-        <div class="recoil-ticks"><span>Light</span><span>Moderate</span><span>Heavy</span></div>
-      </div>
-      <p class="field-hint">Levels: light under 5 ft·lb (6.8 J), moderate 5–15 ft·lb, heavy above 15 ft·lb (20 J).</p>`;
-    out.querySelectorAll('[data-pos]').forEach((el) => el.style.setProperty('--pos', `${el.dataset.pos}%`));
+    const eUnit = u.energy;
+    const scale = eUnit === 'J' ? 'Light under 6.8 J, moderate 6.8–20 J, heavy above 20 J (5 and 15 ft·lb).' : 'Light under 5 ft·lb, moderate 5–15 ft·lb, heavy above 15 ft·lb.';
+    const meterHost = out.querySelector('#recoil-meter');
+
+    if (!meterHost) {
+      // eslint-disable-next-line no-unsanitized/property -- reviewed: constant markup; numbers are filled in below
+      out.innerHTML = `
+        <div class="lg-card lg-kpi tool-hero">
+          <div class="hero-head"><p class="lg-label">Free recoil energy</p><span id="recoil-badge"></span></div>
+          <div class="tool-meter" id="recoil-meter"></div>
+          <p class="hero-text" id="recoil-text"></p>
+          <p class="lg-muted lg-small" id="recoil-scale"></p>
+        </div>
+        <div id="recoil-kpis"></div>`;
+    }
+    // eslint-disable-next-line no-unsanitized/property -- reviewed: constants only
+    out.querySelector('#recoil-badge').outerHTML = `<span id="recoil-badge" class="lg-badge lg-badge-${tone}">${level}</span>`;
+    out.querySelector('#recoil-text').textContent = text;
+    out.querySelector('#recoil-scale').textContent = `${scale} The gauge runs to ${eUnit === 'J' ? '40.7 J' : '30 ft·lb'}.`;
+    // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers and constants only
+    out.querySelector('#recoil-kpis').innerHTML = kpis([
+      ['Recoil velocity', `${fixed(toUnit(recoilVelMs, velUnit), velUnit === 'fps' ? 1 : 2)}<span class="kpi-unit">${velUnit}</span>`, 'of the rifle'],
+      ['Recoil impulse', `${impulseNs.toFixed(2)}<span class="kpi-unit">N·s</span>`, 'bullet and powder gas'],
+    ]);
+    const value = Number(toUnit(energyJ, eUnit).toFixed(1));
+    const max = Number(toUnit(UnitConverter.toSI(30, 'ft-lb'), eUnit).toFixed(1));
+    this._chart('recoil', out.querySelector('#recoil-meter'), 'meter', { label: `Free recoil energy (${unitLabel(eUnit)})`, value, max });
   }
 
   // ---- view shell -------------------------------------------------------------------------------
 
   render() {
+    this._destroyCharts();
+    clearTimeout(this._chronoTimer);
     this.fieldDefs = new Map();
     const active = TOOLS.find((t) => t.id === this.activeTool) || TOOLS[0];
     this.activeTool = active.id;
@@ -1898,12 +2098,12 @@ export class ToolsView {
     // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants, icons and esc()'d strings only
     this.container.innerHTML = `
       <div class="tools-view">
-        <div class="view-header">
+        <header class="lg-header view-header">
           <div>
-            <h1>Tools</h1>
-            <p>True your data, check loads and groups, and estimate distance and recoil.</p>
+            <h1 class="lg-title">Tools</h1>
+            <p class="lg-muted">True your data, check loads and groups, and estimate distance and recoil.</p>
           </div>
-        </div>
+        </header>
         <div class="tools-tabs lg-tabs" role="tablist" aria-label="Tools">
           ${TOOLS.map((t) => `<button type="button" role="tab" class="lg-tab tool-tab" id="tool-tab-${t.id}" data-tool="${t.id}" aria-controls="tool-panel" aria-selected="${t.id === active.id}" tabindex="${t.id === active.id ? 0 : -1}">${icon(t.icon)}<span>${t.label}</span></button>`).join('')}
         </div>
