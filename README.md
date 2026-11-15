@@ -1,13 +1,13 @@
 # Ballistic Workbench
 
-An offline-first external ballistics workbench for precision rifle shooters. It solves
-trajectories with an RK4 integrator (G1, G7, Modified Point-Mass and 4DOF models), simulates
-reticle holdovers and turret dials, trues the model against real impacts, and prints DOPE cards
-in field formats: scope cap, wrist coach, stock tape, turret tape, PRS stage card and an A4 data
-sheet.
+An offline ballistics calculator for precision rifle shooters. Pick your rifle, set the distance
+and conditions, and it tells you what to dial: elevation and windage in MRAD or MOA, with the
+clicks for your scope. It also shows the hold in a simulated reticle, plots the trajectory, prints
+range cards (DOPE cards) and has tools to true the model against your real impacts.
 
-It's for long-range and PRS/NRL shooters, hunters and reloaders who want to plan and check
-firing solutions on a laptop or phone, with or without a network on the range.
+It's for long-range and PRS/NRL shooters, hunters and reloaders who want to plan and check firing
+solutions on a laptop or phone, with or without a network on the range. Everything runs in the
+browser; nothing is sent anywhere.
 
 **Version:** 0.1.0
 
@@ -18,26 +18,41 @@ firing solutions on a laptop or phone, with or without a network on the range.
 
 ### 0.1.0
 
-- First tracked version: the existing app brought under version control and the app standards.
-- Version number shown in the app footer, read from `manifest.json`.
-- README, CHANGELOG, CLAUDE.md, SECURITY.md and an MIT license.
+The first version, with a complete redesign and a corrected ballistics engine:
 
-Older versions: see [CHANGELOG.md](CHANGELOG.md).
+- **Correct drag model.** Standard G1 and G7 drag tables (JBM), cross-checked against an independent
+  solver within 0.01 MRAD and against Hornady's published 6.5 Creedmoor table. Corrected aerodynamic
+  jump, spin drift, cant, Coriolis, stability and powder temperature; the zero no longer shifts with
+  field conditions; 27 bullet BCs corrected to published values.
+- **New interface** in the Låda Glass design, dark and light (follows your system), custom icons,
+  plain-language text, and a phone layout.
+- **Solver** shows one clear firing solution (elevation and windage with direction and clicks),
+  with the reticle, trajectory chart and range table in tabs. Inputs are validated as you type.
+- **DOPE cards** print at exact physical size; **Tools** each give a plain verdict; **Library**
+  can edit, duplicate and delete rifles with undo.
+- **Security:** strict Content-Security-Policy, imported and saved data is validated, no inline
+  code, offline cache limited to the app's own files.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 ## Screenshots
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/workspace.png" alt="Command Center" width="400"><br>Command Center: telemetry, reticle and turret, trajectory chart and DOPE table</td>
-    <td><img src="docs/screenshots/solverLab.png" alt="Algorithm Lab" width="400"><br>Algorithm Lab: G1, G7, MPM and 4DOF solutions side by side</td>
+    <td><img src="docs/screenshots/workspace.png" alt="Solver, dark theme" width="420"><br>Solver: the firing solution, with the reticle hold and elevation turret</td>
+    <td><img src="docs/screenshots/workspace-light.png" alt="Solver, light theme" width="420"><br>The same in the light theme</td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/dopeStudio.png" alt="DOPE Studio" width="400"><br>DOPE Studio: print-ready range cards</td>
-    <td><img src="docs/screenshots/tools.png" alt="Tools and Chrono" width="400"><br>Tools &amp; Chrono: truing wizard, WEZ, group analysis and more</td>
+    <td><img src="docs/screenshots/dopeStudio.png" alt="DOPE cards" width="420"><br>DOPE cards: six printable formats with a true-size preview</td>
+    <td><img src="docs/screenshots/tools.png" alt="Tools" width="420"><br>Tools: true your data, hit probability, group analysis, chronograph, range estimation, recoil</td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/libraryManager.png" alt="Library" width="400"><br>Library: 177 projectiles, custom bullets and rifle profiles</td>
-    <td><img src="docs/screenshots/mobile.png" alt="Phone layout" width="200"><br>Phone width (390 px)</td>
+    <td><img src="docs/screenshots/libraryManager.png" alt="Library" width="420"><br>Library: your rifles, 177 bullets and your own bullets</td>
+    <td><img src="docs/screenshots/solverLab.png" alt="Compare models" width="420"><br>Compare models: how G1, G7, MPM and 4DOF differ for your rifle</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/mobile.png" alt="Phone layout" width="200"><br>Phone layout (390 px)</td>
+    <td><img src="docs/screenshots/dope-light.png" alt="DOPE cards, light theme" width="420"><br>Full-page data sheet in the light theme</td>
   </tr>
 </table>
 
@@ -45,18 +60,18 @@ Older versions: see [CHANGELOG.md](CHANGELOG.md).
 
 | View | What it does |
 | --- | --- |
-| 🎯 **Command Center** | Live firing solution for the active rifle and environment: elevation, windage, velocity, time of flight, energy, supersonic limit and density altitude. Includes a reticle holdover simulator (FFP/SFP, several reticles), an interactive elevation turret, a trajectory chart (drop, velocity, wind drift, time of flight, energy), a wind clock and a configurable DOPE table with CSV export. |
-| 🔬 **Algorithm Lab** | Compares G1, G7, Modified Point-Mass and 4DOF solutions on one chart, with a delta table relative to G7. |
-| 🖨️ **DOPE Studio** | Print-ready cards: scope cap (SVG), wrist coach, stock tape, turret tape, PRS stage card (with a stage builder, exportable as PNG) and an A4 master data sheet. |
-| 🛠️ **Tools & Chrono** | Truing wizard (supersonic muzzle velocity and transonic drop scale factor), WEZ Monte Carlo hit probability, target group analyzer (from a photo or grid), chronograph SD/ES statistics, milling and range estimation, free recoil energy. |
-| 📦 **Library** | 177 factory projectiles with search and filters, a custom bullet builder with a live Miller stability estimate, rifle and optic profiles, and JSON backup and restore. |
+| **Solver** | The firing solution for the active rifle at the exact target distance: elevation and windage (MRAD or MOA, direction and clicks), velocity with Mach, time of flight, energy and how far the bullet stays supersonic. Tabs: a reticle view showing where to hold, with an elevation turret you can dial (mouse, touch or keyboard); a trajectory chart (drop, velocity, wind drift, time of flight, energy); a range table with CSV export, where you tick the distances for your DOPE card. |
+| **Compare models** | How the point-mass G1 and G7, modified point mass (MPM: adds spin drift, aerodynamic jump and Coriolis) and 4DOF solutions differ for your rifle, as difference charts and a table. "Use in Solver" switches the model. |
+| **DOPE cards** | Printable range cards at exact physical size: scope cap insert, 3 × 5 in wrist card, stock tape, turret tape, match stage card (with a stage builder and wind holds for lull, base and gust) and a full-page data sheet. Copy as text, save as image, or print. |
+| **Tools** | **True your data** (muzzle velocity from a 500–800 m impact, then drag from a 1,000 m+ impact, applied to the rifle), **Hit probability** (simulates 500–2,000 shots from your error sources and shows what causes misses), **Group analysis** (from a photo or clicks: extreme spread, mean radius, dispersion ellipse and the correction to centre the group), **Chronograph** (SD, ES, mean; use the mean as muzzle velocity), **Range estimation** (from target size and reticle reading), **Recoil** (free recoil energy and velocity). |
+| **Library** | Your rifles (use, edit, duplicate, delete with undo), 177 factory bullets with search and caliber filter (published BCs marked with their source, derived ones marked "estimated"), your own bullets with a live Miller stability check, and backup to / restore from a file. |
 
-A command palette (**⌘K** / **Ctrl+K**) reaches every view and most settings.
+The command palette (**⌘K** on Mac, **Ctrl+K** elsewhere) reaches every view, tool and setting.
 
 ## Installation
 
-There is no build step and no dependencies. The app is plain HTML, CSS and ES modules, served as
-static files.
+There is no build step and the app has no runtime dependencies: it is plain HTML, CSS and
+JavaScript modules served as static files.
 
 ```sh
 git clone https://github.com/jozeta/Ballistic-Workbench.git
@@ -64,53 +79,67 @@ cd Ballistic-Workbench
 python3 -m http.server 8080
 ```
 
-Then open <http://localhost:8080>. The app has to be served over HTTP: ES modules and the service
-worker don't load from `file://`.
+Then open <http://localhost:8080>. The app must be served over HTTP: JavaScript modules and the
+offline service worker don't load from `file://`.
 
-**Install as an app (PWA):** in Chrome or Edge, use *Install app* in the address bar. On iOS
-Safari, use *Share → Add to Home Screen*. After the first visit the app works fully offline.
+**Install as an app:** in Chrome or Edge, use *Install app* in the address bar; on iPhone or iPad,
+Safari's *Share → Add to Home Screen*. After the first visit the app works fully offline.
 
 ## Configuration
 
-All settings are stored in the browser (`localStorage`) and nothing leaves your device.
+Settings are stored in your browser (`localStorage`); nothing leaves your device. Use
+**Library → Export…** to keep a backup.
 
 | Setting | Where | Options | Default |
 | --- | --- | --- | --- |
-| Units | Header button / palette | Metric (m, m/s, MRAD, cm) or Imperial (yd, fps, MOA, in) | Metric |
-| Theme | Header button / palette | Dark (night) or high-contrast light (sunlight) | Dark |
-| Environment | Header dropdown | ICAO sea level, Alpine high (1,950 m), Desert heat (38 °C), Sub-zero winter (-12 °C), or custom values in the Command Center | ICAO sea level |
-| Rifle profile | Command Center / Library / palette | Bergara 6.5 Creedmoor, AI AXSR .300 PRC, Tikka T3x .308, Remington 700 .223, or your own | Bergara 6.5 Creedmoor |
-| Solver algorithm | Command Center / palette | G1, G7, MPM, 4DOF | G7 |
-| Table step | DOPE table | Range step between rows | 25 m |
-| Max range | Solver config | Furthest range solved | 1,200 m |
-| Spin drift, Coriolis, aerodynamic jump | Solver config | On / off | All on |
-| Target | Command Center | Distance, shape (IPSC, circle, square, NATO E), size, speed and direction | 600 m IPSC torso (45 × 75 cm), stationary |
+| Units | Header button, palette | Metric (m, m/s, MRAD, cm) or imperial (yd, fps, MOA, in) | Metric |
+| Theme | Header button, palette | System, light, dark | System |
+| Rifle | Solver, Library, palette | Four example rifles (6.5 Creedmoor, .300 PRC, .308 Win, .223 Rem) or your own | 6.5 Creedmoor |
+| Distance and target | Solver → Target | Distance; target IPSC torso, round plate, square plate or NATO E | 600 m, IPSC torso |
+| Load and rifle | Solver → Load and rifle | Muzzle velocity, bullet weight, drag model (G1/G7), BC, solver model, sight height, zero distance, twist | From the rifle |
+| Solver model | Solver → Load and rifle, Compare models, palette | Point mass G7, point mass G1, modified point mass, 4DOF | Point mass G7 |
+| Atmosphere | Solver → Atmosphere | Presets (sea level, mountains 1,950 m, desert heat, winter) or your own temperature, station pressure, altitude and humidity; density altitude is shown | Standard atmosphere, sea level |
+| Wind | Solver → Wind | Speed and the direction it comes from (drag the wind clock or type degrees; 90° = from the right) | 4 m/s from 3 o'clock |
+| Shot angle and cant | Solver → Shot angle and cant | Inclination (+ uphill) and rifle cant (+ right) | 0° and 0° |
+| Scope | Solver → Reticle tab, rifle dialog | Reticle, first or second focal plane, magnification, click value (0.1 / 0.05 MRAD, 1/4 / 1/8 MOA) | From the rifle |
+| Range table | Solver → Range table | Row spacing 10 / 25 / 50 / 100 m; visible columns | 25 m, all columns |
+| DOPE card | DOPE cards | Format, distances (defaults or the ones ticked in the Solver), card size and colour | Full page |
 
 ## How to
 
-- **Get a firing solution:** pick a rifle profile, set the environment (or a preset), drag the
-  target range. The telemetry bar and the turret show the dial; the reticle shows the holdover.
-- **Add your own rifle:** Command Center → **+ New**, or Library → Saved Rifle & Optic Systems.
-  Enter muzzle velocity, sight height, zero, twist and the optic, then save.
-- **Add a custom bullet:** Library → Custom Projectile Builder. The Miller stability estimate
-  updates as you type; aim for Sg ≥ 1.5.
-- **True your model:** Tools & Chrono → Truing Wizard. Enter the dial that actually hit at a
-  supersonic distance (500 to 800 m) to true muzzle velocity, then a transonic distance (1000 m+)
-  to scale drag.
-- **Print a DOPE card:** DOPE Studio → pick a format → its **Print** button (the print stylesheet strips the
-  UI), or **Download SVG** / **Save PNG** where offered.
-- **Back up or move your data:** Library → **Export Library (JSON)**; restore with **Import JSON** on any device.
-- **Export the DOPE table:** Command Center → DOPE table → **CSV**.
+- **Get a firing solution:** choose your rifle at the top of the Solver, set the distance under
+  **Target**, then check **Atmosphere** and **Wind**. The firing solution card shows what to dial.
+- **Add your rifle:** press **+** next to the rifle in the Solver, or **Library → New rifle**. Pick a
+  bullet from the list (or enter your own), then the muzzle velocity, zero, sight height and scope.
+- **True the model to your rifle:** **Tools → True your data.** Shoot at 500–800 m, enter the
+  elevation that centred your group and apply the muzzle velocity. Then do the same at 1,000 m or
+  more to true the drag (it adjusts the BC).
+- **Use your chronograph:** **Tools → Chronograph**, paste the velocities (spaces, commas or new lines
+  between readings; 825,4 and 825.4 both work) and use the mean as the rifle's muzzle velocity.
+- **Print a DOPE card:** in the Solver's **Range table**, tick the distances you want and press
+  **Make DOPE card** (or go to **DOPE cards** directly for sensible defaults). Pick a format and press
+  **Print card**. Check the 50 mm scale bar with a ruler: printers sometimes scale pages.
+- **Plan a match stage:** **DOPE cards → Stage card**, choose a preset or add targets, set the lull,
+  base and gust wind; the card shows the elevation and wind hold for every target.
+- **Back up or move your data:** **Library → Export…** saves a file; **Import…** restores it on any
+  device (files are checked before anything is replaced).
 
 ## Tests
 
 ```sh
-node tests/verify.mjs          # physics, solvers, units, truing and WEZ
-node tests/version.mjs         # version agrees across manifest, service worker, README and CHANGELOG
-node tests/browser_check.mjs   # headless Chrome: every view, interactions, zero console errors
+npm install          # dev tools only (ESLint); the app itself needs nothing
+npm test             # physics and reference checks, helpers, version, offline cache list
+npm run test:browser # headless Chrome: every view in both themes and at phone width
+npm run lint
 ```
 
-`browser_check.mjs` needs Google Chrome installed in `/Applications`.
+`test:browser` needs Google Chrome (set `CHROME_PATH` if it isn't in `/Applications`). CI runs all of
+these on every push.
+
+## Design
+
+The interface uses Låda Glass 2.2.0 (`vendor/lada-glass/2.2.0/`). The icons (`assets/icons.svg`) and
+line-art graphics (`assets/art.svg`) are drawn for this app in the same style.
 
 ## License
 

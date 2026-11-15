@@ -4,54 +4,71 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Ballistic Workbench: an offline-first PWA for precision rifle external ballistics (RK4 trajectory
-solver with G1/G7/MPM/4DOF models, reticle and turret simulation, truing, WEZ Monte Carlo, printable
-DOPE cards). Vanilla JavaScript ES modules, no framework, no build step, no runtime dependencies.
-Public repo (MIT).
+Ballistic Workbench: an offline-first PWA ballistics calculator for precision rifle shooters (RK4
+point-mass solver with standard G1/G7 drag, MPM and a 4DOF variant; reticle and turret simulation;
+truing; hit-probability Monte Carlo; printable DOPE cards). Vanilla JavaScript ES modules, no
+framework, no build step, no runtime dependencies. Public repo (MIT).
 
 ## Commands
 
 ```sh
-python3 -m http.server 8080    # serve the app at http://localhost:8080 (must be HTTP, not file://)
-node tests/verify.mjs          # physics/solver/unit suite (~2600 assertions)
-node tests/version.mjs         # version consistency
-node tests/browser_check.mjs   # headless Chrome via CDP: all views, interactions, zero console errors
+python3 -m http.server 8080    # serve at http://localhost:8080 (must be HTTP, not file://)
+npm install                    # dev tooling only (ESLint)
+npm test                       # verify.mjs (physics + reference checks), helpers, version, sw-assets
+npm run test:browser           # headless Chrome E2E: every view, both themes, 390 px (CHROME_PATH to override)
+npm run lint
 ```
 
 ## Layout
 
-- `index.html`: app shell (header, nav, footer, command palette). `src/ui/app.js` bootstraps
-  and hash-routes between the five views.
-- `src/ui/`: one class per view (`workspace`, `solverLab`, `dopeStudio`, `tools`,
-  `libraryManager`) plus `rifleBuilderModal`. Views render with template strings into their container.
-- `src/core/state.js`: the reactive store (`appState`), persisted to `localStorage`, JSON
-  import/export. `src/core/units.js`: all unit conversion; physics works in SI internally.
-- `src/physics/`: `solvers.js` (RK4 integrator, zeroing), `atmosphere.js`, `truing.js`, `wez.js`.
-  Pure functions, tested in Node by `tests/verify.mjs`.
-- `src/data/`: drag tables, 177 projectiles, default rifle and environment profiles.
-- `src/canvas/`: canvas renderers (charts, reticle, turret, wind rose).
-- `styles/main.css` (themes via `[data-theme="light"]`), `styles/print.css` (card printing).
-- `sw.js`: network-first service worker; its asset list must include every new file.
+- `index.html`: shell (header nav, units/theme/search buttons, footer, strict CSP). `src/ui/app.js`
+  bootstraps, hash-routes between views, owns theme (System/Light/Dark → always sets
+  `<html data-theme>`), units button and the Låda command palette.
+- Views (`src/ui/`): `workspace.js` (Solver), `solverLab.js` (Compare models), `dopeStudio.js`
+  (DOPE cards), `tools.js`, `libraryManager.js`, plus `rifleBuilderModal.js` (rifle dialog).
+  **View contract:** constructor(container) renders; `refresh()` rebuilds everything (theme change);
+  `destroy()` removes subscriptions, observers and listeners. Views render template strings.
+- UI helpers: `icons.js` (`icon(name)` from `assets/icons.svg`), `fields.js` (`bindNumber` validated
+  number inputs with inline errors, `parseNumber` accepts comma decimals), `notify.js` (`toast`).
+- Core: `state.js` (reactive `appState`, localStorage, import/export), `sanitize.js` (validates every
+  stored/imported object against templates), `escape.js` (`esc`, `num`), `units.js`,
+  `trajectory.js` (`interpolateAt`).
+- Physics (`src/physics/`): `solvers.js`, `atmosphere.js`, `truing.js`, `wez.js`. Pure, SI units,
+  tested in Node. Drag tables in `src/data/dragTables.js` are the standard JBM G1/G7 tables; don't
+  edit values without a reference test.
+- Canvases (`src/canvas/`): chart, reticle, turret, wind clock; colours from `palette.js`
+  (`getPalette()` reads the Låda tokens), so they follow the theme.
+- Styles: Låda Glass in `vendor/lada-glass/2.2.0/`; `styles/main.css` (tokens mapping, header,
+  shared components, Solver); `styles/views/*.css` per view; `styles/print.css` (DOPE cards only).
+- `sw.js`: network-first service worker; `STATIC_ASSETS` must list every app file
+  (`tests/sw-assets.mjs` fails otherwise).
 
 ## Version
 
-`manifest.json` `"version"` is the single source. The footer reads it at runtime; `sw.js`'s
-`CACHE_NAME` repeats it, and so do the README "**Version:**" line and the newest CHANGELOG section.
+`manifest.json` `"version"` is the single source. The footer reads it at runtime; `package.json`,
+`sw.js`'s `CACHE_NAME`, the README "**Version:**" line and the newest CHANGELOG section repeat it.
 `tests/version.mjs` fails if they disagree, so bump them all in the same commit.
 
 ## Working agreements
 
 - This repo follows the app standards in `~/Desktop/code/tools/standards/STANDARDS.md` (rule IDs,
   severities). `claude-check --repo .` checks it; decisions and reasoned waivers go in `.claude-standards`.
-- Design decision: move to the Låda Glass family look (`design=family`), done as its own step.
-- Plan before building: agree on goals, scope and approach first, then implement in small,
-  tested steps (failing test first).
-- Untrusted data (imported JSON, `localStorage`, user input, URLs) is rendered with `textContent`
-  or escaped, never raw into `innerHTML`. No `eval`, no third-party requests (self-host anything in `vendor/`).
-- Physics changes need a test in `tests/verify.mjs`; UI changes must keep `browser_check.mjs` at zero console errors.
+- Design: Låda Glass (`design=family`). Colours only from `--lg-*` tokens (no hex in app CSS; the
+  printed DOPE cards have fixed paper/ink tokens on purpose). Icons from the sprite; no emoji.
+  Plain-language, sentence-case copy; explain jargon once.
+- Security: any string from user input, storage or an import goes through `esc()` before it is put
+  into a template; reviewed `innerHTML` sinks carry an `eslint-disable-next-line
+  no-unsanitized/property -- reviewed: …` comment. No inline styles or handlers (CSP); dynamic sizes
+  via the CSSOM. No third-party requests.
+- Units: physics is SI; every displayed number follows `appState.state.displayUnits`; clicks come
+  from the scope's `clickValueRad`, not the unit system.
+- Plan before building: agree on goals, scope and approach first, then implement in small, tested
+  steps. Physics changes need a reference test in `tests/verify.mjs`; UI changes keep
+  `npm run test:browser` green (zero console errors).
 - Record user-visible changes under "Unreleased" in `CHANGELOG.md`. Bump the version on every push
   that changes the app (patch: fixes, minor: features, major: breaking changes), and in the same
   commit move "Unreleased" under the new version and update the README's version and "What's new".
 - The README stays detailed (features, installation, every setting with its default, how-tos,
   screenshots in a grid with captions). Screenshots live in `docs/screenshots/`.
+- `PRODUCT_RESEARCH_AND_FEATURE_ROADMAP.md` (feature research) is gitignored; don't commit it.
 - There is no GitHub remote yet. Don't push or create repos unless asked.
