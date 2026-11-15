@@ -10,6 +10,9 @@ import { DopeStudioView } from './dopeStudio.js';
 import { ToolsView } from './tools.js';
 import { LibraryManagerView } from './libraryManager.js';
 
+const THEME_KEY = 'ballistic_theme_pref';
+const THEME_PREFS = ['system', 'light', 'dark'];
+
 class BallisticWorkbenchApp {
   constructor() {
     this.currentViewInstance = null;
@@ -32,6 +35,10 @@ class BallisticWorkbenchApp {
       if (changeKey === 'units') {
         this.updateUnitsToggleLabel();
       }
+      // Rifle commands come from the profile list
+      if (changeKey === 'profiles' || changeKey === 'import') {
+        this.palette?.setCommands(this.getCommandList().map((c) => ({ group: c.category, label: c.title, keywords: c.keywords || [], run: c.action })));
+      }
     });
   }
 
@@ -52,11 +59,6 @@ class BallisticWorkbenchApp {
       this.updateUnitsToggleLabel();
     });
 
-    const envSelect = document.getElementById('env-quick-select');
-    envSelect?.addEventListener('change', (e) => {
-      appState.setActiveEnvironment(e.target.value);
-    });
-
     this.updateUnitsToggleLabel();
   }
 
@@ -64,50 +66,74 @@ class BallisticWorkbenchApp {
     const unitsToggle = document.getElementById('btn-units-toggle');
     if (unitsToggle) {
       const isMetric = appState.state.systemUnits === 'metric';
-      unitsToggle.innerHTML = isMetric
-        ? `<span class="unit-badge">SI</span> Metric (m · MRAD)`
-        : `<span class="unit-badge">IMP</span> Imperial (yd · MOA)`;
+      const badge = document.createElement('span');
+      badge.className = 'unit-badge';
+      badge.textContent = isMetric ? 'SI' : 'IMP';
+      unitsToggle.replaceChildren(badge, document.createTextNode(isMetric ? ' Metric' : ' Imperial'));
+      unitsToggle.setAttribute('aria-label', isMetric ? 'Units: metric (m, MRAD). Switch to imperial' : 'Units: imperial (yd, MOA). Switch to metric');
     }
   }
 
+  /**
+   * Theme preference: 'system' (default, follows the OS), 'light' or 'dark'. The resolved theme is
+   * always written to <html data-theme>, because the canvases read it to pick their colours.
+   */
   initTheme() {
-    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('ballistic_theme') : null;
-    this.theme = saved || 'dark';
-    this.applyTheme(this.theme, false);
+    let saved = null;
+    try {
+      saved = localStorage.getItem(THEME_KEY);
+    } catch {
+      // Storage blocked (private mode): fall back to the system theme
+    }
+    this.themePref = THEME_PREFS.includes(saved) ? saved : 'system';
+    this.systemDark = window.matchMedia?.('(prefers-color-scheme: dark)');
+    this.systemDark?.addEventListener?.('change', () => {
+      if (this.themePref === 'system') this.applyTheme('system', true);
+    });
+    this.applyTheme(this.themePref, false);
 
-    const themeToggle = document.getElementById('btn-theme-toggle');
-    themeToggle?.addEventListener('click', () => {
-      const nextTheme = this.theme === 'dark' ? 'light' : 'dark';
-      this.applyTheme(nextTheme, true);
+    document.getElementById('btn-theme-toggle')?.addEventListener('click', () => {
+      const next = THEME_PREFS[(THEME_PREFS.indexOf(this.themePref) + 1) % THEME_PREFS.length];
+      this.applyTheme(next, true);
     });
   }
 
-  applyTheme(theme, notify = true) {
-    this.theme = theme;
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('ballistic_theme', theme);
-    }
-    if (theme === 'light') {
-      document.documentElement.setAttribute('data-theme', 'light');
-    } else {
-      document.documentElement.removeAttribute('data-theme');
-    }
-    const iconEl = document.getElementById('theme-toggle-icon');
-    const labelEl = document.getElementById('theme-toggle-label');
-    if (iconEl) iconEl.textContent = theme === 'dark' ? '☀️' : '🌙';
-    if (labelEl) labelEl.textContent = theme === 'dark' ? 'Sunlight' : 'Night Ops';
+  resolveTheme(pref) {
+    if (pref === 'light' || pref === 'dark') return pref;
+    return this.systemDark && !this.systemDark.matches ? 'light' : 'dark';
+  }
 
-    if (notify && this.currentViewInstance) {
-      if (this.currentViewInstance.render) {
-        this.currentViewInstance.render();
-      }
-      if (this.currentViewInstance.initVisualizers) {
-        this.currentViewInstance.initVisualizers();
-      }
-      if (this.currentViewInstance.recompute) {
-        this.currentViewInstance.recompute();
-      }
+  applyTheme(pref, notify = true) {
+    this.themePref = pref;
+    try {
+      localStorage.setItem(THEME_KEY, pref);
+    } catch {
+      // Not persisted; the choice still applies for this session
     }
+    const resolved = this.resolveTheme(pref);
+    const changed = document.documentElement.getAttribute('data-theme') !== resolved;
+    this.theme = resolved;
+    document.documentElement.setAttribute('data-theme', resolved);
+
+    const labels = { system: 'System', light: 'Light', dark: 'Dark' };
+    const icons = { system: './assets/icons.svg#contrast', light: './assets/icons.svg#sun', dark: './assets/icons.svg#moon' };
+    const labelEl = document.getElementById('theme-toggle-label');
+    const iconEl = document.getElementById('theme-toggle-icon');
+    if (labelEl) labelEl.textContent = labels[pref];
+    iconEl?.setAttribute('href', icons[pref]);
+    document.getElementById('btn-theme-toggle')?.setAttribute('aria-label', `Theme: ${labels[pref]}. Change theme`);
+
+    // Canvases draw with theme colours, so redraw the current view when the resolved theme changed
+    if (notify && changed) this.rerenderCurrentView();
+  }
+
+  /**
+   * View contract: every view class takes its container, renders itself, and implements
+   * refresh() (rebuild everything, e.g. after a theme change: canvases redraw with new colours)
+   * and destroy() (remove subscriptions, observers and window/document listeners).
+   */
+  rerenderCurrentView() {
+    this.currentViewInstance?.refresh?.();
   }
 
   /** Shows the app version in the footer; manifest.json is the single source of the version. */
@@ -155,7 +181,10 @@ class BallisticWorkbenchApp {
 
     // Update active nav link
     document.querySelectorAll('.nav-link').forEach((link) => {
-      link.classList.toggle('active', link.dataset.view === viewName);
+      const active = link.dataset.view === viewName;
+      link.classList.toggle('active', active);
+      if (active) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
     });
 
     switch (viewName) {
@@ -195,126 +224,60 @@ class BallisticWorkbenchApp {
         this.switchView(e.detail.view);
       }
     });
-
-    // Global keyboard shortcuts
-    window.addEventListener('keydown', (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        this.toggleCommandPalette();
-      }
-      if (e.key === 'Escape') {
-        this.closeCommandPalette();
-      }
-    });
   }
 
+  /** Command palette (⌘K / Ctrl+K) from Låda Glass: fuzzy search, arrow keys, Enter, Esc. */
   initCommandPalette() {
-    const palette = document.getElementById('command-palette-modal');
-    const input = document.getElementById('palette-search-input');
-    const trigger = document.getElementById('btn-cmd-palette-trigger');
-
-    trigger?.addEventListener('click', () => this.toggleCommandPalette());
-    palette?.querySelector('.palette-backdrop')?.addEventListener('click', () => this.closeCommandPalette());
-
-    input?.addEventListener('input', (e) => this.filterPaletteCommands(e.target.value));
-
-    // Initial render of commands
-    this.filterPaletteCommands('');
-  }
-
-  toggleCommandPalette() {
-    const palette = document.getElementById('command-palette-modal');
-    if (!palette) return;
-    const isOpen = palette.classList.contains('open');
-    if (isOpen) {
-      this.closeCommandPalette();
-    } else {
-      palette.classList.add('open');
-      const input = document.getElementById('palette-search-input');
-      if (input) {
-        input.value = '';
-        input.focus();
-        this.filterPaletteCommands('');
-      }
-    }
-  }
-
-  closeCommandPalette() {
-    const palette = document.getElementById('command-palette-modal');
-    palette?.classList.remove('open');
+    if (typeof LadaGlass === 'undefined') return;
+    this.palette = LadaGlass.palette({
+      placeholder: 'Search commands: views, units, theme, solver, rifle…',
+      commands: this.getCommandList().map((c) => ({ group: c.category, label: c.title, keywords: c.keywords || [], run: c.action })),
+    });
+    document.getElementById('btn-cmd-palette-trigger')?.addEventListener('click', () => this.palette.open());
   }
 
   getCommandList() {
+    const openTool = (tool) => () => {
+      this.switchView('tools');
+      this.currentViewInstance?.setTool?.(tool);
+    };
     return [
-      { id: 'view-workspace', title: 'Go to Command Center', category: 'Navigation', icon: '🎯', action: () => this.switchView('workspace') },
-      { id: 'view-lab', title: 'Open Algorithm Comparison Lab', category: 'Navigation', icon: '🔬', action: () => this.switchView('solverLab') },
-      { id: 'view-dope', title: 'Open DOPE & Range Card Studio', category: 'Navigation', icon: '🖨️', action: () => this.switchView('dopeStudio') },
-      { id: 'view-tools', title: 'Open Ballistic Tools & Chrono', category: 'Navigation', icon: '🛠️', action: () => this.switchView('tools') },
-      { id: 'tool-wez', title: 'Run WEZ 1,000-Shot Monte Carlo Hit Probability', category: 'Tools', icon: '🎲', action: () => { this.switchView('tools'); if (this.currentViewInstance?.setTool) this.currentViewInstance.setTool('wez'); } },
-      { id: 'tool-group', title: 'Analyze Target Group (ES & Mean Radius)', category: 'Tools', icon: '📐', action: () => { this.switchView('tools'); if (this.currentViewInstance?.setTool) this.currentViewInstance.setTool('group'); } },
-      { id: 'tool-chrono', title: 'Open Chronograph SD/ES Calculator', category: 'Tools', icon: '⏱️', action: () => { this.switchView('tools'); if (this.currentViewInstance?.setTool) this.currentViewInstance.setTool('chrono'); } },
-      { id: 'view-lib', title: 'Open Projectile & Rifle Library', category: 'Navigation', icon: '📦', action: () => this.switchView('libraryManager') },
+      { title: 'Go to Solver', category: 'Go to', keywords: ['workspace', 'command center', 'dope table', 'reticle'], action: () => this.switchView('workspace') },
+      { title: 'Go to Compare models', category: 'Go to', keywords: ['algorithm', 'lab', 'g1', 'g7', '4dof'], action: () => this.switchView('solverLab') },
+      { title: 'Go to DOPE cards', category: 'Go to', keywords: ['print', 'range card', 'wrist coach', 'scope cap'], action: () => this.switchView('dopeStudio') },
+      { title: 'Go to Tools', category: 'Go to', keywords: ['chrono', 'truing', 'wez'], action: () => this.switchView('tools') },
+      { title: 'Go to Library', category: 'Go to', keywords: ['bullets', 'projectiles', 'rifles', 'profiles', 'import', 'export'], action: () => this.switchView('libraryManager') },
 
-      { id: 'unit-metric', title: 'Set Units to Metric (m, m/s, MRAD, cm)', category: 'Settings', icon: '📐', action: () => appState.setSystemUnits('metric') },
-      { id: 'unit-imperial', title: 'Set Units to Imperial (yd, fps, MOA, in)', category: 'Settings', icon: '🇺🇸', action: () => appState.setSystemUnits('imperial') },
-      { id: 'theme-toggle', title: 'Toggle Dark Nordic / High-Contrast Sunlight Theme', category: 'Settings', icon: '☀️', action: () => this.applyTheme(this.theme === 'dark' ? 'light' : 'dark', true) },
-      { id: 'theme-light', title: 'Set Theme: High-Contrast Range Sunlight Mode', category: 'Settings', icon: '☀️', action: () => this.applyTheme('light', true) },
-      { id: 'theme-dark', title: 'Set Theme: Dark Nordic Tactical Mode', category: 'Settings', icon: '🌙', action: () => this.applyTheme('dark', true) },
+      { title: 'True muzzle velocity and drag', category: 'Tools', keywords: ['truing', 'calibrate', 'dsf'], action: openTool('truing') },
+      { title: 'Hit probability (WEZ simulation)', category: 'Tools', keywords: ['wez', 'monte carlo'], action: openTool('wez') },
+      { title: 'Analyze a shot group', category: 'Tools', keywords: ['group', 'extreme spread', 'mean radius', 'photo'], action: openTool('group') },
+      { title: 'Chronograph statistics (SD, ES)', category: 'Tools', keywords: ['chrono', 'velocity', 'sd', 'es'], action: openTool('chrono') },
+      { title: 'Estimate range with the reticle', category: 'Tools', keywords: ['milling', 'ranging'], action: openTool('milling') },
+      { title: 'Free recoil energy', category: 'Tools', keywords: ['recoil'], action: openTool('recoil') },
 
-      { id: 'alg-g7', title: 'Set Solver Algorithm to G7 Boat-tail', category: 'Solver', icon: '⚡', action: () => appState.updateSolverConfig({ activeAlgorithm: 'G7' }) },
-      { id: 'alg-mpm', title: 'Set Solver Algorithm to Modified Point-Mass (MPM)', category: 'Solver', icon: '🌀', action: () => appState.updateSolverConfig({ activeAlgorithm: 'MPM' }) },
-      { id: 'alg-4dof', title: 'Set Solver Algorithm to 4DOF Dynamic', category: 'Solver', icon: '🚀', action: () => appState.updateSolverConfig({ activeAlgorithm: '4DOF' }) },
-      { id: 'alg-g1', title: 'Set Solver Algorithm to G1 Gavre', category: 'Solver', icon: '📜', action: () => appState.updateSolverConfig({ activeAlgorithm: 'G1' }) },
+      { title: 'Units: metric (m, m/s, MRAD, cm)', category: 'Settings', keywords: ['si', 'meters'], action: () => appState.setSystemUnits('metric') },
+      { title: 'Units: imperial (yd, fps, MOA, in)', category: 'Settings', keywords: ['yards', 'feet'], action: () => appState.setSystemUnits('imperial') },
+      { title: 'Theme: follow system', category: 'Settings', keywords: ['auto', 'appearance'], action: () => this.applyTheme('system', true) },
+      { title: 'Theme: light', category: 'Settings', keywords: ['sunlight', 'day', 'appearance'], action: () => this.applyTheme('light', true) },
+      { title: 'Theme: dark', category: 'Settings', keywords: ['night', 'appearance'], action: () => this.applyTheme('dark', true) },
 
-      { id: 'prof-65', title: 'Load Profile: Bergara 6.5 Creedmoor PRS', category: 'Equipment', icon: '🎯', action: () => appState.setActiveProfile('profile-65cm-prs') },
-      { id: 'prof-300', title: 'Load Profile: AI AXSR .300 PRC ELR', category: 'Equipment', icon: '🔭', action: () => appState.setActiveProfile('profile-300prc-elr') },
-      { id: 'prof-308', title: 'Load Profile: Tikka T3x .308 Tactical', category: 'Equipment', icon: '🛡️', action: () => appState.setActiveProfile('profile-308-tactical') },
-      { id: 'prof-223', title: 'Load Profile: Remington 700 .223 Match', category: 'Equipment', icon: '🦊', action: () => appState.setActiveProfile('profile-223-match') },
+      { title: 'Drag model: G7 (boat-tail)', category: 'Solver', keywords: ['algorithm'], action: () => appState.updateSolverConfig({ activeAlgorithm: 'G7' }) },
+      { title: 'Drag model: G1 (flat-base)', category: 'Solver', keywords: ['algorithm'], action: () => appState.updateSolverConfig({ activeAlgorithm: 'G1' }) },
+      { title: 'Model: modified point mass (MPM)', category: 'Solver', keywords: ['algorithm'], action: () => appState.updateSolverConfig({ activeAlgorithm: 'MPM' }) },
+      { title: 'Model: 4DOF', category: 'Solver', keywords: ['algorithm'], action: () => appState.updateSolverConfig({ activeAlgorithm: '4DOF' }) },
+
+      ...appState.state.profiles.map((p) => ({
+        title: `Rifle: ${p.name}`,
+        category: 'Rifle',
+        keywords: [p.caliber || '', 'profile', 'load'],
+        action: () => appState.setActiveProfile(p.id),
+      })),
     ];
   }
 
-  filterPaletteCommands(query) {
-    const listContainer = document.getElementById('palette-results-list');
-    if (!listContainer) return;
-
-    const q = (query || '').toLowerCase().trim();
-    const commands = this.getCommandList().filter((c) =>
-      !q || c.title.toLowerCase().includes(q) || c.category.toLowerCase().includes(q)
-    );
-
-    if (commands.length === 0) {
-      listContainer.innerHTML = `<div class="palette-empty">No matching commands found</div>`;
-      return;
-    }
-
-    listContainer.innerHTML = commands
-      .map(
-        (cmd, index) => `
-          <div class="palette-item ${index === 0 ? 'selected' : ''}" data-cmd-id="${cmd.id}">
-            <span class="palette-icon">${cmd.icon}</span>
-            <div class="palette-text">
-              <span class="palette-title">${cmd.title}</span>
-              <span class="palette-category">${cmd.category}</span>
-            </div>
-          </div>
-        `
-      )
-      .join('');
-
-    // Bind item click
-    listContainer.querySelectorAll('.palette-item').forEach((item) => {
-      item.addEventListener('click', () => {
-        const cmd = commands.find((c) => c.id === item.dataset.cmdId);
-        if (cmd) {
-          cmd.action();
-          this.closeCommandPalette();
-        }
-      });
-    });
-  }
 }
 
 // Bootstrap application on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
-  window.app = new BallisticWorkbenchApp();
+  new BallisticWorkbenchApp();
 });

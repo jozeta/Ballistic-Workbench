@@ -9,6 +9,8 @@
  */
 
 import { appState } from '../core/state.js';
+import { esc } from '../core/escape.js';
+import { shapeLike } from '../core/sanitize.js';
 import { UnitConverter } from '../core/units.js';
 import { getAtmosphericConditions } from '../physics/atmosphere.js';
 import { solveTrajectory, solveZeroAngle } from '../physics/solvers.js';
@@ -152,12 +154,16 @@ export class DopeStudioView {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (parsed && Array.isArray(parsed.targets) && parsed.targets.length > 0) {
-            if (parsed.windDirectionDeg === undefined) parsed.windDirectionDeg = 90;
-            parsed.targets.forEach((t, i) => {
-              if (t.offsetM === undefined) t.offsetM = (i % 2 === 0 ? -1 : 1) * 12;
-              if (t.rounds === undefined) t.rounds = 2;
+            // Rebuild the stage from known fields only (numbers finite, text capped)
+            const template = this.presets['rooftop-barricade'];
+            const stage = shapeLike(parsed, { ...template, targets: [] });
+            stage.targets = parsed.targets.slice(0, 30).map((t, i) => {
+              const clean = shapeLike(t, { ...template.targets[0], id: `t${i + 1}`, offsetM: (i % 2 === 0 ? -1 : 1) * 12 });
+              if (!['gong', 'ipsc', 'square', 'diamond', 'kyl'].includes(clean.shape)) clean.shape = 'gong';
+              clean.rounds = Math.max(1, Math.min(20, Math.round(clean.rounds)));
+              return clean;
             });
-            return parsed;
+            return stage;
           }
         }
       } catch (e) {
@@ -534,7 +540,7 @@ export class DopeStudioView {
       calloutX = Math.max(15, Math.min(435, calloutX));
 
       targetsSvg += `
-        <g class="schematic-node ${this.highlightedTargetIdx === idx ? 'highlighted' : ''}" data-target-idx="${idx}" data-target-id="${p.id}">
+        <g class="schematic-node ${this.highlightedTargetIdx === idx ? 'highlighted' : ''}" data-target-idx="${idx}" data-target-id="${esc(p.id)}">
           <!-- Node Center Glow & Silhouetted Shape -->
           <g transform="translate(${p.x}, ${p.y})">
             <circle cx="0" cy="0" r="14" fill="${isHighVis ? '#ffffff' : '#0b111e'}" stroke="${isHighVis ? '#0284c7' : '#1e293b'}" stroke-width="2" />
@@ -640,7 +646,7 @@ export class DopeStudioView {
       accumulatedSec += g.rounds * secPerRound;
       const endSec = Math.round(accumulatedSec);
       return `<div class="pace-split-pill">
-        <span class="split-prop-name">${g.prop}</span>
+        <span class="split-prop-name">${esc(g.prop)}</span>
         <span class="split-time">${startSec}s–${endSec}s <span class="split-rnds">(${g.rounds}r)</span></span>
       </div>`;
     }).join('<span class="split-arrow">➔</span>');
@@ -746,7 +752,7 @@ export class DopeStudioView {
           <div class="builder-config-grid">
             <div class="input-field">
               <label for="input-stage-name">Stage Name / Title</label>
-              <input type="text" id="input-stage-name" class="stage-form-input" value="${stage.name}" placeholder="e.g. Stage 4: Rooftop & Barricade" />
+              <input type="text" id="input-stage-name" class="stage-form-input" value="${esc(stage.name)}" placeholder="e.g. Stage 4: Rooftop & Barricade" />
             </div>
 
             <div class="input-field input-field-sm">
@@ -789,7 +795,7 @@ export class DopeStudioView {
             <!-- Barricade Flow & Quick Prop Inserter -->
             <div class="input-field input-field-full">
               <label for="input-stage-props">Barricade Flow & Round Allocation</label>
-              <input type="text" id="input-stage-props" class="stage-form-input" value="${stage.propsDescription}" placeholder="Pos 1: Tank Trap (2) ➔ Pos 2: Spool (2) ➔ Pos 3: Barricade (2)..." />
+              <input type="text" id="input-stage-props" class="stage-form-input" value="${esc(stage.propsDescription)}" placeholder="Pos 1: Tank Trap (2) ➔ Pos 2: Spool (2) ➔ Pos 3: Barricade (2)..." />
               <div class="quick-prop-tags-row">
                 <span class="preset-label">Quick Insert:</span>
                 <button class="btn-prop-tag" data-prop="Tank Trap">+ Tank Trap</button>
@@ -841,7 +847,7 @@ export class DopeStudioView {
                       </select>
                     </td>
                     <td>
-                      <input type="text" class="target-field-input" data-field="name" value="${t.name}" />
+                      <input type="text" class="target-field-input" data-field="name" value="${esc(t.name)}" />
                     </td>
                     <td>
                       <input type="number" class="target-field-input mono-num" data-field="distanceM" value="${isImperial ? Math.round(UnitConverter.convert(t.distanceM, 'm', 'yd')) : t.distanceM}" step="5" />
@@ -856,10 +862,10 @@ export class DopeStudioView {
                       <input type="number" class="target-field-input mono-num text-center" data-field="rounds" value="${t.rounds || 2}" min="1" max="10" />
                     </td>
                     <td>
-                      <input type="text" class="target-field-input" data-field="prop" value="${t.prop || `Pos ${idx + 1}`}" placeholder="e.g. Pos 1: Tank Trap" />
+                      <input type="text" class="target-field-input" data-field="prop" value="${esc(t.prop || `Pos ${idx + 1}`)}" placeholder="e.g. Pos 1: Tank Trap" />
                     </td>
                     <td>
-                      <input type="text" class="target-field-input" data-field="notes" value="${t.notes || ''}" placeholder="Hold / Order note" />
+                      <input type="text" class="target-field-input" data-field="notes" value="${esc(t.notes || '')}" placeholder="Hold / Order note" />
                     </td>
                     <td class="text-center action-btn-cell">
                       <button class="btn-action-icon btn-move-up" data-idx="${idx}" title="Move Target Up" ${idx === 0 ? 'disabled' : ''}>▲</button>
@@ -898,7 +904,7 @@ export class DopeStudioView {
                 <div class="header-main-banner">
                   <div class="banner-title-block">
                     <span class="badge-stage-tag">PRS / NRL MATCH BRIEF</span>
-                    <h2 class="stage-title-text">${stage.name}</h2>
+                    <h2 class="stage-title-text">${esc(stage.name)}</h2>
                   </div>
                   <div class="tactical-pills-row">
                     <span class="tactical-pill pill-timer">⏱️ <strong>${timeLimitSec}s</strong></span>
@@ -912,7 +918,7 @@ export class DopeStudioView {
                 <!-- Rifle & Atmospheric Baseline Sub-Bar -->
                 <div class="header-sub-meta">
                   <div class="meta-profile-str">
-                    <strong>RIFLE:</strong> ${profile.name} • ${profile.bullet.weightGr}gr ${profile.caliber} (${profile.muzzleVelocityMs} m/s)
+                    <strong>RIFLE:</strong> ${esc(profile.name)} • ${profile.bullet.weightGr}gr ${esc(profile.caliber)} (${profile.muzzleVelocityMs} m/s)
                   </div>
                   <div class="meta-atmos-str">
                     <strong>BASELINE:</strong> DA: ${daFormatted}m • ${dope.env.temperatureC}°C • ${dope.env.pressureHpa}hPa • Zero: ${profile.zeroDistanceM}m
@@ -922,7 +928,7 @@ export class DopeStudioView {
                 <!-- Barricade / Prop Flow Sequence Bar -->
                 <div class="barricade-flow-bar">
                   <span class="flow-tag">PROP FLOW:</span>
-                  <span class="flow-desc">${stage.propsDescription}</span>
+                  <span class="flow-desc">${esc(stage.propsDescription)}</span>
                 </div>
 
                 <!-- Suggested Stage Par Time Breakdown Bar -->
@@ -956,12 +962,12 @@ export class DopeStudioView {
                             ${this.renderTargetSilhouetteSvg(t.shape, 20)}
                           </div>
                         </div>
-                        <div class="tgt-name-sub">${t.name}</div>
+                        <div class="tgt-name-sub">${esc(t.name)}</div>
                       </td>
 
                       <!-- Prop Position & Shot Count -->
                       <td class="cell-prop">
-                        <div class="prop-badge-pill">${t.prop || `Pos ${t.index}`}</div>
+                        <div class="prop-badge-pill">${esc(t.prop || `Pos ${t.index}`)}</div>
                         <div class="rounds-alloc-tag">⚡ <strong>${t.rounds}</strong> ${t.rounds > 1 ? 'shots' : 'shot'}</div>
                       </td>
 
@@ -1010,7 +1016,7 @@ export class DopeStudioView {
 
                       <!-- Prop & Shooter Hold Notes -->
                       <td class="cell-notes">
-                        <div class="note-text-display">${t.notes || '—'}</div>
+                        <div class="note-text-display">${esc(t.notes || '—')}</div>
                       </td>
                     </tr>
                   `).join('')}
@@ -1178,7 +1184,7 @@ export class DopeStudioView {
               <circle cx="250" cy="250" r="116" fill="#ffffff" stroke="#94a3b8" stroke-width="2" />
 
               <!-- Caliber & Profile Header in Center -->
-              <text x="250" y="178" font-family="system-ui, -apple-system, sans-serif" font-size="21" font-weight="900" fill="#0f172a" text-anchor="middle" letter-spacing="0.04em">${dope.profile.caliber}</text>
+              <text x="250" y="178" font-family="system-ui, -apple-system, sans-serif" font-size="21" font-weight="900" fill="#0f172a" text-anchor="middle" letter-spacing="0.04em">${esc(dope.profile.caliber)}</text>
               <text x="250" y="204" font-family="system-ui, -apple-system, sans-serif" font-size="15.5" font-weight="800" fill="#334155" text-anchor="middle">${dope.profile.bullet.weightGr}gr | ${mvVal}${mvUnit}</text>
               <text x="250" y="228" font-family="monospace" font-size="13.5" font-weight="700" fill="#475569" text-anchor="middle">DA: ${daVal}${daUnit} | ${zeroVal}${distUnit} Zero</text>
 
@@ -1257,8 +1263,8 @@ export class DopeStudioView {
           <div class="lamination-guide-border">
             <div class="coach-header">
               <div class="coach-title-block">
-                <span class="coach-title">${dope.profile.name}</span>
-                <span class="coach-spec">${dope.profile.bullet.weightGr}gr ${dope.profile.caliber}</span>
+                <span class="coach-title">${esc(dope.profile.name)}</span>
+                <span class="coach-spec">${dope.profile.bullet.weightGr}gr ${esc(dope.profile.caliber)}</span>
               </div>
               <div class="coach-meta">
                 <span>MV: ${mvVal}${velUnit}</span>
@@ -1355,7 +1361,7 @@ export class DopeStudioView {
         <div class="stock-tape-wrapper">
           <div class="stock-tape-strip print-sheet">
             <div class="tape-header">
-              <span class="tape-header-weapon"><strong>${dope.profile.bullet.weightGr}gr ${dope.profile.caliber}</strong></span>
+              <span class="tape-header-weapon"><strong>${dope.profile.bullet.weightGr}gr ${esc(dope.profile.caliber)}</strong></span>
               <span class="tape-header-meta">MV: ${mvVal}${velUnit} | ZERO: ${zeroVal}${distUnit} | DA: ${daVal}${daUnit} | ${isMrad ? 'MRAD (0.1)' : 'MOA (1/4)'}</span>
             </div>
 
@@ -1520,7 +1526,7 @@ export class DopeStudioView {
         <div class="card-meta-bar no-print">
           <div class="meta-left">
             <span class="meta-title">🎯 Calibrated Turret Tape / Wrap</span>
-            <span class="meta-badge">${dope.profile.name}</span>
+            <span class="meta-badge">${esc(dope.profile.name)}</span>
             <label class="tape-ctrl-label ml-10px">Preset:
               <select id="turret-tape-preset-select" class="form-select-sm">
                 ${presets.map((p) => `<option value="${p.circ}" ${Math.abs(p.circ - circMm) < 0.3 ? 'selected' : ''}>${p.label}</option>`).join('')}
@@ -1699,11 +1705,11 @@ export class DopeStudioView {
           <div class="sheet-title-banner">
             <h1>BALLISTIC DATA SHEET - PRECISION RIFLE</h1>
             <div class="sheet-meta-grid">
-              <div><strong>Weapon:</strong> ${dope.profile.name}</div>
-              <div><strong>Caliber:</strong> ${dope.profile.caliber}</div>
-              <div><strong>Optic:</strong> ${dope.profile.optic?.model}</div>
+              <div><strong>Weapon:</strong> ${esc(dope.profile.name)}</div>
+              <div><strong>Caliber:</strong> ${esc(dope.profile.caliber)}</div>
+              <div><strong>Optic:</strong> ${esc(dope.profile.optic?.model)}</div>
               <div><strong>Zero:</strong> ${zeroVal}${distUnit} (${shVal}${shUnit} SH)</div>
-              <div><strong>Bullet:</strong> ${dope.profile.bullet.name} (${dope.profile.bullet.weightGr}gr)</div>
+              <div><strong>Bullet:</strong> ${esc(dope.profile.bullet.name)} (${dope.profile.bullet.weightGr}gr)</div>
               <div><strong>Muzzle Velocity:</strong> ${mvVal} ${velUnit}</div>
               <div><strong>Atmosphere:</strong> ${tempVal}${tempUnit}, ${pressVal} ${pressUnit}, DA ${daVal}${daUnit}</div>
               <div><strong>Twist:</strong> 1:${dope.profile.twistRateIn}" (${dope.profile.twistDirection})</div>

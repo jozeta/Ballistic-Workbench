@@ -4,6 +4,7 @@
  */
 
 import { appState } from '../core/state.js';
+import { esc } from '../core/escape.js';
 import { UnitConverter } from '../core/units.js';
 
 export class RifleBuilderModal {
@@ -53,7 +54,7 @@ export class RifleBuilderModal {
               <label>Match Projectile (Select from Database or Custom)</label>
               <select id="rf-bullet-select" class="form-select">
                 <option value="custom">-- Custom Bullet Parameters --</option>
-                ${bullets.map((b) => `<option value="${b.id}">${b.manufacturer} - ${b.name} (${b.weightGr}gr, BC ${b.bcG7 || b.bcG1})</option>`).join('')}
+                ${bullets.map((b) => `<option value="${esc(b.id)}">${esc(b.manufacturer)} - ${esc(b.name)} (${b.weightGr}gr, BC ${b.bcG7 || b.bcG1})</option>`).join('')}
               </select>
             </div>
 

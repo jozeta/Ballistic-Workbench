@@ -7,8 +7,34 @@
 import { DEFAULT_PROFILES, DEFAULT_ENVIRONMENTS } from '../data/defaultProfiles.js';
 import { PROJECTILES } from '../data/projectiles.js';
 import { UnitConverter } from './units.js';
+import {
+  sanitizeProfiles,
+  sanitizeEnvironments,
+  sanitizeBullets,
+  sanitizeSolverConfig,
+  sanitizeTarget,
+  MAX_IMPORT_BYTES,
+} from './sanitize.js';
 
 const STORAGE_KEY = 'ballistic_workbench_state_v1';
+
+const DEFAULT_TARGET = {
+  distanceM: 600,
+  targetSizeWidthCm: 45, // IPSC torso width
+  targetSizeHeightCm: 75, // IPSC torso height
+  targetShape: 'ipsc', // 'ipsc' | 'circle' | 'square' | 'nato-e'
+  targetSpeedKmh: 0,
+  targetDirectionDeg: 90, // moving right
+};
+
+const DEFAULT_SOLVER_CONFIG = {
+  activeAlgorithm: 'G7', // 'G1' | 'G7' | 'MPM' | '4DOF'
+  stepM: 25,
+  maxRangeM: 1200,
+  includeSpinDrift: true,
+  includeCoriolis: true,
+  includeAerodynamicJump: true,
+};
 
 export class StateStore {
   constructor() {
@@ -16,75 +42,73 @@ export class StateStore {
     this.state = this._loadInitialState();
   }
 
-  _loadInitialState() {
-    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // Ensure default structure exists
-        return {
-          systemUnits: parsed.systemUnits || 'metric', // 'metric' | 'imperial'
-          profiles: parsed.profiles?.length ? parsed.profiles : DEFAULT_PROFILES,
-          activeProfileId: parsed.activeProfileId || DEFAULT_PROFILES[0].id,
-          environments: parsed.environments?.length ? parsed.environments : DEFAULT_ENVIRONMENTS,
-          activeEnvironmentId: parsed.activeEnvironmentId || DEFAULT_ENVIRONMENTS[0].id,
-          projectilesLibrary: (() => {
-            if (!parsed.projectilesLibrary || !Array.isArray(parsed.projectilesLibrary) || parsed.projectilesLibrary.length === 0) {
-              return [...PROJECTILES];
-            }
-            // Retain custom bullets created by user while ensuring factory projectiles are canonical & up to date
-            const factoryIds = new Set(PROJECTILES.map((p) => p.id));
-            const customBullets = parsed.projectilesLibrary.filter((p) => !factoryIds.has(p.id));
-            return [...PROJECTILES, ...customBullets];
-          })(),
-          target: parsed.target || {
-            distanceM: 600,
-            targetSizeWidthCm: 45, // 18 inches ~ 45 cm standard IPSC width
-            targetSizeHeightCm: 75, // 30 inches ~ 75 cm standard IPSC torso
-            targetShape: 'ipsc', // 'ipsc' | 'circle' | 'square' | 'nato-e'
-            targetSpeedKmh: 0,
-            targetDirectionDeg: 90, // moving right
-          },
-          solverConfig: parsed.solverConfig || {
-            activeAlgorithm: 'G7', // 'G1' | 'G7' | 'MPM' | '4DOF'
-            stepM: 25,
-            maxRangeM: 1200,
-            includeSpinDrift: true,
-            includeCoriolis: true,
-            includeAerodynamicJump: true,
-          },
-          displayUnits: parsed.displayUnits || UnitConverter.getSystemDefaults('metric'),
-        };
-      } catch (e) {
-        console.warn('Failed to parse saved state, loading defaults', e);
-      }
-    }
-
+  _defaults() {
     return {
       systemUnits: 'metric',
-      profiles: [...DEFAULT_PROFILES],
+      profiles: structuredClone(DEFAULT_PROFILES),
       activeProfileId: DEFAULT_PROFILES[0].id,
-      environments: [...DEFAULT_ENVIRONMENTS],
+      environments: sanitizeEnvironments(DEFAULT_ENVIRONMENTS, DEFAULT_ENVIRONMENTS),
       activeEnvironmentId: DEFAULT_ENVIRONMENTS[0].id,
       projectilesLibrary: [...PROJECTILES],
-      target: {
-        distanceM: 600,
-        targetSizeWidthCm: 45,
-        targetSizeHeightCm: 75,
-        targetShape: 'ipsc',
-        targetSpeedKmh: 0,
-        targetDirectionDeg: 90,
-      },
-      solverConfig: {
-        activeAlgorithm: 'G7',
-        stepM: 25,
-        maxRangeM: 1200,
-        includeSpinDrift: true,
-        includeCoriolis: true,
-        includeAerodynamicJump: true,
-      },
+      target: { ...DEFAULT_TARGET },
+      solverConfig: { ...DEFAULT_SOLVER_CONFIG },
       displayUnits: UnitConverter.getSystemDefaults('metric'),
     };
+  }
+
+  /**
+   * Merges data from storage or an import into a state object. Every field is validated
+   * (src/core/sanitize.js); anything missing or invalid keeps the value already in `base`.
+   */
+  _mergeValidated(base, parsed) {
+    const profiles = sanitizeProfiles(parsed.profiles, DEFAULT_PROFILES);
+    if (profiles) base.profiles = profiles;
+    const envs = sanitizeEnvironments(parsed.environments, DEFAULT_ENVIRONMENTS);
+    if (envs) base.environments = envs;
+    if (Array.isArray(parsed.projectilesLibrary)) {
+      // Factory bullets always come from the app; only custom ones are taken from the data
+      const factoryIds = new Set(PROJECTILES.map((p) => p.id));
+      const custom = sanitizeBullets(parsed.projectilesLibrary.filter((p) => p && !factoryIds.has(p.id)));
+      const existingCustom = base.projectilesLibrary.filter((p) => !factoryIds.has(p.id) && !custom.some((c) => c.id === p.id));
+      base.projectilesLibrary = [...PROJECTILES, ...existingCustom, ...custom];
+    }
+    if (parsed.target) base.target = sanitizeTarget(parsed.target, { ...DEFAULT_TARGET, ...base.target });
+    if (parsed.solverConfig) base.solverConfig = sanitizeSolverConfig(parsed.solverConfig, { ...DEFAULT_SOLVER_CONFIG, ...base.solverConfig });
+    if (parsed.systemUnits === 'metric' || parsed.systemUnits === 'imperial') {
+      base.systemUnits = parsed.systemUnits;
+      base.displayUnits = UnitConverter.getSystemDefaults(parsed.systemUnits);
+    }
+    if (typeof parsed.activeProfileId === 'string' && base.profiles.some((p) => p.id === parsed.activeProfileId)) {
+      base.activeProfileId = parsed.activeProfileId;
+    }
+    if (!base.profiles.some((p) => p.id === base.activeProfileId)) base.activeProfileId = base.profiles[0].id;
+    if (typeof parsed.activeEnvironmentId === 'string' && base.environments.some((e) => e.id === parsed.activeEnvironmentId)) {
+      base.activeEnvironmentId = parsed.activeEnvironmentId;
+    }
+    if (!base.environments.some((e) => e.id === base.activeEnvironmentId)) base.activeEnvironmentId = base.environments[0].id;
+    if (Array.isArray(parsed.customDopeRanges)) {
+      base.customDopeRanges = parsed.customDopeRanges.filter((d) => Number.isFinite(d) && d > 0 && d <= 5000).slice(0, 200);
+    }
+    return base;
+  }
+
+  _loadInitialState() {
+    const state = this._defaults();
+    let saved = null;
+    try {
+      saved = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+    } catch {
+      // Storage blocked: start from defaults
+    }
+    if (saved && saved.length <= MAX_IMPORT_BYTES) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return this._mergeValidated(state, parsed);
+      } catch (e) {
+        console.warn('Saved settings could not be read; starting from defaults', e);
+      }
+    }
+    return state;
   }
 
   save() {
@@ -144,6 +168,11 @@ export class StateStore {
 
   updateActiveEnvironment(updates) {
     const env = this.getActiveEnvironment();
+    // Editing the single wind speed/direction replaces any per-distance wind zones; otherwise the
+    // zones would keep overriding what the user just entered.
+    if (('windSpeedMs' in updates || 'windDirectionDeg' in updates) && !('windZones' in updates)) {
+      env.windZones = [];
+    }
     Object.assign(env, updates);
     this.notify('environment');
   }
@@ -187,44 +216,21 @@ export class StateStore {
     return JSON.stringify(this.state, null, 2);
   }
 
+  /** Imports a backup made by exportJSON. Returns true when the file was a usable backup. */
   importJSON(jsonString) {
+    if (typeof jsonString !== 'string' || jsonString.length > MAX_IMPORT_BYTES) return false;
     try {
       const parsed = JSON.parse(jsonString);
-      if (parsed && typeof parsed === 'object') {
-        if (Array.isArray(parsed.profiles) && parsed.profiles.length > 0) {
-          this.state.profiles = parsed.profiles;
-          if (!this.state.profiles.some((p) => p.id === this.state.activeProfileId)) {
-            this.state.activeProfileId = this.state.profiles[0].id;
-          }
-        }
-        if (Array.isArray(parsed.environments) && parsed.environments.length > 0) {
-          this.state.environments = parsed.environments;
-          if (!this.state.environments.some((e) => e.id === this.state.activeEnvironmentId)) {
-            this.state.activeEnvironmentId = this.state.environments[0].id;
-          }
-        }
-        if (Array.isArray(parsed.projectilesLibrary) && parsed.projectilesLibrary.length > 0) {
-          const factoryIds = new Set(PROJECTILES.map((p) => p.id));
-          const customBullets = parsed.projectilesLibrary.filter((p) => !factoryIds.has(p.id));
-          this.state.projectilesLibrary = [...PROJECTILES, ...customBullets];
-        }
-        if (parsed.solverConfig && typeof parsed.solverConfig === 'object') {
-          Object.assign(this.state.solverConfig, parsed.solverConfig);
-        }
-        if (parsed.target && typeof parsed.target === 'object') {
-          Object.assign(this.state.target, parsed.target);
-        }
-        if (parsed.systemUnits === 'metric' || parsed.systemUnits === 'imperial') {
-          this.state.systemUnits = parsed.systemUnits;
-          this.state.displayUnits = UnitConverter.getSystemDefaults(parsed.systemUnits);
-        }
-        this.notify('import');
-        return true;
-      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+      const usable = ['profiles', 'environments', 'projectilesLibrary', 'target', 'solverConfig', 'systemUnits'].some((k) => k in parsed);
+      if (!usable) return false;
+      this.state = this._mergeValidated(this.state, parsed);
+      this.notify('import');
+      return true;
     } catch (e) {
-      console.error('Invalid profile JSON', e);
+      console.warn('Import failed: not valid JSON', e);
+      return false;
     }
-    return false;
   }
 }
 

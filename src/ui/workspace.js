@@ -14,6 +14,9 @@ import { ReticleRenderer } from '../canvas/reticle.js';
 import { TurretKnob } from '../canvas/turret.js';
 import { WindRoseVisualizer } from '../canvas/windRose.js';
 import { RifleBuilderModal } from './rifleBuilderModal.js';
+import { esc } from '../core/escape.js';
+import { icon } from './icons.js';
+import { bindNumber, rangeError, setFieldError, parseNumber } from './fields.js';
 
 export class WorkspaceView {
   constructor(containerElement) {
@@ -42,6 +45,10 @@ export class WorkspaceView {
 
     // Selected ranges for transfer to DOPE Studio
     this.selectedRanges = new Set();
+
+    // Remembered across re-renders (unit or profile changes rebuild the view)
+    this.openSections = new Set(['target', 'load', 'wind']);
+    this.activePanel = 'reticle';
 
     this.render();
     this.initVisualizers();
@@ -275,55 +282,53 @@ export class WorkspaceView {
 
     const isMetric = sysUnits === 'metric';
     const isMrad = dispUnits.elevationAngle === 'MRAD';
+    const angUnit = isMrad ? 'MRAD' : 'MOA';
+    const yd = dispUnits.distance === 'yd';
+    const dist = (m) => Math.round(yd ? m * 1.09361 : m);
 
     const elVal = isMrad ? targetPoint.elevationMrad : targetPoint.elevationMoa;
-    const elUnit = isMrad ? 'MRAD' : 'MOA';
-
-    const windVal = isMrad ? Math.abs(targetPoint.windageMrad) : Math.abs(targetPoint.windageMoa);
-    const windUnit = isMrad ? 'MRAD' : 'MOA';
-    const windDirSign = targetPoint.windageMrad >= 0 ? '▶ R' : '◀ L';
+    const windVal = isMrad ? targetPoint.windageMrad : targetPoint.windageMoa;
+    const elClicks = targetPoint.elevationClicks;
+    const windClicks = Math.abs(targetPoint.windageClicks);
+    const elDir = elClicks >= 0 ? 'Up' : 'Down';
+    const windDir = Math.abs(windVal) < 0.005 ? '' : windVal > 0 ? 'Right' : 'Left';
 
     const velVal = isMetric ? targetPoint.velocityMs : targetPoint.velocityMs * 3.28084;
-    const velUnit = isMetric ? 'm/s' : 'fps';
-
     const energyVal = isMetric ? targetPoint.energyJ : targetPoint.energyJ * 0.737562;
-    const energyUnit = isMetric ? 'J' : 'ft-lb';
-
-    const distVal = dispUnits.distance === 'yd' ? Math.round(targetPoint.distanceM * 1.09361) : targetPoint.distanceM;
-    const distUnit = dispUnits.distance;
+    const regime = targetPoint.mach >= 1.2 ? 'supersonic' : targetPoint.mach >= 1.0 ? 'transonic' : 'subsonic';
+    const regimeClass = { supersonic: 'ok', transonic: 'warn', subsonic: 'bad' }[regime];
+    const clickName = esc(appState.getActiveProfile().optic?.clickName || (isMrad ? '0.1 MRAD' : '1/4 MOA'));
 
     hud.innerHTML = `
-      <div class="telemetry-card highlight-cyan">
-        <div class="card-label">TARGET ELEVATION</div>
-        <div class="card-value">${elVal.toFixed(2)} <span class="card-unit">${elUnit}</span></div>
-        <div class="card-subtext">${targetPoint.elevationClicks} clicks (${dispUnits.clickName || '0.1 MRAD'})</div>
+      <div class="solution-head">
+        <h2 id="solution-heading" class="solution-title">${icon('crosshair')} Firing solution</h2>
+        <span class="solution-range"><span class="solution-range-value">${dist(targetPoint.distanceM)}</span> ${esc(dispUnits.distance)}</span>
       </div>
-      <div class="telemetry-card highlight-amber">
-        <div class="card-label">WINDAGE CORRECTION</div>
-        <div class="card-value">${windVal.toFixed(2)} <span class="card-unit">${windUnit} ${windDirSign}</span></div>
-        <div class="card-subtext">${Math.abs(targetPoint.windageClicks)} clicks into wind</div>
+      <div class="solution-holds">
+        <div class="hold hold-elev">
+          <span class="hold-label">Elevation</span>
+          <span class="hold-value">${Math.abs(elVal).toFixed(isMrad ? 1 : 2)}<span class="hold-unit">${angUnit}</span></span>
+          <span class="hold-clicks">${elDir} ${Math.abs(elClicks)} clicks <span class="lg-muted">(${clickName})</span></span>
+        </div>
+        <div class="hold hold-wind">
+          <span class="hold-label">Windage</span>
+          <span class="hold-value">${Math.abs(windVal).toFixed(isMrad ? 1 : 2)}<span class="hold-unit">${angUnit}</span></span>
+          <span class="hold-clicks">${windDir ? `${windDir} ${windClicks} clicks` : 'No wind correction'}</span>
+        </div>
       </div>
-      <div class="telemetry-card">
-        <div class="card-label">VELOCITY @ ${distVal}${distUnit}</div>
-        <div class="card-value">${Math.round(velVal)} <span class="card-unit">${velUnit}</span></div>
-        <div class="card-subtext">Mach ${targetPoint.mach.toFixed(2)} (${targetPoint.mach >= 1.2 ? 'Supersonic' : targetPoint.mach >= 1.0 ? 'Transonic' : 'Subsonic'})</div>
-      </div>
-      <div class="telemetry-card">
-        <div class="card-label">FLIGHT TIME & ENERGY</div>
-        <div class="card-value">${targetPoint.tofS.toFixed(3)} <span class="card-unit">s</span></div>
-        <div class="card-subtext">${Math.round(energyVal)} ${energyUnit} kinetic energy</div>
-      </div>
-      <div class="telemetry-card">
-        <div class="card-label">SUPERSONIC BOUNDARY</div>
-        <div class="card-value">${dispUnits.distance === 'yd' ? Math.round(solution.telemetry.supersonicRangeM * 1.09361) : solution.telemetry.supersonicRangeM} <span class="card-unit">${distUnit}</span></div>
-        <div class="card-subtext">Transonic limit: ${dispUnits.distance === 'yd' ? Math.round(solution.telemetry.transonicRangeM * 1.09361) : solution.telemetry.transonicRangeM} ${distUnit}</div>
-      </div>
-      <div class="telemetry-card">
-        <div class="card-label">DENSITY ALTITUDE (DA)</div>
-        <div class="card-value">${Math.round(dispUnits.distance === 'yd' ? atmos.densityAltitudeM * 3.28084 : atmos.densityAltitudeM)} <span class="card-unit">${dispUnits.distance === 'yd' ? 'ft' : 'm'}</span></div>
-        <div class="card-subtext">Air density: ${atmos.densityKgM3.toFixed(3)} kg/m³</div>
-      </div>
+      <dl class="solution-stats">
+        <div><dt>${icon('speed')} Velocity</dt><dd>${Math.round(velVal)} ${isMetric ? 'm/s' : 'fps'} <span class="lg-badge lg-badge-${regimeClass}">Mach ${targetPoint.mach.toFixed(2)}</span></dd></div>
+        <div><dt>${icon('clock')} Time of flight</dt><dd>${targetPoint.tofS.toFixed(2)} s</dd></div>
+        <div><dt>${icon('energy')} Energy</dt><dd>${Math.round(energyVal)} ${isMetric ? 'J' : 'ft·lb'}</dd></div>
+        <div><dt>${icon('trajectory')} Supersonic to</dt><dd>${dist(solution.telemetry.supersonicRangeM)} ${esc(dispUnits.distance)}</dd></div>
+      </dl>
     `;
+
+    const derived = this.container.querySelector('#atmos-derived');
+    if (derived) {
+      const da = Math.round(yd ? atmos.densityAltitudeM * 3.28084 : atmos.densityAltitudeM);
+      derived.textContent = `Density altitude ${da.toLocaleString('en-US')} ${yd ? 'ft' : 'm'} · air density ${atmos.densityKgM3.toFixed(3)} kg/m³`;
+    }
   }
 
   _renderTrajectoryTable(trajectory, targetDistM, sysUnits, dispUnits) {
@@ -483,6 +488,19 @@ export class WorkspaceView {
     URL.revokeObjectURL(url);
   }
 
+  /** Shows one of the result panels (reticle, chart, table); the choice survives re-renders. */
+  _showResultPanel(name) {
+    this.activePanel = name;
+    this.container.querySelectorAll('.result-tabs .lg-tab').forEach((tab) => {
+      const on = tab.dataset.panel === name;
+      tab.setAttribute('aria-selected', String(on));
+      tab.tabIndex = on ? 0 : -1;
+    });
+    this.container.querySelectorAll('.result-panel').forEach((panel) => {
+      panel.hidden = panel.id !== `panel-${name}`;
+    });
+  }
+
   render() {
     const profile = appState.getActiveProfile();
     const env = appState.getActiveEnvironment();
@@ -510,281 +528,272 @@ export class WorkspaceView {
     const windSpeedDisp = isImp ? (env.windSpeedMs * 2.23694).toFixed(1) : env.windSpeedMs;
     const windSpeedUnit = isImp ? 'mph' : 'm/s';
 
-    this.container.innerHTML = `
-      <!-- TOP TELEMETRY HUD -->
-      <section id="telemetry-hud" class="telemetry-grid"></section>
+    const openSections = this.openSections;
+    const sec = (id) => (openSections.has(id) ? 'open' : '');
+    const envOptions = appState.state.environments
+      .map((e) => `<option value="${esc(e.id)}" ${e.id === env.id ? 'selected' : ''}>${esc(e.name)}</option>`)
+      .join('');
 
-      <!-- 3-PANEL COMMAND CENTER LAYOUT -->
-      <div class="workspace-grid">
-        <!-- LEFT PANEL: CONTROLS & PARAMETERS -->
-        <aside class="panel workspace-sidebar">
-          <div class="panel-header">
-            <h3>Rifle & Environment Setup</h3>
-            <div class="panel-actions">
-              <select id="profile-select" class="form-select-sm" title="Active Rifle Setup">
-                ${appState.state.profiles.map((p) => `<option value="${p.id}" ${p.id === profile.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+    this.container.innerHTML = `
+      <div class="solver-layout">
+        <!-- SETUP: everything that drives the solution -->
+        <section class="solver-setup" aria-labelledby="setup-heading">
+          <h1 id="setup-heading" class="lg-sr-only">Setup</h1>
+
+          <div class="setup-rifle lg-card">
+            <label class="field-label" for="profile-select">${icon('rifle')} Rifle</label>
+            <div class="rifle-row">
+              <select id="profile-select" class="form-select">
+                ${appState.state.profiles.map((p) => `<option value="${esc(p.id)}" ${p.id === profile.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
               </select>
-              <button id="btn-quick-add-rifle" class="btn-accent-sm" title="Build & Save New Rifle Rig">➕ New</button>
+              <button id="btn-quick-add-rifle" class="btn-secondary-sm btn-icon-only" type="button" title="Add a rifle" aria-label="Add a rifle">${icon('plus')}</button>
             </div>
+            <p class="rifle-summary">${esc(profile.caliber || '')}${profile.bullet?.name ? ` · ${esc(profile.bullet.name)}` : ''}</p>
           </div>
 
-          <div class="sidebar-scrollable">
-            <!-- Target Card -->
-            <fieldset class="param-card">
-              <legend>Target Solution Range</legend>
-              <div class="field-row">
-                <label>Target Range</label>
-                <div class="range-slider-group">
-                  <input type="range" id="target-range-slider" min="${isImp ? 50 : 50}" max="${isImp ? 1600 : 1500}" step="${isImp ? 25 : 25}" value="${targetDistDisp}" />
-                  <span id="target-range-display" class="badge-value">${targetDistDisp} ${targetDistUnit}</span>
+          <details class="setup-section lg-card" data-section="target" ${sec('target')}>
+            <summary>${icon('target')}<span>Target</span><span class="section-summary" id="sum-target">${targetDistDisp} ${targetDistUnit}</span></summary>
+            <div class="section-body">
+              <label class="field-label" for="target-range-input">Distance (${targetDistUnit})</label>
+              <div class="range-slider-group">
+                <input type="range" id="target-range-slider" aria-label="Target distance" min="50" max="${isImp ? 1600 : 1500}" step="25" value="${targetDistDisp}" />
+                <input type="number" id="target-range-input" class="form-input range-number" min="10" max="${isImp ? 2200 : 2000}" step="1" value="${targetDistDisp}" />
+              </div>
+              <div class="field-grid-1">
+                <div>
+                  <label class="field-label" for="target-shape-select">Target</label>
+                  <select id="target-shape-select" class="form-select">
+                    <option value="ipsc" ${target.targetShape === 'ipsc' ? 'selected' : ''}>IPSC torso</option>
+                    <option value="circle" ${target.targetShape === 'circle' ? 'selected' : ''}>Round plate</option>
+                    <option value="square" ${target.targetShape === 'square' ? 'selected' : ''}>Square plate</option>
+                    <option value="nato-e" ${target.targetShape === 'nato-e' ? 'selected' : ''}>NATO E silhouette</option>
+                  </select>
                 </div>
               </div>
+            </div>
+          </details>
+
+          <details class="setup-section lg-card" data-section="load" ${sec('load')}>
+            <summary>${icon('bullet')}<span>Load and rifle</span><span class="section-summary">${mvDisp} ${mvUnit}</span></summary>
+            <div class="section-body">
               <div class="field-grid-2">
                 <div>
-                  <label>Target Shape</label>
-                  <select id="target-shape-select" class="form-select">
-                    <option value="ipsc" ${target.targetShape === 'ipsc' ? 'selected' : ''}>IPSC Torso (45x75cm)</option>
-                    <option value="circle" ${target.targetShape === 'circle' ? 'selected' : ''}>Round Gong (30cm)</option>
-                    <option value="square" ${target.targetShape === 'square' ? 'selected' : ''}>Square Plate (30x30cm)</option>
-                    <option value="nato-e" ${target.targetShape === 'nato-e' ? 'selected' : ''}>NATO E-Type Silhouette</option>
+                  <label class="field-label" for="mv-input">Muzzle velocity (${mvUnit})</label>
+                  <input type="number" id="mv-input" class="form-input" min="${isImp ? 600 : 200}" max="${isImp ? 4500 : 1500}" step="1" value="${mvDisp}" />
+                </div>
+                <div>
+                  <label class="field-label" for="weight-input">Bullet weight (gr)</label>
+                  <input type="number" id="weight-input" class="form-input" min="20" max="1000" step="0.1" value="${profile.bullet.weightGr}" />
+                </div>
+                <div>
+                  <label class="field-label" for="drag-model-select">Drag model</label>
+                  <select id="drag-model-select" class="form-select">
+                    <option value="G7" ${profile.bullet.dragModel === 'G7' ? 'selected' : ''}>G7 (boat-tail)</option>
+                    <option value="G1" ${profile.bullet.dragModel === 'G1' ? 'selected' : ''}>G1 (flat-base)</option>
+                  </select>
+                </div>
+                <div class="field-span-2">
+                  <label class="field-label" for="algorithm-select">Solver model</label>
+                  <select id="algorithm-select" class="form-select">
+                    <option value="G7" ${config.activeAlgorithm === 'G7' ? 'selected' : ''}>Point mass, G7 drag</option>
+                    <option value="G1" ${config.activeAlgorithm === 'G1' ? 'selected' : ''}>Point mass, G1 drag</option>
+                    <option value="MPM" ${config.activeAlgorithm === 'MPM' ? 'selected' : ''}>Modified point mass (adds spin drift, jump, Coriolis)</option>
+                    <option value="4DOF" ${config.activeAlgorithm === '4DOF' ? 'selected' : ''}>4DOF (also models bullet spin)</option>
                   </select>
                 </div>
                 <div>
-                  <label>Target Speed</label>
-                  <input type="number" id="target-speed-input" class="form-input" min="0" max="60" value="${target.targetSpeedKmh || 0}" placeholder="km/h" />
-                </div>
-              </div>
-            </fieldset>
-
-            <!-- Ammo & Projectile Card -->
-            <fieldset class="param-card">
-              <legend>Ammo & Ballistics</legend>
-              <div class="field-row">
-                <label>Muzzle Velocity (${mvUnit})</label>
-                <input type="number" id="mv-input" class="form-input" min="${isImp ? 600 : 200}" max="${isImp ? 4500 : 1500}" step="1" value="${mvDisp}" />
-              </div>
-              <div class="field-grid-2">
-                <div>
-                  <label>Bullet Weight (gr)</label>
-                  <input type="number" id="weight-input" class="form-input" min="20" max="1000" value="${profile.bullet.weightGr}" />
+                  <label class="field-label" for="bc-input">BC (${esc(profile.bullet.dragModel === 'G1' ? 'G1' : 'G7')})</label>
+                  <input type="number" id="bc-input" class="form-input" min="0.05" max="1.5" step="0.001" value="${profile.bullet.dragModel === 'G1' ? profile.bullet.bcG1 : profile.bullet.bcG7}" />
                 </div>
                 <div>
-                  <label>Ballistic Coeff (${profile.bullet.dragModel})</label>
-                  <input type="number" id="bc-input" class="form-input" min="0.05" max="1.5" step="0.005" value="${profile.bullet.dragModel === 'G1' ? profile.bullet.bcG1 : profile.bullet.bcG7}" />
-                </div>
-              </div>
-              <div class="field-grid-2">
-                <div>
-                  <label>Sight Height (${shUnit})</label>
+                  <label class="field-label" for="sh-input">Sight height (${shUnit})</label>
                   <input type="number" id="sh-input" class="form-input" min="${isImp ? 0.5 : 1}" max="${isImp ? 6 : 15}" step="${isImp ? 0.05 : 0.1}" value="${shDisp}" />
                 </div>
                 <div>
-                  <label>Zero Distance (${zeroUnit})</label>
-                  <input type="number" id="zero-input" class="form-input" min="${isImp ? 25 : 25}" max="${isImp ? 350 : 300}" step="${isImp ? 25 : 25}" value="${zeroDisp}" />
-                </div>
-              </div>
-              <div class="field-grid-2">
-                <div>
-                  <label>Twist Rate (1 in X")</label>
-                  <input type="number" id="twist-input" class="form-input" min="5" max="18" step="0.5" value="${profile.twistRateIn}" />
+                  <label class="field-label" for="zero-input">Zero distance (${zeroUnit})</label>
+                  <input type="number" id="zero-input" class="form-input" min="25" max="${isImp ? 350 : 300}" step="1" value="${zeroDisp}" />
                 </div>
                 <div>
-                  <label>Drag Model</label>
-                  <select id="drag-model-select" class="form-select">
-                    <option value="G7" ${profile.bullet.dragModel === 'G7' ? 'selected' : ''}>G7 (Boat-tail)</option>
-                    <option value="G1" ${profile.bullet.dragModel === 'G1' ? 'selected' : ''}>G1 (Flat-base)</option>
-                    <option value="DOPPLER" ${profile.bullet.dragModel === 'DOPPLER' ? 'selected' : ''}>Custom Doppler Radar</option>
-                  </select>
+                  <label class="field-label" for="twist-input">Twist rate (1 in … in)</label>
+                  <input type="number" id="twist-input" class="form-input" min="5" max="18" step="0.25" value="${profile.twistRateIn}" />
                 </div>
               </div>
-            </fieldset>
+            </div>
+          </details>
 
-            <!-- Atmosphere Card -->
-            <fieldset class="param-card">
-              <legend>Atmospheric Environment</legend>
+          <details class="setup-section lg-card" data-section="atmosphere" ${sec('atmosphere')}>
+            <summary>${icon('thermometer')}<span>Atmosphere</span><span class="section-summary">${tempDisp} ${tempUnit} · ${pressDisp} ${pressUnit}</span></summary>
+            <div class="section-body">
+              <label class="field-label" for="env-select">Preset</label>
+              <select id="env-select" class="form-select">${envOptions}</select>
               <div class="field-grid-2">
                 <div>
-                  <label>Temperature (${tempUnit})</label>
-                  <input type="number" id="temp-input" class="form-input" min="${isImp ? -40 : -40}" max="${isImp ? 140 : 60}" step="1" value="${tempDisp}" />
+                  <label class="field-label" for="temp-input">Temperature (${tempUnit})</label>
+                  <input type="number" id="temp-input" class="form-input" min="-40" max="${isImp ? 140 : 60}" step="1" value="${tempDisp}" />
                 </div>
                 <div>
-                  <label>Pressure (${pressUnit})</label>
+                  <label class="field-label" for="press-input">Station pressure (${pressUnit})</label>
                   <input type="number" id="press-input" class="form-input" min="${isImp ? 20 : 700}" max="${isImp ? 33 : 1100}" step="${isImp ? 0.01 : 1}" value="${pressDisp}" />
                 </div>
-              </div>
-              <div class="field-grid-2">
                 <div>
-                  <label>Altitude (${altUnit})</label>
-                  <input type="number" id="alt-input" class="form-input" min="0" max="${isImp ? 16000 : 5000}" step="${isImp ? 100 : 50}" value="${altDisp}" />
+                  <label class="field-label" for="alt-input">Altitude (${altUnit})</label>
+                  <input type="number" id="alt-input" class="form-input" min="-400" max="${isImp ? 16000 : 5000}" step="${isImp ? 100 : 10}" value="${altDisp}" />
                 </div>
                 <div>
-                  <label>Humidity (%)</label>
-                  <input type="number" id="hum-input" class="form-input" min="0" max="100" step="5" value="${env.humidityPercent}" />
+                  <label class="field-label" for="hum-input">Humidity (%)</label>
+                  <input type="number" id="hum-input" class="form-input" min="0" max="100" step="1" value="${env.humidityPercent}" />
                 </div>
               </div>
-              <div class="field-grid-2">
-                <div>
-                  <label>Inclination (°)</label>
-                  <input type="number" id="inc-input" class="form-input" min="-60" max="60" step="1" value="${env.inclinationDeg || 0}" />
-                </div>
-                <div>
-                  <label>Rifle Cant (°)</label>
-                  <input type="number" id="cant-input" class="form-input" min="-45" max="45" step="1" value="${env.cantDeg || 0}" />
-                </div>
-              </div>
-            </fieldset>
+              <p class="field-hint" id="atmos-derived"></p>
+            </div>
+          </details>
 
-            <!-- Wind Clock Card -->
-            <fieldset class="param-card">
-              <legend>Tactical Wind Clock</legend>
+          <details class="setup-section lg-card" data-section="wind" ${sec('wind')}>
+            <summary>${icon('wind')}<span>Wind</span><span class="section-summary">${windSpeedDisp} ${windSpeedUnit} · ${env.windDirectionDeg}°</span></summary>
+            <div class="section-body">
               <div class="wind-clock-wrapper">
-                <canvas id="wind-clock-canvas" width="220" height="220"></canvas>
+                <canvas id="wind-clock-canvas" width="200" height="200" role="img" aria-label="Wind clock. Drag to set the wind direction."></canvas>
               </div>
-              <div class="field-grid-2 mt-2">
+              <div class="field-grid-2">
                 <div>
-                  <label>Wind Speed (${windSpeedUnit})</label>
+                  <label class="field-label" for="wind-speed-input">Speed (${windSpeedUnit})</label>
                   <input type="number" id="wind-speed-input" class="form-input" min="0" max="${isImp ? 65 : 30}" step="${isImp ? 1 : 0.5}" value="${windSpeedDisp}" />
                 </div>
                 <div>
-                  <label>Wind Angle (°)</label>
-                  <input type="number" id="wind-dir-input" class="form-input" min="0" max="360" step="5" value="${env.windDirectionDeg}" />
+                  <label class="field-label" for="wind-dir-input">From (° clock, 90 = from right)</label>
+                  <input type="number" id="wind-dir-input" class="form-input" min="0" max="359" step="5" value="${env.windDirectionDeg}" />
                 </div>
               </div>
-            </fieldset>
+            </div>
+          </details>
+
+          <details class="setup-section lg-card" data-section="angle" ${sec('angle')}>
+            <summary>${icon('altitude')}<span>Shot angle and cant</span><span class="section-summary">${env.inclinationDeg || 0}° · ${env.cantDeg || 0}°</span></summary>
+            <div class="section-body">
+              <div class="field-grid-2">
+                <div>
+                  <label class="field-label" for="inc-input">Inclination (°, + uphill)</label>
+                  <input type="number" id="inc-input" class="form-input" min="-60" max="60" step="1" value="${env.inclinationDeg || 0}" />
+                </div>
+                <div>
+                  <label class="field-label" for="cant-input">Rifle cant (°, + right)</label>
+                  <input type="number" id="cant-input" class="form-input" min="-45" max="45" step="1" value="${env.cantDeg || 0}" />
+                </div>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <!-- RESULT: the firing solution, then details in tabs -->
+        <section class="solver-result" aria-labelledby="solution-heading">
+          <div class="solution-card lg-card" id="telemetry-hud" aria-live="polite"></div>
+
+          <div class="result-tabs lg-tabs" role="tablist" aria-label="Solution details">
+            <button class="lg-tab" role="tab" type="button" id="tab-reticle" aria-controls="panel-reticle" data-panel="reticle">${icon('reticle')} Reticle and turret</button>
+            <button class="lg-tab" role="tab" type="button" id="tab-chart" aria-controls="panel-chart" data-panel="chart">${icon('trajectory')} Trajectory chart</button>
+            <button class="lg-tab" role="tab" type="button" id="tab-table" aria-controls="panel-table" data-panel="table">${icon('list')} Range table</button>
           </div>
-        </aside>
 
-        <!-- CENTER PANEL: RETICLE & MULTI-TAB CHART VISUALIZER -->
-        <main class="panel workspace-center">
-          <div class="center-subgrid">
-            <!-- Reticle Simulator + Turret Knob Card -->
-            <div class="subcard reticle-card">
-              <div class="subcard-header">
-                <h4>Scope Reticle Holdover Simulation & Elevation Turret</h4>
-                <div class="reticle-controls">
-                  <select id="reticle-type-select" class="form-select-sm" title="Reticle Pattern">
-                    <option value="EBR-8 MRAD" ${profile.optic?.reticle === 'EBR-8 MRAD' ? 'selected' : ''}>Vortex EBR-8 MRAD</option>
-                    <option value="Kahles SKMR4" ${profile.optic?.reticle === 'Kahles SKMR4' ? 'selected' : ''}>Kahles SKMR4 (PRS)</option>
-                    <option value="Leupold PR2-MIL" ${profile.optic?.reticle === 'Leupold PR2-MIL' ? 'selected' : ''}>Leupold PR2-MIL</option>
-                    <option value="Mil-XT" ${profile.optic?.reticle === 'Mil-XT' ? 'selected' : ''}>Nightforce Mil-XT</option>
-                    <option value="Tremor3" ${profile.optic?.reticle === 'Tremor3' ? 'selected' : ''}>Horus Tremor3</option>
-                    <option value="Mil-Dot" ${profile.optic?.reticle === 'Mil-Dot' ? 'selected' : ''}>USMC / Army Mil-Dot</option>
-                    <option value="EBR-2C MOA" ${profile.optic?.reticle === 'EBR-2C MOA' ? 'selected' : ''}>Vortex EBR-2C MOA</option>
-                    <option value="German #4" ${profile.optic?.reticle === 'German #4' ? 'selected' : ''}>German #4 Hunting</option>
-                    <option value="ACSS DMR" ${profile.optic?.reticle === 'ACSS DMR' ? 'selected' : ''}>Primary Arms ACSS DMR</option>
-                  </select>
-                  <select id="focal-plane-select" class="form-select-sm" title="Focal Plane">
-                    <option value="FFP" ${profile.optic?.focalPlane === 'FFP' ? 'selected' : ''}>FFP</option>
-                    <option value="SFP" ${profile.optic?.focalPlane === 'SFP' ? 'selected' : ''}>SFP</option>
-                  </select>
-                  <label class="btn-toggle">
-                    <input type="checkbox" id="illum-check" ${this.reticle?.options.illuminated ? 'checked' : ''} />
-                    <span>Illum</span>
-                  </label>
-                </div>
-              </div>
-
-              <div class="reticle-workspace-layout reticle-turret-split">
-                <div class="reticle-canvas-container">
-                  <canvas id="reticle-canvas"></canvas>
-                </div>
-
-                <!-- Interactive Turret Knob Panel -->
-                <div class="turret-knob-container">
-                  <div class="turret-header">
-                    <span class="turret-title">ELEVATION TURRET</span>
-                    <span class="turret-resolution" id="turret-resolution-label">${profile.optic?.clickName || '0.1 MRAD'}</span>
-                  </div>
-                  <div class="turret-canvas-wrapper">
-                    <canvas id="turret-canvas"></canvas>
-                  </div>
-                  <div class="turret-controls">
-                    <div class="turret-readout">
-                      <span id="turret-dialed-val">0.0</span> <span id="turret-dialed-unit">MRAD</span>
-                      <span id="turret-dialed-clicks" class="turret-subtext">(0 clicks)</span>
-                    </div>
-                    <div class="turret-btn-row">
-                      <button id="btn-turret-minus-major" class="btn-turret" title="-1.0 ${isMrad ? 'MRAD' : 'MOA'}">-1.0</button>
-                      <button id="btn-turret-minus" class="btn-turret" title="-1 Click">-${clickUnitName}</button>
-                      <button id="btn-turret-zero" class="btn-turret btn-turret-accent" title="Reset Turret to Zero">ZERO</button>
-                      <button id="btn-turret-plus" class="btn-turret" title="+1 Click">+${clickUnitName}</button>
-                      <button id="btn-turret-plus-major" class="btn-turret" title="+1.0 ${isMrad ? 'MRAD' : 'MOA'}">+1.0</button>
-                    </div>
-                    <button id="btn-turret-match-target" class="btn-turret-full" title="Dial directly to match target elevation">
-                      🎯 Dial to Target (<span id="turret-target-needed">0.0</span>)
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="magnification-slider-bar">
-                <label>Magnification: <strong id="mag-display">${profile.optic?.currentMagnification || 15}X</strong></label>
+          <div class="result-panel lg-card" role="tabpanel" id="panel-reticle" aria-labelledby="tab-reticle">
+            <div class="panel-toolbar">
+              <label class="lg-sr-only" for="reticle-type-select">Reticle</label>
+              <select id="reticle-type-select" class="form-select-sm">
+<option value="EBR-8 MRAD" ${profile.optic?.reticle === 'EBR-8 MRAD' ? 'selected' : ''}>Vortex EBR-8 (MRAD)</option>
+                <option value="Kahles SKMR4" ${profile.optic?.reticle === 'Kahles SKMR4' ? 'selected' : ''}>Kahles SKMR4 (MRAD)</option>
+                <option value="Leupold PR2-MIL" ${profile.optic?.reticle === 'Leupold PR2-MIL' ? 'selected' : ''}>Leupold PR2-MIL (MRAD)</option>
+                <option value="Mil-XT" ${profile.optic?.reticle === 'Mil-XT' ? 'selected' : ''}>Nightforce Mil-XT (MRAD)</option>
+                <option value="Tremor3" ${profile.optic?.reticle === 'Tremor3' ? 'selected' : ''}>Horus Tremor3 (MRAD)</option>
+                <option value="Mil-Dot" ${profile.optic?.reticle === 'Mil-Dot' ? 'selected' : ''}>Mil-Dot (MRAD)</option>
+                <option value="EBR-2C MOA" ${profile.optic?.reticle === 'EBR-2C MOA' ? 'selected' : ''}>Vortex EBR-2C (MOA)</option>
+                <option value="German #4" ${profile.optic?.reticle === 'German #4' ? 'selected' : ''}>German #4 (hunting)</option>
+                <option value="ACSS DMR" ${profile.optic?.reticle === 'ACSS DMR' ? 'selected' : ''}>Primary Arms ACSS DMR</option>
+              </select>
+              <label class="lg-sr-only" for="focal-plane-select">Focal plane</label>
+              <select id="focal-plane-select" class="form-select-sm">
+                <option value="FFP" ${profile.optic?.focalPlane === 'FFP' ? 'selected' : ''}>First focal plane</option>
+                <option value="SFP" ${profile.optic?.focalPlane === 'SFP' ? 'selected' : ''}>Second focal plane</option>
+              </select>
+              <label class="check-inline"><input type="checkbox" id="illum-check" ${this.reticle?.options.illuminated ? 'checked' : ''} /> Illuminated</label>
+              <label class="mag-control" for="mag-slider">Magnification <strong id="mag-display">${profile.optic?.currentMagnification || 15}×</strong>
                 <input type="range" id="mag-slider" min="${profile.optic?.minMagnification || 4}" max="${profile.optic?.maxMagnification || 36}" step="1" value="${profile.optic?.currentMagnification || 15}" />
-              </div>
+              </label>
             </div>
-
-            <!-- Multi-Tab Chart Engine -->
-            <div class="subcard chart-card">
-              <div class="subcard-header">
-                <div class="chart-tab-bar">
-                  <button class="tab-btn active" data-tab="drop">🎯 Bullet Drop & Path</button>
-                  <button class="tab-btn" data-tab="velocity">⚡ Velocity & Mach</button>
-                  <button class="tab-btn" data-tab="wind">💨 Wind Drift</button>
-                  <button class="tab-btn" data-tab="lead">⏱️ Time of Flight</button>
-                  <button class="tab-btn" data-tab="energy">💥 Kinetic Energy</button>
-                </div>
+            <div class="reticle-turret-split">
+              <div class="reticle-canvas-container">
+                <canvas id="reticle-canvas" role="img" aria-label="Reticle view showing the hold for the target"></canvas>
               </div>
-              <div class="chart-canvas-container">
-                <canvas id="chart-canvas"></canvas>
+              <div class="turret-knob-container">
+                <div class="turret-header">
+                  <span class="turret-title">Elevation turret</span>
+                  <span class="turret-resolution" id="turret-resolution-label">${esc(profile.optic?.clickName || '0.1 MRAD')} per click</span>
+                </div>
+                <div class="turret-canvas-wrapper">
+                  <canvas id="turret-canvas" role="img" aria-label="Elevation turret"></canvas>
+                </div>
+                <div class="turret-readout" aria-live="polite">
+                  Dialed <strong><span id="turret-dialed-val">0.0</span> <span id="turret-dialed-unit">MRAD</span></strong>
+                  <span id="turret-dialed-clicks" class="turret-subtext">(0 clicks)</span>
+                </div>
+                <div class="turret-btn-row">
+                  <button id="btn-turret-minus-major" class="btn-turret" type="button" aria-label="Down 1 ${isMrad ? 'MRAD' : 'MOA'}">−1</button>
+                  <button id="btn-turret-minus" class="btn-turret" type="button" aria-label="Down one click">−${clickUnitName}</button>
+                  <button id="btn-turret-zero" class="btn-turret" type="button" aria-label="Back to zero">0</button>
+                  <button id="btn-turret-plus" class="btn-turret" type="button" aria-label="Up one click">+${clickUnitName}</button>
+                  <button id="btn-turret-plus-major" class="btn-turret" type="button" aria-label="Up 1 ${isMrad ? 'MRAD' : 'MOA'}">+1</button>
+                </div>
+                <button id="btn-turret-match-target" class="btn-primary-sm btn-block" type="button">
+                  ${icon('turret')} Dial the solution (<span id="turret-target-needed">0.0</span>)
+                </button>
               </div>
             </div>
           </div>
-        </main>
 
-        <!-- RIGHT PANEL: CONFIGURABLE TRAJECTORY TABLE -->
-        <aside class="panel workspace-table-panel">
-          <div class="panel-header">
-            <h3>DOPE Trajectory Table</h3>
-            <div class="table-actions">
+          <div class="result-panel lg-card" role="tabpanel" id="panel-chart" aria-labelledby="tab-chart" hidden>
+            <div class="panel-toolbar">
+              <div class="lg-segmented chart-tab-bar" role="radiogroup" aria-label="Chart">
+                <button class="tab-btn active" type="button" data-tab="drop" aria-pressed="true">Drop</button>
+                <button class="tab-btn" type="button" data-tab="velocity" aria-pressed="false">Velocity</button>
+                <button class="tab-btn" type="button" data-tab="wind" aria-pressed="false">Wind drift</button>
+                <button class="tab-btn" type="button" data-tab="lead" aria-pressed="false">Time of flight</button>
+                <button class="tab-btn" type="button" data-tab="energy" aria-pressed="false">Energy</button>
+              </div>
+            </div>
+            <div class="chart-canvas-container">
+              <canvas id="chart-canvas" role="img" aria-label="Trajectory chart. The range table has the same data as text."></canvas>
+            </div>
+          </div>
+
+          <div class="result-panel lg-card" role="tabpanel" id="panel-table" aria-labelledby="tab-table" hidden>
+            <div class="panel-toolbar">
+              <label class="field-inline" for="step-select">Every
+                <select id="step-select" class="form-select-sm">
+                  ${[10, 25, 50, 100].map((v) => `<option value="${v}" ${config.stepM === v ? 'selected' : ''}>${v} m</option>`).join('')}
+                </select>
+              </label>
               <details class="column-visibility-dropdown" id="col-picker-details">
-                <summary class="btn-secondary-sm" title="Toggle Visible Columns">Columns ⚙️</summary>
+                <summary class="btn-secondary-sm">${icon('settings')} Columns</summary>
                 <div class="column-picker-menu">
-                  <label><input type="checkbox" data-col="drop" ${this.visibleColumns.has('drop') ? 'checked' : ''} /> Drop (cm/in)</label>
-                  <label><input type="checkbox" data-col="elevation" ${this.visibleColumns.has('elevation') ? 'checked' : ''} /> Elevation Angle</label>
-                  <label><input type="checkbox" data-col="elevClicks" ${this.visibleColumns.has('elevClicks') ? 'checked' : ''} /> Elev Clicks</label>
-                  <label><input type="checkbox" data-col="drift" ${this.visibleColumns.has('drift') ? 'checked' : ''} /> Wind Drift</label>
-                  <label><input type="checkbox" data-col="wind" ${this.visibleColumns.has('wind') ? 'checked' : ''} /> Wind Angle</label>
-                  <label><input type="checkbox" data-col="windClicks" ${this.visibleColumns.has('windClicks') ? 'checked' : ''} /> Wind Clicks</label>
-                  <label><input type="checkbox" data-col="velocity" ${this.visibleColumns.has('velocity') ? 'checked' : ''} /> Velocity</label>
-                  <label><input type="checkbox" data-col="mach" ${this.visibleColumns.has('mach') ? 'checked' : ''} /> Mach</label>
-                  <label><input type="checkbox" data-col="energy" ${this.visibleColumns.has('energy') ? 'checked' : ''} /> Energy</label>
-                  <label><input type="checkbox" data-col="tof" ${this.visibleColumns.has('tof') ? 'checked' : ''} /> ToF</label>
-                  <label><input type="checkbox" data-col="danger" ${this.visibleColumns.has('danger') ? 'checked' : ''} /> Danger Space</label>
+                  ${[['drop', 'Drop'], ['elevation', 'Elevation'], ['elevClicks', 'Elevation clicks'], ['drift', 'Wind drift'], ['wind', 'Windage'], ['windClicks', 'Windage clicks'], ['velocity', 'Velocity'], ['mach', 'Mach'], ['energy', 'Energy'], ['tof', 'Time of flight'], ['danger', 'Danger space']]
+                    .map(([k, l]) => `<label><input type="checkbox" data-col="${k}" ${this.visibleColumns.has(k) ? 'checked' : ''} /> ${l}</label>`).join('')}
                 </div>
               </details>
-              <select id="step-select" class="form-select-sm" title="Integration Step Distance">
-                <option value="10" ${config.stepM === 10 ? 'selected' : ''}>10m</option>
-                <option value="25" ${config.stepM === 25 ? 'selected' : ''}>25m</option>
-                <option value="50" ${config.stepM === 50 ? 'selected' : ''}>50m</option>
-                <option value="100" ${config.stepM === 100 ? 'selected' : ''}>100m</option>
-              </select>
-              <button id="btn-send-to-dope" class="btn-primary-sm" title="Send selected ranges to DOPE Studio">
-                📤 DOPE Studio (<span id="selected-ranges-count">0</span>)
-              </button>
-              <button id="export-csv-btn" class="btn-secondary-sm" title="Export CSV">📥 CSV</button>
+              <span class="toolbar-spacer"></span>
+              <button id="export-csv-btn" class="btn-secondary-sm" type="button">${icon('download')} CSV</button>
+              <button id="btn-send-to-dope" class="btn-primary-sm" type="button">${icon('card')} Make DOPE card (<span id="selected-ranges-count">0</span> ranges)</button>
+            </div>
+            <div class="table-scrollable">
+              <table class="dope-table">
+                <caption class="lg-sr-only">Range table: drop, holds and velocity at each distance</caption>
+                <thead id="trajectory-thead"></thead>
+                <tbody id="trajectory-tbody"></tbody>
+              </table>
             </div>
           </div>
-
-          <div class="table-scrollable">
-            <table class="dope-table">
-              <thead id="trajectory-thead"></thead>
-              <tbody id="trajectory-tbody"></tbody>
-            </table>
-          </div>
-        </aside>
+        </section>
       </div>
     `;
 
+    this._showResultPanel(this.activePanel);
     this._bindFormEvents();
   }
 
@@ -813,12 +822,50 @@ export class WorkspaceView {
 
     // Target Range Slider
     const rangeSlider = this.container.querySelector('#target-range-slider');
-    const rangeDisp = this.container.querySelector('#target-range-display');
-    rangeSlider?.addEventListener('input', (e) => {
-      const val = Number(e.target.value);
-      rangeDisp.textContent = `${val} ${isImp ? 'yd' : 'm'}`;
-      const distM = isImp ? Math.round(val * 0.9144) : val;
+    const rangeNumber = this.container.querySelector('#target-range-input');
+    const setDistance = (val) => {
+      if (!Number.isFinite(val) || val <= 0) return;
+      const distM = isImp ? Math.round(val * 0.9144) : Math.round(val);
+      const sum = this.container.querySelector('#sum-target');
+      if (sum) sum.textContent = `${Math.round(val)} ${isImp ? 'yd' : 'm'}`;
       appState.updateTarget({ distanceM: distM });
+    };
+    rangeSlider?.addEventListener('input', (e) => {
+      if (rangeNumber) rangeNumber.value = e.target.value;
+      setDistance(Number(e.target.value));
+    });
+    rangeNumber?.addEventListener('change', (e) => {
+      const val = parseNumber(e.target.value);
+      const error = rangeError(e.target, val);
+      setFieldError(e.target, error);
+      if (error) return;
+      if (rangeSlider) rangeSlider.value = String(val);
+      setDistance(val);
+    });
+
+    // Atmosphere preset (moved here from the header: it is a solver input)
+    this.container.querySelector('#env-select')?.addEventListener('change', (e) => {
+      appState.setActiveEnvironment(e.target.value);
+    });
+
+    // Remember which setup sections are open across re-renders
+    this.container.querySelectorAll('.setup-section').forEach((d) => {
+      d.addEventListener('toggle', () => {
+        if (d.open) this.openSections.add(d.dataset.section);
+        else this.openSections.delete(d.dataset.section);
+      });
+    });
+
+    // Result tabs (Reticle / Chart / Table) with arrow-key support
+    const resultTabs = Array.from(this.container.querySelectorAll('.result-tabs .lg-tab'));
+    resultTabs.forEach((tab, idx) => {
+      tab.addEventListener('click', () => this._showResultPanel(tab.dataset.panel));
+      tab.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        const next = resultTabs[(idx + (e.key === 'ArrowRight' ? 1 : resultTabs.length - 1)) % resultTabs.length];
+        this._showResultPanel(next.dataset.panel);
+        next.focus();
+      });
     });
 
     // Target Shape & Speed
@@ -826,100 +873,62 @@ export class WorkspaceView {
     shapeSel?.addEventListener('change', (e) => {
       appState.updateTarget({ targetShape: e.target.value });
     });
-    const speedInput = this.container.querySelector('#target-speed-input');
-    speedInput?.addEventListener('input', (e) => {
-      appState.updateTarget({ targetSpeedKmh: Number(e.target.value) });
+    // Load and rifle (validated: out-of-range values show an inline message and are not applied)
+    const q = (id) => this.container.querySelector(id);
+    bindNumber(q('#mv-input'), (val) => {
+      appState.updateActiveProfile({ muzzleVelocityMs: Number((isImp ? val / 3.28084 : val).toFixed(1)), zeroAngleRad: null });
     });
-
-    // Muzzle Velocity
-    const mvInput = this.container.querySelector('#mv-input');
-    mvInput?.addEventListener('change', (e) => {
-      const val = Number(e.target.value);
-      const mvMs = isImp ? val / 3.28084 : val;
-      if (mvMs > 100) appState.updateActiveProfile({ muzzleVelocityMs: Number(mvMs.toFixed(1)), zeroAngleRad: null });
+    bindNumber(q('#weight-input'), (val) => {
+      appState.getActiveProfile().bullet.weightGr = val;
+      appState.updateActiveProfile({ zeroAngleRad: null });
     });
-
-    // Bullet weight & BC
-    const wtInput = this.container.querySelector('#weight-input');
-    wtInput?.addEventListener('change', (e) => {
+    bindNumber(q('#bc-input'), (val) => {
       const p = appState.getActiveProfile();
-      p.bullet.weightGr = Number(e.target.value);
-      appState.notify('profile');
-    });
-    const bcInput = this.container.querySelector('#bc-input');
-    bcInput?.addEventListener('change', (e) => {
-      const p = appState.getActiveProfile();
-      const val = Number(e.target.value);
       if (p.bullet.dragModel === 'G1') p.bullet.bcG1 = val;
       else p.bullet.bcG7 = val;
-      appState.notify('profile');
+      appState.updateActiveProfile({ zeroAngleRad: null });
     });
-
-    // Sight Height & Zero Distance
-    const shInput = this.container.querySelector('#sh-input');
-    shInput?.addEventListener('change', (e) => {
-      const val = Number(e.target.value);
-      const shM = isImp ? val * 0.0254 : val / 100.0;
-      appState.updateActiveProfile({ sightHeightM: shM, zeroAngleRad: null });
+    bindNumber(q('#sh-input'), (val) => {
+      appState.updateActiveProfile({ sightHeightM: isImp ? val * 0.0254 : val / 100, zeroAngleRad: null });
     });
-    const zeroInput = this.container.querySelector('#zero-input');
-    zeroInput?.addEventListener('change', (e) => {
-      const val = Number(e.target.value);
-      const zeroM = isImp ? Math.round(val * 0.9144) : val;
-      appState.updateActiveProfile({ zeroDistanceM: zeroM, zeroAngleRad: null });
+    bindNumber(q('#zero-input'), (val) => {
+      appState.updateActiveProfile({ zeroDistanceM: isImp ? Math.round(val * 0.9144) : val, zeroAngleRad: null });
     });
-
-    // Drag model
-    const dragSel = this.container.querySelector('#drag-model-select');
-    dragSel?.addEventListener('change', (e) => {
-      const p = appState.getActiveProfile();
-      p.bullet.dragModel = e.target.value;
+    bindNumber(q('#twist-input'), (val) => {
+      appState.updateActiveProfile({ twistRateIn: val });
+    });
+    // Drag model is a property of the bullet; the solver model is chosen separately
+    q('#drag-model-select')?.addEventListener('change', (e) => {
+      appState.getActiveProfile().bullet.dragModel = e.target.value;
+      appState.updateActiveProfile({ zeroAngleRad: null });
+      this.render();
+      this.initVisualizers();
+      this.recompute();
+    });
+    q('#algorithm-select')?.addEventListener('change', (e) => {
+      appState.updateActiveProfile({ zeroAngleRad: null });
       appState.updateSolverConfig({ activeAlgorithm: e.target.value });
     });
 
-    // Atmospheric inputs
-    const tempInput = this.container.querySelector('#temp-input');
-    tempInput?.addEventListener('change', (e) => {
-      const val = Number(e.target.value);
-      const tempC = isImp ? ((val - 32) * 5) / 9 : val;
-      appState.updateActiveEnvironment({ temperatureC: Number(tempC.toFixed(1)) });
+    // Atmosphere
+    bindNumber(q('#temp-input'), (val) => {
+      appState.updateActiveEnvironment({ temperatureC: Number((isImp ? ((val - 32) * 5) / 9 : val).toFixed(1)) });
     });
-    const pressInput = this.container.querySelector('#press-input');
-    pressInput?.addEventListener('change', (e) => {
-      const val = Number(e.target.value);
-      const pressHpa = isImp ? val / 0.02953 : val;
-      appState.updateActiveEnvironment({ pressureHpa: Number(pressHpa.toFixed(1)) });
+    bindNumber(q('#press-input'), (val) => {
+      appState.updateActiveEnvironment({ pressureHpa: Number((isImp ? val / 0.02953 : val).toFixed(1)) });
     });
-    const altInput = this.container.querySelector('#alt-input');
-    altInput?.addEventListener('change', (e) => {
-      const val = Number(e.target.value);
-      const altM = isImp ? Math.round(val / 3.28084) : val;
-      appState.updateActiveEnvironment({ altitudeM: altM });
+    bindNumber(q('#alt-input'), (val) => {
+      appState.updateActiveEnvironment({ altitudeM: isImp ? Math.round(val / 3.28084) : val });
     });
-    const humInput = this.container.querySelector('#hum-input');
-    humInput?.addEventListener('change', (e) => {
-      appState.updateActiveEnvironment({ humidityPercent: Number(e.target.value) });
-    });
-    const incInput = this.container.querySelector('#inc-input');
-    incInput?.addEventListener('change', (e) => {
-      appState.updateActiveEnvironment({ inclinationDeg: Number(e.target.value) });
-    });
-    const cantInput = this.container.querySelector('#cant-input');
-    cantInput?.addEventListener('change', (e) => {
-      appState.updateActiveEnvironment({ cantDeg: Number(e.target.value) });
-    });
+    bindNumber(q('#hum-input'), (val) => appState.updateActiveEnvironment({ humidityPercent: val }));
+    bindNumber(q('#inc-input'), (val) => appState.updateActiveEnvironment({ inclinationDeg: val }));
+    bindNumber(q('#cant-input'), (val) => appState.updateActiveEnvironment({ cantDeg: val }));
 
-    // Wind inputs
-    const windSpeedInput = this.container.querySelector('#wind-speed-input');
-    windSpeedInput?.addEventListener('change', (e) => {
-      const val = Number(e.target.value);
-      const windMs = isImp ? val / 2.23694 : val;
-      appState.updateActiveEnvironment({ windSpeedMs: Number(windMs.toFixed(1)) });
+    // Wind
+    bindNumber(q('#wind-speed-input'), (val) => {
+      appState.updateActiveEnvironment({ windSpeedMs: Number((isImp ? val / 2.23694 : val).toFixed(2)) });
     });
-    const windDirInput = this.container.querySelector('#wind-dir-input');
-    windDirInput?.addEventListener('change', (e) => {
-      appState.updateActiveEnvironment({ windDirectionDeg: Number(e.target.value) });
-    });
+    bindNumber(q('#wind-dir-input'), (val) => appState.updateActiveEnvironment({ windDirectionDeg: val % 360 }));
 
     // Reticle Controls
     const retTypeSel = this.container.querySelector('#reticle-type-select');
@@ -988,8 +997,10 @@ export class WorkspaceView {
     const tabBtns = this.container.querySelectorAll('.tab-btn');
     tabBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        tabBtns.forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
+        tabBtns.forEach((b) => {
+          b.classList.toggle('active', b === btn);
+          b.setAttribute('aria-pressed', String(b === btn));
+        });
         this.chart?.setTab(btn.dataset.tab);
       });
     });

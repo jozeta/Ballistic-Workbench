@@ -1,0 +1,51 @@
+/**
+ * Ballistic Workbench - Compare models view styles (on top of styles/main.css and Låda Glass).
+ * Owned by src/ui/solverLab.js.
+ */
+
+/* SOLVER LAB STYLES */
+.solver-lab-header, .dope-studio-header, .tools-header, .library-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.lab-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px;
+}
+.lab-chart-panel {
+  min-height: 580px;
+}
+.lab-chart-panel .chart-canvas-container,
+.lab-chart-container {
+  min-height: 530px;
+  height: 530px;
+}
+#solver-lab-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.analysis-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.analysis-card {
+  background-color: var(--bg-subcard);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+}
+.analysis-card h4 {
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.analysis-card p {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+

@@ -28,8 +28,9 @@ const GRAVITY = 9.80665;
  * - wz: lateral crosswind (positive = left-to-right blowing bullet right, negative = blowing bullet left)
  */
 export function getWindAtDistance(x, environment) {
-  const defaultSpeed = environment.windSpeedMs || 0;
-  const defaultDirDeg = environment.windDirectionDeg || 90; // 90 = 3 o'clock
+  // ?? not ||: a 0 m/s wind or a 0° (12 o'clock) direction are real values
+  const defaultSpeed = environment.windSpeedMs ?? 0;
+  const defaultDirDeg = environment.windDirectionDeg ?? 90; // 90 = 3 o'clock
   let speed = defaultSpeed;
   let dirDeg = defaultDirDeg;
 
@@ -314,12 +315,16 @@ export function solveTrajectory({
   airDensity,
   speedOfSound,
   algorithm = 'G7',
-  stepM = 25,
-  maxRangeM = 1200,
+  stepM: rawStepM = 25,
+  maxRangeM: rawMaxRangeM = 1200,
   includeSpinDrift = true,
   includeCoriolis = true,
   includeAerodynamicJump = true,
 }) {
+  // Guard the table loop: a zero, negative or tiny step (e.g. from bad saved data) would never
+  // finish. At most 2,000 rows over at most 5 km.
+  const maxRangeM = Number.isFinite(rawMaxRangeM) ? Math.min(5000, Math.max(50, rawMaxRangeM)) : 1200;
+  const stepM = Number.isFinite(rawStepM) && rawStepM > 0 ? Math.max(rawStepM, maxRangeM / 2000) : 25;
   // Ensure bore angle is calibrated
   let boreAngle = profile.zeroAngleRad;
   if (boreAngle === null || boreAngle === undefined) {

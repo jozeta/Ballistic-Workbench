@@ -7,6 +7,7 @@
  */
 
 import { appState } from '../core/state.js';
+import { esc } from '../core/escape.js';
 import { calculateStability, validateCustomBullet } from '../data/projectiles.js';
 import { RifleBuilderModal } from './rifleBuilderModal.js';
 
@@ -91,17 +92,17 @@ export class LibraryManagerView {
             const isActive = b.id === activeBulletId;
             return `
               <tr class="${isActive ? 'target-row' : ''}">
-                <td class="font-bold">${b.manufacturer}</td>
-                <td>${b.name} ${isActive ? '<span class="badge badge-mach-supersonic">Active In Rifle</span>' : ''}</td>
-                <td>${b.caliber}</td>
+                <td class="font-bold">${esc(b.manufacturer)}</td>
+                <td>${esc(b.name)} ${isActive ? '<span class="badge badge-mach-supersonic">Active In Rifle</span>' : ''}</td>
+                <td>${esc(b.caliber)}</td>
                 <td>${b.weightGr} gr</td>
                 <td class="text-emerald font-mono text-sm">${b.factoryVelocityFps ? `${b.factoryVelocityFps} fps <span class="text-muted text-xs">(${b.factoryVelocityMs} m/s)</span>` : '--'}</td>
                 <td class="text-cyan font-bold">${b.bcG7 || '--'}</td>
                 <td>${b.bcG1 || '--'}</td>
-                <td><span class="badge">${b.dragModel}</span></td>
-                <td class="text-sm text-muted">${b.recommendedTwist}</td>
+                <td><span class="badge">${esc(b.dragModel)}</span></td>
+                <td class="text-sm text-muted">${esc(b.recommendedTwist)}</td>
                 <td>
-                  <button class="btn-primary-sm btn-load-bullet" data-id="${b.id}" ${isActive ? 'disabled' : ''}>
+                  <button class="btn-primary-sm btn-load-bullet" data-id="${esc(b.id)}" ${isActive ? 'disabled' : ''}>
                     ${isActive ? 'Loaded' : 'Load into Rifle'}
                   </button>
                 </td>
@@ -117,7 +118,7 @@ export class LibraryManagerView {
     return `
       <div class="library-panel">
         <div class="filter-bar">
-          <input type="text" id="proj-search" class="form-input search-input" placeholder="🔍 Search projectile by name or manufacturer..." value="${this.searchQuery}" />
+          <input type="text" id="proj-search" class="form-input search-input" placeholder="🔍 Search projectile by name or manufacturer..." value="${esc(this.searchQuery)}" />
           <select id="caliber-filter" class="form-select-sm">
             <option value="all" ${this.caliberFilter === 'all' ? 'selected' : ''}>All Calibers</option>
             <option value="5.56" ${this.caliberFilter === '5.56' ? 'selected' : ''}>.223 Rem / 5.56 NATO</option>
@@ -264,20 +265,20 @@ export class LibraryManagerView {
             return `
               <div class="profile-card ${isActive ? 'active-profile' : ''}">
                 <div class="profile-card-header">
-                  <h4>${p.name}</h4>
+                  <h4>${esc(p.name)}</h4>
                   ${isActive ? '<span class="badge badge-mach-supersonic">Active</span>' : ''}
                 </div>
-                <p class="profile-desc">${p.description}</p>
+                <p class="profile-desc">${esc(p.description)}</p>
                 <div class="profile-specs">
-                  <div><strong>Caliber:</strong> ${p.caliber}</div>
-                  <div><strong>Bullet:</strong> ${p.bullet.name}</div>
+                  <div><strong>Caliber:</strong> ${esc(p.caliber)}</div>
+                  <div><strong>Bullet:</strong> ${esc(p.bullet.name)}</div>
                   <div><strong>MV:</strong> ${p.muzzleVelocityMs} m/s</div>
-                  <div><strong>Optic:</strong> ${p.optic?.model}</div>
+                  <div><strong>Optic:</strong> ${esc(p.optic?.model)}</div>
                   <div><strong>Twist:</strong> 1:${p.twistRateIn}"</div>
                   <div><strong>Zero:</strong> ${p.zeroDistanceM}m</div>
                 </div>
                 <div class="profile-card-actions mt-3">
-                  <button class="btn-primary-sm btn-activate-profile" data-id="${p.id}" ${isActive ? 'disabled' : ''}>
+                  <button class="btn-primary-sm btn-activate-profile" data-id="${esc(p.id)}" ${isActive ? 'disabled' : ''}>
                     ${isActive ? 'Active Rig' : 'Select Rifle'}
                   </button>
                 </div>
@@ -384,7 +385,7 @@ export class LibraryManagerView {
         }
 
         appState.addCustomBullet(bullet);
-        if (msgDiv) msgDiv.innerHTML = `<p class="text-emerald">✅ Saved "${bullet.name}" to Projectiles Database!</p>`;
+        if (msgDiv) msgDiv.innerHTML = `<p class="text-emerald">✅ Saved "${esc(bullet.name)}" to Projectiles Database!</p>`;
       });
     }
 
