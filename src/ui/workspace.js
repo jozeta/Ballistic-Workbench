@@ -47,6 +47,9 @@ export class WorkspaceView {
     this.selectedRanges = null;
     this.illuminated = false;
     this.chartMetric = 'drop';
+    // 'auto': the turret follows the solution (target centred, only the wind hold shows);
+    // 'manual': the turret stays where the user set it and the reticle shows the remaining hold
+    this.turretMode = 'auto';
 
     // Remembered across re-renders (unit or profile changes rebuild the view)
     this.openSections = new Set(['target', 'load', 'wind']);
@@ -120,6 +123,8 @@ export class WorkspaceView {
         clickName: profile.optic?.clickName || '0.1 MRAD',
         isMrad,
         onChange: (dialClicks) => {
+          if (this._settingTurret) return; // our own update, not the user turning it
+          if (this.turretMode !== 'manual') this._setTurretMode('manual', false);
           if (profile.optic) {
             profile.optic.zeroElevationClicks = dialClicks;
             appState.save();
@@ -207,6 +212,10 @@ export class WorkspaceView {
     // 4. Update Telemetry HUD
     this._updateTelemetryHud(solution, targetPoint, atmos, sysUnits, dispUnits);
 
+    // The turret either follows the solution or stays where the user dialed it
+    const dialed = this.turretMode === 'auto' ? targetPoint.elevationClicks : profile.optic?.zeroElevationClicks || 0;
+    this._lastTargetClicks = targetPoint.elevationClicks;
+
     // 5. Update Reticle Visualizer
     if (this.reticle) {
       this.reticle.update({
@@ -219,7 +228,7 @@ export class WorkspaceView {
         targetHeightCm: target.targetSizeHeightCm,
         elevationHoldMrad: targetPoint.elevationMrad,
         windageHoldMrad: targetPoint.windageMrad,
-        elevationDialClicks: profile.optic?.zeroElevationClicks || 0,
+        elevationDialClicks: dialed,
         windageDialClicks: profile.optic?.zeroWindageClicks || 0,
         clickValueRad: profile.optic?.clickValueRad || 0.0001,
         isMrad,
@@ -229,14 +238,16 @@ export class WorkspaceView {
 
     // 6. Update Turret Knob
     if (this.turret) {
+      this._settingTurret = true;
       this.turret.update({
-        clicks: profile.optic?.zeroElevationClicks || 0,
+        clicks: dialed,
         clickValueRad: profile.optic?.clickValueRad || 0.0001,
         clickName: profile.optic?.clickName || '0.1 MRAD',
         isMrad,
         targetClicks: targetPoint.elevationClicks,
       });
-      this._updateTurretReadout(profile.optic?.zeroElevationClicks || 0);
+      this._settingTurret = false;
+      this._updateTurretReadout(dialed);
 
       const targetNeededEl = this.container.querySelector('#turret-target-needed');
         if (targetNeededEl) {
@@ -531,6 +542,21 @@ export class WorkspaceView {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  /** Switches between the turret following the solution and manual dialing. */
+  _setTurretMode(mode, recompute = true) {
+    this.turretMode = mode;
+    this.container.querySelectorAll('#turret-mode [data-turret-mode]').forEach((t) => {
+      t.setAttribute('aria-selected', String(t.dataset.turretMode === mode));
+    });
+    const dialBtn = this.container.querySelector('#btn-turret-match-target');
+    if (dialBtn) dialBtn.hidden = mode === 'auto';
+    if (mode === 'manual') {
+      const optic = appState.getActiveProfile().optic;
+      if (optic && this.turret) optic.zeroElevationClicks = this.turret.options.clicks ?? this._lastTargetClicks ?? 0;
+    }
+    if (recompute) this.recompute();
+  }
+
   /** Shows one of the result panels (reticle, chart, table); the choice survives re-renders. */
   _showResultPanel(name) {
     this.activePanel = name;
@@ -767,6 +793,10 @@ export class WorkspaceView {
                 <canvas id="reticle-canvas" role="img" aria-label="Reticle view showing the hold for the target"></canvas>
               </div>
               <div class="turret-knob-container">
+                <div class="lg-tabs turret-mode" role="tablist" aria-label="Turret" id="turret-mode">
+                  <button class="lg-tab" role="tab" type="button" data-turret-mode="auto" aria-selected="${this.turretMode === 'auto'}">Follow solution</button>
+                  <button class="lg-tab" role="tab" type="button" data-turret-mode="manual" aria-selected="${this.turretMode === 'manual'}">Manual</button>
+                </div>
                 <div class="turret-header">
                   <span class="turret-title">Elevation turret</span>
                   <span class="turret-resolution" id="turret-resolution-label">${esc(profile.optic?.clickName || '0.1 MRAD')} per click</span>
@@ -785,7 +815,7 @@ export class WorkspaceView {
                   <button id="btn-turret-plus" class="lg-btn turret-btn" type="button" aria-label="Up one click" title="Up one click">+1c</button>
                   <button id="btn-turret-plus-major" class="lg-btn turret-btn" type="button" aria-label="Up 1 ${opticUnit}" title="Up 1 ${opticUnit}">+1</button>
                 </div>
-                <button id="btn-turret-match-target" class="lg-btn lg-btn-primary btn-block" type="button">
+                <button id="btn-turret-match-target" class="lg-btn lg-btn-primary btn-block" type="button" ${this.turretMode === 'auto' ? 'hidden' : ''}>
                   ${icon('turret')} Dial <span id="turret-target-needed">0.0</span>
                 </button>
               </div>
@@ -998,6 +1028,7 @@ export class WorkspaceView {
     // Turret Controls Buttons
     const btnTurretZero = this.container.querySelector('#btn-turret-zero');
     btnTurretZero?.addEventListener('click', () => {
+      this._setTurretMode('manual', false);
       this.turret?.setClicks(0);
     });
     const btnTurretPlus = this.container.querySelector('#btn-turret-plus');
@@ -1025,10 +1056,10 @@ export class WorkspaceView {
       this.turret?.adjustClicks(-majorClicks);
     });
     const btnTurretMatch = this.container.querySelector('#btn-turret-match-target');
-    btnTurretMatch?.addEventListener('click', () => {
-      if (this.turret?.options?.targetClicks !== undefined) {
-        this.turret.setClicks(this.turret.options.targetClicks);
-      }
+    btnTurretMatch?.addEventListener('click', () => this._setTurretMode('auto'));
+    this.container.querySelector('#turret-mode')?.addEventListener('click', (e) => {
+      const tab = e.target.closest('[data-turret-mode]');
+      if (tab) this._setTurretMode(tab.dataset.turretMode);
     });
 
     // Chart Tabs
