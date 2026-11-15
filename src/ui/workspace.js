@@ -8,7 +8,6 @@
 import { appState } from '../core/state.js';
 import { getAtmosphericConditions } from '../physics/atmosphere.js';
 import { solveTrajectory } from '../physics/solvers.js';
-import { BallisticChart } from '../canvas/charts.js';
 import { ReticleRenderer } from '../canvas/reticle.js';
 import { TurretKnob } from '../canvas/turret.js';
 import { WindRoseVisualizer } from '../canvas/windRose.js';
@@ -47,6 +46,7 @@ export class WorkspaceView {
     // Ranges ticked for DOPE cards. null = not chosen yet (defaults to every 100 m on first solve)
     this.selectedRanges = null;
     this.illuminated = false;
+    this.chartMetric = 'drop';
 
     // Remembered across re-renders (unit or profile changes rebuild the view)
     this.openSections = new Set(['target', 'load', 'wind']);
@@ -94,16 +94,6 @@ export class WorkspaceView {
   initVisualizers() {
     // Old instances hold window listeners and observers: release them before building new ones
     this._destroyVisualizers();
-    const chartCanvas = this.container.querySelector('#chart-canvas');
-    if (chartCanvas) {
-      this.chart = new BallisticChart(chartCanvas, {
-        activeTab: 'drop',
-        systemUnits: appState.state.systemUnits,
-        displayUnits: appState.state.displayUnits,
-        onHover: (distM) => this._handleChartHover(distM),
-      });
-    }
-
     const reticleCanvas = this.container.querySelector('#reticle-canvas');
     if (reticleCanvas) {
       const profile = appState.getActiveProfile();
@@ -153,29 +143,6 @@ export class WorkspaceView {
           appState.updateActiveEnvironment({ windDirectionDeg, windSpeedMs });
         },
       });
-    }
-  }
-
-  _handleChartHover(distM) {
-    if (distM === null) {
-      const rows = this.container.querySelectorAll('.traj-row');
-      rows.forEach((r) => r.classList.remove('highlight-row'));
-      return;
-    }
-    const rows = this.container.querySelectorAll('.traj-row');
-    let closestRow = null;
-    let minDiff = Infinity;
-    rows.forEach((row) => {
-      const rowDist = parseFloat(row.dataset.dist);
-      const diff = Math.abs(rowDist - distM);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closestRow = row;
-      }
-      row.classList.remove('highlight-row');
-    });
-    if (closestRow && minDiff < 50) {
-      closestRow.classList.add('highlight-row');
     }
   }
 
@@ -279,13 +246,7 @@ export class WorkspaceView {
     }
 
     // 7. Update Chart
-    if (this.chart) {
-      this.chart.setUnits(sysUnits, dispUnits);
-      this.chart.setData(solution.trajectory, {
-        ...solution.telemetry,
-        zeroDistanceM: profile.zeroDistanceM,
-      });
-    }
+    this._renderChart(solution, target.distanceM);
 
     // 8. Update Wind Clock
     if (this.windRose) {
@@ -356,6 +317,55 @@ export class WorkspaceView {
     }
   }
 
+  /**
+   * The trajectory chart: a Låda Glass line chart (SVG) of the chosen quantity against distance,
+   * in the display units. Reference lines (speed of sound) are extra dashed series.
+   */
+  _renderChart(solution, targetDistM) {
+    const host = this.container.querySelector('#trajectory-chart');
+    if (!host || typeof LadaGlass === 'undefined') return;
+    const { systemUnits, displayUnits } = appState.state;
+    const f = this._formatters(systemUnits, displayUnits);
+    const u = f.units;
+    const rows = solution.trajectory.filter((p) => p.distanceM > 0);
+    const x = (p) => f.dist(p.distanceM);
+    const fmtN = (d) => (v) => Number(v).toLocaleString('en-US', { maximumFractionDigits: d });
+    const metrics = {
+      drop: { title: `Drop below line of sight (${u.lin})`, series: [{ name: 'Drop', points: rows.map((p) => [x(p), Number(f.lin(p.dropM).toFixed(1))]) }], d: 0 },
+      velocity: {
+        title: `Velocity (${u.vel})`,
+        series: [
+          { name: 'Velocity', points: rows.map((p) => [x(p), Math.round(f.vel(p.velocityMs))]) },
+          { name: 'Speed of sound', points: rows.map((p) => [x(p), Math.round(f.vel(p.mach > 0 ? p.velocityMs / p.mach : 0))]) },
+        ],
+        d: 0,
+      },
+      wind: { title: `Wind drift (${u.lin})`, series: [{ name: 'Wind drift', points: rows.map((p) => [x(p), Number(f.lin(Math.abs(p.driftM)).toFixed(1))]) }], d: 0 },
+      tof: { title: 'Time of flight (s)', series: [{ name: 'Time of flight', points: rows.map((p) => [x(p), Number(p.tofS.toFixed(3))]) }], d: 2 },
+      energy: { title: `Energy (${u.energy})`, series: [{ name: 'Energy', points: rows.map((p) => [x(p), Math.round(f.energy(p.energyJ))]) }], d: 0, area: true },
+    };
+    const m = metrics[this.chartMetric] || metrics.drop;
+    const title = this.container.querySelector('#chart-title');
+    if (title) title.textContent = m.title;
+    const note = this.container.querySelector('#chart-note');
+    if (note) {
+      note.textContent = `Distance in ${u.dist}. Target at ${f.dist(targetDistM)} ${u.dist}. Hover or focus the chart and use the arrow keys to read values.`;
+    }
+    const data = {
+      label: m.title,
+      series: m.series,
+      area: !!m.area,
+      x: { type: 'linear', format: (v) => `${fmtN(0)(v)} ${u.dist}` },
+      y: { format: fmtN(m.d) },
+    };
+    if (this.chart && this.chart.host === host) this.chart.update(data);
+    else {
+      this.chart?.destroy?.();
+      this.chart = LadaGlass.chart.line(host, data);
+      this.chart.host = host;
+    }
+  }
+
   /** Display conversions for the table and CSV (physics is SI; the table follows the units setting). */
   _formatters(sysUnits, dispUnits) {
     const isMetric = sysUnits === 'metric';
@@ -401,7 +411,7 @@ export class WorkspaceView {
 
     const allChecked = rows.length > 0 && rows.every((p) => this.selectedRanges.has(p.distanceM));
     const head = [
-      `<th scope="col"><label class="check-inline"><input type="checkbox" id="chk-select-all-ranges" ${allChecked ? 'checked' : ''} aria-label="Include all ranges on DOPE cards" /> Range (${u.dist})</label></th>`,
+      `<th scope="col"><label class="check-inline"><input type="checkbox" class="lg-check" id="chk-select-all-ranges" ${allChecked ? 'checked' : ''} aria-label="Include all ranges on DOPE cards" /> Range (${u.dist})</label></th>`,
     ];
     const colDefs = [
       ['drop', `Drop (${u.lin})`],
@@ -435,13 +445,13 @@ export class WorkspaceView {
         const windClicks = Math.round(p.windageRad / clickRad);
         const machClass = p.mach >= 1.2 ? 'badge-ok' : p.mach >= 1.0 ? 'badge-warn' : 'badge-bad';
         const cells = [
-          `<th scope="row"><label class="check-inline"><input type="checkbox" class="chk-range-select" data-dist="${p.distanceM}" ${this.selectedRanges.has(p.distanceM) ? 'checked' : ''} aria-label="Include ${dist} ${u.dist} on DOPE cards" /> ${dist}</label>${isZero ? '<span class="row-tag row-tag-zero">Zero</span>' : ''}${isTarget ? '<span class="row-tag row-tag-target">Target</span>' : ''}</th>`,
+          `<th scope="row"><label class="check-inline"><input type="checkbox" class="lg-check chk-range-select" data-dist="${p.distanceM}" ${this.selectedRanges.has(p.distanceM) ? 'checked' : ''} aria-label="Include ${dist} ${u.dist} on DOPE cards" /> ${dist}</label>${isZero ? '<span class="row-tag row-tag-zero">Zero</span>' : ''}${isTarget ? '<span class="row-tag row-tag-target">Target</span>' : ''}</th>`,
         ];
         if (cols.has('drop')) cells.push(`<td>${signed(f.lin(p.dropM), 1)}</td>`);
-        if (cols.has('elevation')) cells.push(`<td class="text-cyan">${signed(f.ang(p, 'elevation'), 2)}</td>`);
+        if (cols.has('elevation')) cells.push(`<td class="num-strong">${signed(f.ang(p, 'elevation'), 2)}</td>`);
         if (cols.has('elevClicks')) cells.push(`<td>${elevClicks === 0 ? 0 : elevClicks}</td>`);
         if (cols.has('drift')) cells.push(`<td>${signed(f.lin(Math.abs(p.driftM)), 1)}</td>`);
-        if (cols.has('wind')) cells.push(`<td class="text-amber">${signed(Math.abs(f.ang(p, 'windage')), 2)}</td>`);
+        if (cols.has('wind')) cells.push(`<td>${signed(Math.abs(f.ang(p, 'windage')), 2)}</td>`);
         if (cols.has('windClicks')) cells.push(`<td>${Math.abs(windClicks)}</td>`);
         if (cols.has('velocity')) cells.push(`<td>${Math.round(f.vel(p.velocityMs))}</td>`);
         if (cols.has('mach')) cells.push(`<td><span class="badge ${machClass}">${p.mach.toFixed(2)}</span></td>`);
@@ -577,10 +587,10 @@ export class WorkspaceView {
           <div class="setup-rifle lg-card">
             <label class="field-label" for="profile-select">${icon('rifle')} Rifle</label>
             <div class="rifle-row">
-              <select id="profile-select" class="form-select">
+              <select id="profile-select" class="lg-select">
                 ${appState.state.profiles.map((p) => `<option value="${esc(p.id)}" ${p.id === profile.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
               </select>
-              <button id="btn-quick-add-rifle" class="btn-secondary-sm btn-icon-only" type="button" title="Add a rifle" aria-label="Add a rifle">${icon('plus')}</button>
+              <button id="btn-quick-add-rifle" class="lg-btn lg-btn-icon" type="button" title="Add a rifle" aria-label="Add a rifle">${icon('plus')}</button>
             </div>
             <p class="rifle-summary">${esc(profile.caliber || '')}${profile.bullet?.name ? ` · ${esc(profile.bullet.name)}` : ''}</p>
           </div>
@@ -590,13 +600,13 @@ export class WorkspaceView {
             <div class="section-body">
               <label class="field-label" for="target-range-input">Distance (${targetDistUnit})</label>
               <div class="range-slider-group">
-                <input type="range" id="target-range-slider" aria-label="Target distance" min="50" max="${isImp ? 1600 : 1500}" step="25" value="${targetDistDisp}" />
-                <input type="number" id="target-range-input" class="form-input range-number" min="10" max="${isImp ? 2200 : 2000}" step="1" value="${targetDistDisp}" />
+                <input type="range" class="lg-slider" id="target-range-slider" aria-label="Target distance" min="50" max="${isImp ? 1600 : 1500}" step="25" value="${targetDistDisp}" />
+                <input type="number" id="target-range-input" class="lg-input range-number" min="10" max="${isImp ? 2200 : 2000}" step="1" value="${targetDistDisp}" />
               </div>
               <div class="field-grid-1">
                 <div>
                   <label class="field-label" for="target-shape-select">Target</label>
-                  <select id="target-shape-select" class="form-select">
+                  <select id="target-shape-select" class="lg-select">
                     <option value="ipsc" ${target.targetShape === 'ipsc' ? 'selected' : ''}>IPSC torso</option>
                     <option value="circle" ${target.targetShape === 'circle' ? 'selected' : ''}>Round plate</option>
                     <option value="square" ${target.targetShape === 'square' ? 'selected' : ''}>Square plate</option>
@@ -613,26 +623,26 @@ export class WorkspaceView {
               <div class="field-grid-2">
                 <div>
                   <label class="field-label" for="mv-input">Muzzle velocity (${mvUnit})</label>
-                  <input type="number" id="mv-input" class="form-input" min="${isImp ? 600 : 200}" max="${isImp ? 4500 : 1500}" step="1" value="${mvDisp}" />
+                  <input type="number" id="mv-input" class="lg-input" min="${isImp ? 600 : 200}" max="${isImp ? 4500 : 1500}" step="1" value="${mvDisp}" />
                 </div>
                 <div>
                   <label class="field-label" for="weight-input">Bullet weight (gr)</label>
-                  <input type="number" id="weight-input" class="form-input" min="20" max="1000" step="0.1" value="${profile.bullet.weightGr}" />
+                  <input type="number" id="weight-input" class="lg-input" min="20" max="1000" step="0.1" value="${profile.bullet.weightGr}" />
                 </div>
                 <div>
                   <label class="field-label" for="drag-model-select">Drag model</label>
-                  <select id="drag-model-select" class="form-select">
+                  <select id="drag-model-select" class="lg-select">
                     <option value="G7" ${profile.bullet.dragModel === 'G7' ? 'selected' : ''}>G7 (boat-tail)</option>
                     <option value="G1" ${profile.bullet.dragModel === 'G1' ? 'selected' : ''}>G1 (flat-base)</option>
                   </select>
                 </div>
                 <div>
                   <label class="field-label" for="bc-input">BC (${esc(profile.bullet.dragModel === 'G1' ? 'G1' : 'G7')})</label>
-                  <input type="number" id="bc-input" class="form-input" min="0.05" max="1.5" step="0.001" value="${profile.bullet.dragModel === 'G1' ? profile.bullet.bcG1 : profile.bullet.bcG7}" />
+                  <input type="number" id="bc-input" class="lg-input" min="0.05" max="1.5" step="0.001" value="${profile.bullet.dragModel === 'G1' ? profile.bullet.bcG1 : profile.bullet.bcG7}" />
                 </div>
                 <div class="field-span-2">
                   <label class="field-label" for="algorithm-select">Solver model</label>
-                  <select id="algorithm-select" class="form-select">
+                  <select id="algorithm-select" class="lg-select">
                     <option value="G7" ${config.activeAlgorithm === 'G7' ? 'selected' : ''}>Point mass, G7 drag</option>
                     <option value="G1" ${config.activeAlgorithm === 'G1' ? 'selected' : ''}>Point mass, G1 drag</option>
                     <option value="MPM" ${config.activeAlgorithm === 'MPM' ? 'selected' : ''}>Modified point mass (adds spin drift, jump, Coriolis)</option>
@@ -641,15 +651,15 @@ export class WorkspaceView {
                 </div>
                 <div>
                   <label class="field-label" for="sh-input">Sight height (${shUnit})</label>
-                  <input type="number" id="sh-input" class="form-input" min="${isImp ? 0.5 : 1}" max="${isImp ? 6 : 15}" step="${isImp ? 0.05 : 0.1}" value="${shDisp}" />
+                  <input type="number" id="sh-input" class="lg-input" min="${isImp ? 0.5 : 1}" max="${isImp ? 6 : 15}" step="${isImp ? 0.05 : 0.1}" value="${shDisp}" />
                 </div>
                 <div>
                   <label class="field-label" for="zero-input">Zero distance (${zeroUnit})</label>
-                  <input type="number" id="zero-input" class="form-input" min="25" max="${isImp ? 350 : 300}" step="1" value="${zeroDisp}" />
+                  <input type="number" id="zero-input" class="lg-input" min="25" max="${isImp ? 350 : 300}" step="1" value="${zeroDisp}" />
                 </div>
                 <div>
                   <label class="field-label" for="twist-input">Twist rate (1 in … in)</label>
-                  <input type="number" id="twist-input" class="form-input" min="5" max="18" step="0.25" value="${profile.twistRateIn}" />
+                  <input type="number" id="twist-input" class="lg-input" min="5" max="18" step="0.25" value="${profile.twistRateIn}" />
                 </div>
               </div>
             </div>
@@ -659,23 +669,23 @@ export class WorkspaceView {
             <summary>${icon('thermometer')}<span>Atmosphere</span><span class="section-summary">${tempDisp} ${tempUnit} · ${pressDisp} ${pressUnit}</span></summary>
             <div class="section-body">
               <label class="field-label" for="env-select">Preset</label>
-              <select id="env-select" class="form-select">${envOptions}</select>
+              <select id="env-select" class="lg-select">${envOptions}</select>
               <div class="field-grid-2">
                 <div>
                   <label class="field-label" for="temp-input">Temperature (${tempUnit})</label>
-                  <input type="number" id="temp-input" class="form-input" min="-40" max="${isImp ? 140 : 60}" step="1" value="${tempDisp}" />
+                  <input type="number" id="temp-input" class="lg-input" min="-40" max="${isImp ? 140 : 60}" step="1" value="${tempDisp}" />
                 </div>
                 <div>
                   <label class="field-label" for="press-input">Station pressure (${pressUnit})</label>
-                  <input type="number" id="press-input" class="form-input" min="${isImp ? 20 : 700}" max="${isImp ? 33 : 1100}" step="${isImp ? 0.01 : 1}" value="${pressDisp}" />
+                  <input type="number" id="press-input" class="lg-input" min="${isImp ? 20 : 700}" max="${isImp ? 33 : 1100}" step="${isImp ? 0.01 : 1}" value="${pressDisp}" />
                 </div>
                 <div>
                   <label class="field-label" for="alt-input">Altitude (${altUnit})</label>
-                  <input type="number" id="alt-input" class="form-input" min="-400" max="${isImp ? 16000 : 5000}" step="${isImp ? 100 : 10}" value="${altDisp}" />
+                  <input type="number" id="alt-input" class="lg-input" min="-400" max="${isImp ? 16000 : 5000}" step="${isImp ? 100 : 10}" value="${altDisp}" />
                 </div>
                 <div>
                   <label class="field-label" for="hum-input">Humidity (%)</label>
-                  <input type="number" id="hum-input" class="form-input" min="0" max="100" step="1" value="${env.humidityPercent}" />
+                  <input type="number" id="hum-input" class="lg-input" min="0" max="100" step="1" value="${env.humidityPercent}" />
                 </div>
               </div>
               <p class="field-hint" id="atmos-derived"></p>
@@ -691,11 +701,11 @@ export class WorkspaceView {
               <div class="field-grid-2">
                 <div>
                   <label class="field-label" for="wind-speed-input">Speed (${windSpeedUnit})</label>
-                  <input type="number" id="wind-speed-input" class="form-input" min="0" max="${isImp ? 65 : 30}" step="${isImp ? 1 : 0.5}" value="${windSpeedDisp}" />
+                  <input type="number" id="wind-speed-input" class="lg-input" min="0" max="${isImp ? 65 : 30}" step="${isImp ? 1 : 0.5}" value="${windSpeedDisp}" />
                 </div>
                 <div>
                   <label class="field-label" for="wind-dir-input">From (° clock, 90 = from right)</label>
-                  <input type="number" id="wind-dir-input" class="form-input" min="0" max="359" step="5" value="${env.windDirectionDeg}" />
+                  <input type="number" id="wind-dir-input" class="lg-input" min="0" max="359" step="5" value="${env.windDirectionDeg}" />
                 </div>
               </div>
             </div>
@@ -707,11 +717,11 @@ export class WorkspaceView {
               <div class="field-grid-2">
                 <div>
                   <label class="field-label" for="inc-input">Inclination (°, + uphill)</label>
-                  <input type="number" id="inc-input" class="form-input" min="-60" max="60" step="1" value="${env.inclinationDeg || 0}" />
+                  <input type="number" id="inc-input" class="lg-input" min="-60" max="60" step="1" value="${env.inclinationDeg || 0}" />
                 </div>
                 <div>
                   <label class="field-label" for="cant-input">Rifle cant (°, + right)</label>
-                  <input type="number" id="cant-input" class="form-input" min="-45" max="45" step="1" value="${env.cantDeg || 0}" />
+                  <input type="number" id="cant-input" class="lg-input" min="-45" max="45" step="1" value="${env.cantDeg || 0}" />
                 </div>
               </div>
             </div>
@@ -731,7 +741,7 @@ export class WorkspaceView {
           <div class="result-panel lg-card" role="tabpanel" id="panel-reticle" aria-labelledby="tab-reticle">
             <div class="panel-toolbar">
               <label class="lg-sr-only" for="reticle-type-select">Reticle</label>
-              <select id="reticle-type-select" class="form-select-sm">
+              <select id="reticle-type-select" class="lg-select lg-select-sm">
 <option value="EBR-8 MRAD" ${profile.optic?.reticle === 'EBR-8 MRAD' ? 'selected' : ''}>Vortex EBR-8 (MRAD)</option>
                 <option value="Kahles SKMR4" ${profile.optic?.reticle === 'Kahles SKMR4' ? 'selected' : ''}>Kahles SKMR4 (MRAD)</option>
                 <option value="Leupold PR2-MIL" ${profile.optic?.reticle === 'Leupold PR2-MIL' ? 'selected' : ''}>Leupold PR2-MIL (MRAD)</option>
@@ -743,13 +753,13 @@ export class WorkspaceView {
                 <option value="ACSS DMR" ${profile.optic?.reticle === 'ACSS DMR' ? 'selected' : ''}>Primary Arms ACSS DMR</option>
               </select>
               <label class="lg-sr-only" for="focal-plane-select">Focal plane</label>
-              <select id="focal-plane-select" class="form-select-sm">
+              <select id="focal-plane-select" class="lg-select lg-select-sm">
                 <option value="FFP" ${profile.optic?.focalPlane === 'FFP' ? 'selected' : ''}>First focal plane</option>
                 <option value="SFP" ${profile.optic?.focalPlane === 'SFP' ? 'selected' : ''}>Second focal plane</option>
               </select>
-              <label class="check-inline"><input type="checkbox" id="illum-check" ${this.illuminated ? 'checked' : ''} /> Illuminated</label>
+              <label class="check-inline"><input type="checkbox" class="lg-check" id="illum-check" ${this.illuminated ? 'checked' : ''} /> Illuminated</label>
               <label class="mag-control" for="mag-slider">Magnification <strong id="mag-display">${profile.optic?.currentMagnification || 15}×</strong>
-                <input type="range" id="mag-slider" min="${profile.optic?.minMagnification || 4}" max="${profile.optic?.maxMagnification || 36}" step="1" value="${profile.optic?.currentMagnification || 15}" />
+                <input type="range" class="lg-slider" id="mag-slider" min="${profile.optic?.minMagnification || 4}" max="${profile.optic?.maxMagnification || 36}" step="1" value="${profile.optic?.currentMagnification || 15}" />
               </label>
             </div>
             <div class="reticle-turret-split">
@@ -769,13 +779,13 @@ export class WorkspaceView {
                   <span id="turret-dialed-clicks" class="turret-subtext">(0 clicks)</span>
                 </div>
                 <div class="turret-btn-row">
-                  <button id="btn-turret-minus-major" class="btn-turret" type="button" aria-label="Down 1 ${opticUnit}" title="Down 1 ${opticUnit}">−1</button>
-                  <button id="btn-turret-minus" class="btn-turret" type="button" aria-label="Down one click" title="Down one click">−1c</button>
-                  <button id="btn-turret-zero" class="btn-turret" type="button" aria-label="Back to zero" title="Back to zero">0</button>
-                  <button id="btn-turret-plus" class="btn-turret" type="button" aria-label="Up one click" title="Up one click">+1c</button>
-                  <button id="btn-turret-plus-major" class="btn-turret" type="button" aria-label="Up 1 ${opticUnit}" title="Up 1 ${opticUnit}">+1</button>
+                  <button id="btn-turret-minus-major" class="lg-btn turret-btn" type="button" aria-label="Down 1 ${opticUnit}" title="Down 1 ${opticUnit}">−1</button>
+                  <button id="btn-turret-minus" class="lg-btn turret-btn" type="button" aria-label="Down one click" title="Down one click">−1c</button>
+                  <button id="btn-turret-zero" class="lg-btn turret-btn" type="button" aria-label="Back to zero" title="Back to zero">0</button>
+                  <button id="btn-turret-plus" class="lg-btn turret-btn" type="button" aria-label="Up one click" title="Up one click">+1c</button>
+                  <button id="btn-turret-plus-major" class="lg-btn turret-btn" type="button" aria-label="Up 1 ${opticUnit}" title="Up 1 ${opticUnit}">+1</button>
                 </div>
-                <button id="btn-turret-match-target" class="btn-primary-sm btn-block" type="button">
+                <button id="btn-turret-match-target" class="lg-btn lg-btn-primary btn-block" type="button">
                   ${icon('turret')} Dial <span id="turret-target-needed">0.0</span>
                 </button>
               </div>
@@ -784,39 +794,37 @@ export class WorkspaceView {
 
           <div class="result-panel lg-card" role="tabpanel" id="panel-chart" aria-labelledby="tab-chart" hidden>
             <div class="panel-toolbar">
-              <div class="lg-segmented chart-tab-bar" role="radiogroup" aria-label="Chart">
-                <button class="tab-btn active" type="button" data-tab="drop" aria-pressed="true">Drop</button>
-                <button class="tab-btn" type="button" data-tab="velocity" aria-pressed="false">Velocity</button>
-                <button class="tab-btn" type="button" data-tab="wind" aria-pressed="false">Wind drift</button>
-                <button class="tab-btn" type="button" data-tab="lead" aria-pressed="false">Time of flight</button>
-                <button class="tab-btn" type="button" data-tab="energy" aria-pressed="false">Energy</button>
+              <p class="lg-label chart-title" id="chart-title">Drop</p>
+              <span class="toolbar-spacer"></span>
+              <div class="lg-tabs chart-metric" role="tablist" aria-label="Chart">
+                ${[['drop', 'Drop'], ['velocity', 'Velocity'], ['wind', 'Wind drift'], ['tof', 'Time of flight'], ['energy', 'Energy']]
+                  .map(([k, l]) => `<button class="lg-tab" role="tab" type="button" data-metric="${k}" aria-selected="${this.chartMetric === k}">${l}</button>`).join('')}
               </div>
             </div>
-            <div class="chart-canvas-container">
-              <canvas id="chart-canvas" role="img" aria-label="Trajectory chart. The range table has the same data as text."></canvas>
-            </div>
+            <div class="chart-host" id="trajectory-chart"></div>
+            <p class="chart-note lg-small lg-muted" id="chart-note"></p>
           </div>
 
           <div class="result-panel lg-card" role="tabpanel" id="panel-table" aria-labelledby="tab-table" hidden>
             <div class="panel-toolbar">
               <label class="field-inline" for="step-select">Every
-                <select id="step-select" class="form-select-sm">
+                <select id="step-select" class="lg-select lg-select-sm">
                   ${[10, 25, 50, 100].map((v) => `<option value="${v}" ${config.stepM === v ? 'selected' : ''}>${v} m</option>`).join('')}
                 </select>
               </label>
               <details class="column-visibility-dropdown" id="col-picker-details">
-                <summary class="btn-secondary-sm">${icon('settings')} Columns</summary>
+                <summary class="lg-btn">${icon('settings')} Columns</summary>
                 <div class="column-picker-menu">
                   ${[['drop', 'Drop'], ['elevation', 'Elevation'], ['elevClicks', 'Elevation clicks'], ['drift', 'Wind drift'], ['wind', 'Windage'], ['windClicks', 'Windage clicks'], ['velocity', 'Velocity'], ['mach', 'Mach'], ['energy', 'Energy'], ['tof', 'Time of flight'], ['danger', 'Danger space']]
                     .map(([k, l]) => `<label><input type="checkbox" data-col="${k}" ${this.visibleColumns.has(k) ? 'checked' : ''} /> ${l}</label>`).join('')}
                 </div>
               </details>
               <span class="toolbar-spacer"></span>
-              <button id="export-csv-btn" class="btn-secondary-sm" type="button">${icon('download')} CSV</button>
-              <button id="btn-send-to-dope" class="btn-primary-sm" type="button">${icon('card')} Make DOPE card (<span id="selected-ranges-count">0</span> ranges)</button>
+              <button id="export-csv-btn" class="lg-btn" type="button">${icon('download')} CSV</button>
+              <button id="btn-send-to-dope" class="lg-btn lg-btn-primary" type="button">${icon('card')}<span>Make DOPE card (<span id="selected-ranges-count">0</span> ranges)</span></button>
             </div>
-            <div class="table-scrollable">
-              <table class="dope-table">
+            <div class="lg-table-wrap lg-table-sticky range-table-wrap">
+              <table class="lg-table range-table">
                 <caption class="lg-sr-only">Range table: drop, holds and velocity at each distance</caption>
                 <thead id="trajectory-thead"></thead>
                 <tbody id="trajectory-tbody"></tbody>
@@ -1024,16 +1032,14 @@ export class WorkspaceView {
     });
 
     // Chart Tabs
-    const tabBtns = this.container.querySelectorAll('.tab-btn');
-    tabBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        tabBtns.forEach((b) => {
-          b.classList.toggle('active', b === btn);
-          b.setAttribute('aria-pressed', String(b === btn));
-        });
-        this.chart?.setTab(btn.dataset.tab);
-      });
+    this.container.querySelector('.chart-metric')?.addEventListener('click', (e) => {
+      const tab = e.target.closest('[data-metric]');
+      if (!tab) return;
+      this.chartMetric = tab.dataset.metric;
+      this.container.querySelectorAll('.chart-metric [data-metric]').forEach((b) => b.setAttribute('aria-selected', String(b === tab)));
+      if (this.activeSolution) this._renderChart(this.activeSolution, appState.state.target.distanceM);
     });
+
 
     // Step Selector
     const stepSel = this.container.querySelector('#step-select');

@@ -212,8 +212,11 @@ try {
 
   await ev(`document.getElementById('tab-chart').click()`);
   await sleep(500);
-  const chart = await ev(`({ hidden: document.getElementById('panel-chart').hidden, w: document.getElementById('chart-canvas').getBoundingClientRect().width })`);
-  check(!chart.hidden && chart.w > 200, 'chart tab shows a sized chart');
+  const chart = await ev(`({ hidden: document.getElementById('panel-chart').hidden, w: document.querySelector('#trajectory-chart svg')?.getBoundingClientRect().width || 0, lines: document.querySelectorAll('#trajectory-chart path').length })`);
+  check(!chart.hidden && chart.w > 200 && chart.lines > 0, 'chart tab shows a Låda Glass line chart');
+  await ev(`document.querySelector('.chart-metric [data-metric="velocity"]').click()`);
+  await sleep(300);
+  check((await ev(`document.getElementById('chart-title').textContent`)).startsWith('Velocity'), 'chart switches to velocity');
   await ev(`document.getElementById('tab-table').click()`);
   await sleep(400);
   const table = await ev(`({ rows: document.querySelectorAll('#trajectory-tbody tr').length, target: document.querySelectorAll('.target-row').length, zero: document.querySelectorAll('.zero-row').length, ticked: document.getElementById('selected-ranges-count').textContent })`);
