@@ -5,7 +5,9 @@
  * with bulletproof offline fallback to cached app shell when in the field.
  */
 
-const CACHE_NAME = 'ballistic-workbench-v3';
+// Keep in step with "version" in manifest.json (tests/version.mjs checks it). A new version
+// gets a new cache, so old cached files are dropped on activate.
+const CACHE_NAME = 'ballistic-workbench-v0.1.0';
 const STATIC_ASSETS = [
   './',
   './index.html',

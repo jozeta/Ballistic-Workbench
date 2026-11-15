@@ -20,6 +20,7 @@ class BallisticWorkbenchApp {
     this.initServiceWorker();
     this.initRouter();
     this.initCommandPalette();
+    this.initVersion();
 
     const initialHash = (typeof window !== 'undefined' ? window.location.hash.replace('#', '') : '') || 'workspace';
     const validViews = ['workspace', 'solverLab', 'dopeStudio', 'tools', 'libraryManager'];
@@ -106,6 +107,20 @@ class BallisticWorkbenchApp {
         this.currentViewInstance.recompute();
       }
     }
+  }
+
+  /** Shows the app version in the footer; manifest.json is the single source of the version. */
+  initVersion() {
+    const el = document.getElementById('app-version');
+    if (!el || typeof fetch === 'undefined') return;
+    fetch('./manifest.json')
+      .then((r) => r.json())
+      .then((m) => {
+        if (typeof m.version === 'string') el.textContent = `v${m.version}`;
+      })
+      .catch(() => {
+        // Offline without a cached manifest: the footer simply shows no version
+      });
   }
 
   initServiceWorker() {

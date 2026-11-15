@@ -7,6 +7,7 @@
   /* Hide all interactive UI chrome */
   header,
   .app-header,
+  .app-footer,
   .no-print,
   .sidebar-scrollable,
   .panel-header,

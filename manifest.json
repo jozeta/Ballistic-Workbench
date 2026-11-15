@@ -1,6 +1,7 @@
 {
   "name": "Ballistic Workbench | Tactical Ballistics & DOPE Engine",
   "short_name": "BallisticWorkbench",
+  "version": "0.1.0",
   "description": "Precision External Ballistics, RK4 Trajectory Solver, Reticle Holdover Simulation, and DOPE Card Generator",
   "start_url": "./index.html",
   "scope": "./",

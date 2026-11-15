@@ -1130,6 +1130,17 @@ if (!manifestHref.result.value || !manifestHref.result.value.includes('manifest.
   throw new Error(`Expected link rel="manifest" with manifest.json, got: ${manifestHref.result.value}`);
 }
 
+// Test 13: Version footer shows manifest.json's version
+console.log('👉 Testing version footer...');
+const expectedVersion = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'manifest.json'), 'utf8')).version;
+const footerVersion = await send('Runtime.evaluate', {
+  expression: `document.getElementById('app-version')?.textContent`,
+});
+console.log(`🏷️  Footer version: ${footerVersion.result.value}`);
+if (footerVersion.result.value !== `v${expectedVersion}`) {
+  throw new Error(`Expected footer "v${expectedVersion}", got: ${footerVersion.result.value}`);
+}
+
 // Final check on console errors
 console.log('\n--- VERIFYING CONSOLE ERROR RECORD ---');
 console.log(`Console messages logged: ${consoleLogs.length}`);
