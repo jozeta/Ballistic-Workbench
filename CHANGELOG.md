@@ -32,9 +32,19 @@ The first version: the existing app brought under version control, redesigned an
 - Bullet library: 27 G7 BCs corrected to published values (with source); 133 derived ones are
   marked "estimated".
 
+### Guide and help
+
+- Guide: an illustrated step-by-step walkthrough from planning a range day to a printed DOPE chart
+  (equipment, sight height, twist, click value, cant, bullet data, zero, chronograph, shooting known
+  distances, truing, building and checking the chart), how every view and tool works, and a glossary.
+  Progress is saved per step.
+- An i next to every setting (126 of them) explains what it is, how to measure or choose it,
+  typical values and tips, with a link to the guide. Opens on hover, keyboard focus or tap.
+
 ### Interface
 
-- Låda Glass 2.2.0 design; dark and light themes following the system (System / Light / Dark);
+- Låda Glass 2.2.0 app shell (sidebar navigation with Search, Units and Theme), Låda components
+  and Låda SVG charts throughout; dark and light themes following the system (System / Light / Dark);
   custom ballistics icon set and line-art graphics; no emoji.
 - New navigation: Solver, Compare models, DOPE cards, Tools, Library; command palette with keyboard
   support (⌘K / Ctrl+K).
@@ -55,6 +65,19 @@ The first version: the existing app brought under version control, redesigned an
 - Version number in the footer.
 
 ### Fixed
+
+- Angles follow the scope: an MRAD scope shows MRAD in imperial too (imperial forced MOA next to
+  0.1 MRAD clicks); imperial range tables use round yards.
+- The firing solution is solved exactly at the target distance (at short range it depended on the
+  table step); the bullet's drag model always sets the drag table (it was ignored with point mass).
+- Turret follows the solution by default, so the target no longer slides along the drop curve in
+  the reticle while changing the distance.
+- Target types have their own size and shape (NATO E and plates behaved like an IPSC torso).
+- Editing a preset atmosphere no longer changes the preset; altitude now affects the air.
+- Compare models: 4DOF removed (it computed the same as MPM); a plain explanation of the
+  differences; no crash with extreme rifles.
+- The app could fail to start when served with python's http.server (it dropped parallel module
+  loads); a small Node server (npm start) replaces it.
 
 - Tools initialised twice (Calibrate Scale did nothing; the simulation ran twice).
 - Compare models went blank after a theme change; views went stale after changes elsewhere.

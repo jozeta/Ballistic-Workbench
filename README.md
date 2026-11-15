@@ -24,10 +24,18 @@ The first version, with a complete redesign and a corrected ballistics engine:
   solver within 0.01 MRAD and against Hornady's published 6.5 Creedmoor table. Corrected aerodynamic
   jump, spin drift, cant, Coriolis, stability and powder temperature; the zero no longer shifts with
   field conditions; 27 bullet BCs corrected to published values.
-- **New interface** in the Låda Glass design, dark and light (follows your system), custom icons,
-  plain-language text, and a phone layout.
+- **New interface** in the Låda Glass design: sidebar navigation, Låda components and charts, dark
+  and light themes (follows your system), custom icons and line art, plain-language text, and layouts
+  for phones, tablets and computers.
+- **Guide:** a step-by-step, illustrated walkthrough from planning a range day to a printed DOPE
+  chart (measuring sight height, twist and click value, zeroing, chronograph, shooting known
+  distances, truing), plus how every part of the app works. Progress is saved.
+- **Help everywhere:** an **i** next to every setting explains what it is, how to measure or choose
+  it and typical values, with a link to the guide.
 - **Solver** shows one clear firing solution (elevation and windage with direction and clicks),
-  with the reticle, trajectory chart and range table in tabs. Inputs are validated as you type.
+  solved exactly at your distance, with the reticle, trajectory chart and range table in tabs. The
+  turret follows the solution by default. Angles follow your scope (MRAD or MOA) whatever the
+  distance units. Inputs are validated as you type.
 - **DOPE cards** print at exact physical size; **Tools** each give a plain verdict; **Library**
   can edit, duplicate and delete rifles with undo.
 - **Security:** strict Content-Security-Policy, imported and saved data is validated, no inline
@@ -48,7 +56,11 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list.
   </tr>
   <tr>
     <td><img src="docs/screenshots/libraryManager.png" alt="Library" width="420"><br>Library: your rifles, 177 bullets and your own bullets</td>
-    <td><img src="docs/screenshots/solverLab.png" alt="Compare models" width="420"><br>Compare models: how G1, G7, MPM and 4DOF differ for your rifle</td>
+    <td><img src="docs/screenshots/solverLab.png" alt="Compare models" width="420"><br>Compare models: how G1, G7 and modified point mass differ, explained in plain words</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/guide.png" alt="Guide" width="420"><br>Guide: from range day to DOPE chart, step by step</td>
+    <td><img src="docs/screenshots/help.png" alt="Help box" width="420"><br>An i next to every setting explains it and links to the guide</td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/mobile.png" alt="Phone layout" width="200"><br>Phone layout (390 px)</td>
@@ -60,13 +72,14 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 | View | What it does |
 | --- | --- |
+| **Guide** | Step by step from planning a range day to a printed DOPE chart: plan, equipment, measure rifle and scope (sight height, twist, click value, cant), bullet data, zero, chronograph, enter in the app, shoot known distances, true the model, build the chart, verify and maintain. Each step has an illustration, what you need, numbered instructions, tips and buttons into the app. Part 2 explains every view and tool; a glossary explains the terms. |
 | **Solver** | The firing solution for the active rifle at the exact target distance: elevation and windage (MRAD or MOA, direction and clicks), velocity with Mach, time of flight, energy and how far the bullet stays supersonic. Tabs: a reticle view showing where to hold, with an elevation turret you can dial (mouse, touch or keyboard); a trajectory chart (drop, velocity, wind drift, time of flight, energy); a range table with CSV export, where you tick the distances for your DOPE card. |
-| **Compare models** | How the point-mass G1 and G7, modified point mass (MPM: adds spin drift, aerodynamic jump and Coriolis) and 4DOF solutions differ for your rifle, as difference charts and a table. "Use in Solver" switches the model. |
+| **Compare models** | How the point-mass G1 and G7 solutions and modified point mass (MPM: adds spin drift, aerodynamic jump and Coriolis) differ for your rifle, as difference charts and a table, with a plain explanation of why. "Use in Solver" switches the model. |
 | **DOPE cards** | Printable range cards at exact physical size: scope cap insert, 3 × 5 in wrist card, stock tape, turret tape, match stage card (with a stage builder and wind holds for lull, base and gust) and a full-page data sheet. Copy as text, save as image, or print. |
 | **Tools** | **True your data** (muzzle velocity from a 500–800 m impact, then drag from a 1,000 m+ impact, applied to the rifle), **Hit probability** (simulates 500–2,000 shots from your error sources and shows what causes misses), **Group analysis** (from a photo or clicks: extreme spread, mean radius, dispersion ellipse and the correction to centre the group), **Chronograph** (SD, ES, mean; use the mean as muzzle velocity), **Range estimation** (from target size and reticle reading), **Recoil** (free recoil energy and velocity). |
 | **Library** | Your rifles (use, edit, duplicate, delete with undo), 177 factory bullets with search and caliber filter (published BCs marked with their source, derived ones marked "estimated"), your own bullets with a live Miller stability check, and backup to / restore from a file. |
 
-The command palette (**⌘K** on Mac, **Ctrl+K** elsewhere) reaches every view, tool and setting.
+The command palette (**⌘K** on Mac, **Ctrl+K** elsewhere, or **Search** in the sidebar) reaches every view, tool and setting. Every setting has an **i** with an explanation.
 
 ## Installation
 
@@ -94,21 +107,25 @@ Settings are stored in your browser (`localStorage`); nothing leaves your device
 
 | Setting | Where | Options | Default |
 | --- | --- | --- | --- |
-| Units | Header button, palette | Metric (m, m/s, MRAD, cm) or imperial (yd, fps, MOA, in) | Metric |
-| Theme | Header button, palette | System, light, dark | System |
+| Units | Sidebar, palette | Metric (m, m/s, cm) or imperial (yd, fps, in). Angles (MRAD or MOA) and clicks follow the active rifle's scope, so a mil scope shows MRAD with yards too | Metric |
+| Theme | Sidebar, palette | System, dark, light | System |
 | Rifle | Solver, Library, palette | Four example rifles (6.5 Creedmoor, .300 PRC, .308 Win, .223 Rem) or your own | 6.5 Creedmoor |
-| Distance and target | Solver → Target | Distance; target IPSC torso, round plate, square plate or NATO E | 600 m, IPSC torso |
-| Load and rifle | Solver → Load and rifle | Muzzle velocity, bullet weight, drag model (G1/G7), BC, solver model, sight height, zero distance, twist | From the rifle |
-| Solver model | Solver → Load and rifle, Compare models, palette | Point mass G7, point mass G1, modified point mass, 4DOF | Point mass G7 |
-| Atmosphere | Solver → Atmosphere | Presets (sea level, mountains 1,950 m, desert heat, winter) or your own temperature, station pressure, altitude and humidity; density altitude is shown | Standard atmosphere, sea level |
+| Distance and target | Solver → Target | Distance; target IPSC torso (45 × 75 cm), NATO E-type (50 × 100 cm), round plate (30 cm) or square plate (30 × 30 cm); width and height editable | 600 m, IPSC torso |
+| Load and rifle | Solver → Load and rifle | Muzzle velocity, bullet weight, drag model (G1/G7, sets the drag table), BC, solver model, sight height, zero distance, twist | From the rifle |
+| Solver model | Solver → Load and rifle, Compare models, palette | Point mass (with the bullet's drag model) or modified point mass (adds spin drift, aerodynamic jump and Coriolis) | Point mass |
+| Atmosphere | Solver → Atmosphere | Presets (sea level, mountains 1,950 m, desert heat, winter) or your own temperature, station pressure, altitude (moves the pressure with the standard atmosphere) and humidity; editing a preset creates Custom conditions; density altitude is shown | Standard atmosphere, sea level |
 | Wind | Solver → Wind | Speed and the direction it comes from (drag the wind clock or type degrees; 90° = from the right) | 4 m/s from 3 o'clock |
 | Shot angle and cant | Solver → Shot angle and cant | Inclination (+ uphill) and rifle cant (+ right) | 0° and 0° |
 | Scope | Solver → Reticle tab, rifle dialog | Reticle, first or second focal plane, magnification, click value (0.1 / 0.05 MRAD, 1/4 / 1/8 MOA) | From the rifle |
-| Range table | Solver → Range table | Row spacing 10 / 25 / 50 / 100 m; visible columns | 25 m, all columns |
+| Turret | Solver → Reticle and turret | Follow solution (the turret is set to the answer, the reticle shows the wind hold) or Manual (you dial; the reticle shows the remaining hold) | Follow solution |
+| Range table | Solver → Range table | Row spacing 10 / 25 / 50 / 100 m or yd (imperial rows land on round yards); visible columns; ranges ticked for DOPE cards (remembered) | 25, all columns, every 100 ticked |
 | DOPE card | DOPE cards | Format, distances (defaults or the ones ticked in the Solver), card size and colour | Full page |
+| Guide progress | Guide | Steps marked as done | None |
 
 ## How to
 
+- **New here?** Open the **Guide** in the sidebar: it walks you from planning a range day to a
+  printed DOPE chart, and every setting has an **i** that explains it.
 - **Get a firing solution:** choose your rifle at the top of the Solver, set the distance under
   **Target**, then check **Atmosphere** and **Wind**. The firing solution card shows what to dial.
 - **Add your rifle:** press **+** next to the rifle in the Solver, or **Library → New rifle**. Pick a

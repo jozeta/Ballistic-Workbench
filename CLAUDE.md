@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 Ballistic Workbench: an offline-first PWA ballistics calculator for precision rifle shooters (RK4
-point-mass solver with standard G1/G7 drag, MPM and a 4DOF variant; reticle and turret simulation;
+point-mass solver with standard G1/G7 drag and modified point mass (the solver still accepts '4DOF',
+but the UI doesn't offer it: without per-bullet aerodynamic data it equals MPM); reticle and turret simulation;
 truing; hit-probability Monte Carlo; printable DOPE cards). Vanilla JavaScript ES modules, no
 framework, no build step, no runtime dependencies. Public repo (MIT).
 
@@ -21,16 +22,23 @@ npm run lint
 
 ## Layout
 
-- `index.html`: shell (header nav, units/theme/search buttons, footer, strict CSP). `src/ui/app.js`
+- `index.html`: Låda app shell (lg-app: sidebar with Search, grouped nav, Units/Theme radio switches and
+  version; strict CSP). `src/ui/app.js`
   bootstraps, hash-routes between views, owns theme (System/Light/Dark → always sets
   `<html data-theme>`), units button and the Låda command palette.
-- Views (`src/ui/`): `workspace.js` (Solver), `solverLab.js` (Compare models), `dopeStudio.js`
-  (DOPE cards), `tools.js`, `libraryManager.js`, plus `rifleBuilderModal.js` (rifle dialog).
+- Views (`src/ui/`): `guide.js` (Guide), `workspace.js` (Solver), `solverLab.js` (Compare models),
+  `dopeStudio.js` (DOPE cards), `tools.js`, `libraryManager.js`, plus `rifleBuilderModal.js` (rifle
+  dialog). In-app links: dispatch `navigate-view` with `{ view, tool?, panel?, format?, tab?, anchor? }`.
+- Help: `help.js` adds an i button next to every control whose id (or radio-group name) has an entry
+  in `helpContent.js`; boxes link to guide sections (`GuideView.showSection(id)`). New inputs need a
+  help entry.
   **View contract:** constructor(container) renders; `refresh()` rebuilds everything (theme change);
   `destroy()` removes subscriptions, observers and listeners. Views render template strings.
 - UI helpers: `icons.js` (`icon(name)` from `assets/icons.svg`), `fields.js` (`bindNumber` validated
   number inputs with inline errors, `parseNumber` accepts comma decimals), `notify.js` (`toast`).
-- Core: `state.js` (reactive `appState`, localStorage, import/export), `sanitize.js` (validates every
+- Core: `state.js` (reactive `appState`, localStorage, import/export; angle units follow the active
+  scope via `_syncAngleUnits`; `solverAlgorithm()` gives the solver algorithm: MPM or the bullet's
+  drag table), `targets.js` (target catalogue), `sanitize.js` (validates every
   stored/imported object against templates), `escape.js` (`esc`, `num`), `units.js`,
   `trajectory.js` (`interpolateAt`).
 - Physics (`src/physics/`): `solvers.js`, `atmosphere.js`, `truing.js`, `wez.js`. Pure, SI units,
@@ -53,7 +61,8 @@ npm run lint
 
 - This repo follows the app standards in `~/Desktop/code/tools/standards/STANDARDS.md` (rule IDs,
   severities). `claude-check --repo .` checks it; decisions and reasoned waivers go in `.claude-standards`.
-- Design: Låda Glass (`design=family`). Colours only from `--lg-*` tokens (no hex in app CSS; the
+- Design: Låda Glass (`design=family`): use the real `lg-` components and `LadaGlass.chart` for data
+  charts; custom canvases use `src/canvas/palette.js`. Colours only from `--lg-*` tokens (no hex in app CSS; the
   printed DOPE cards have fixed paper/ink tokens on purpose). Icons from the sprite; no emoji.
   Plain-language, sentence-case copy; explain jargon once.
 - Security: any string from user input, storage or an import goes through `esc()` before it is put
