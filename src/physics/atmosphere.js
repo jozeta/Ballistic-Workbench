@@ -111,11 +111,12 @@ export function getStandardPressureAtAltitude(altitudeM) {
 }
 
 /**
- * Adjust muzzle velocity based on powder temperature
- * @param {number} refMuzzleVelocityMs Base muzzle velocity at reference temp (m/s)
+ * Adjust muzzle velocity based on powder temperature (linear model)
+ * @param {number} refMuzzleVelocityMs Muzzle velocity at the reference powder temperature (m/s)
  * @param {number} powderTempK Powder temperature in Kelvin
  * @param {number} refTempK Reference powder temperature in Kelvin (default 15 C / 288.15 K)
- * @param {number} sensitivityMsPerK Sensitivity coefficient (m/s per degree K, default ~0.08 m/s per K)
+ * @param {number} sensitivityMsPerK Sensitivity in m/s per kelvin, i.e. m/s per °C (typical rifle
+ *   loads 0.1-1.5 m/s per °C; temperature-stable powders are at the low end)
  * @returns {number} Temperature-corrected muzzle velocity in m/s
  */
 export function adjustMuzzleVelocityForPowderTemp(

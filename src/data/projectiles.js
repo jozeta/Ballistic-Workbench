@@ -1,6 +1,14 @@
 /**
- * Ballistic Workbench - Comprehensive Projectile Database & Custom Bullet Builder
- * 177 high-precision factory & match projectiles across popular tactical & hunting calibers.
+ * Ballistic Workbench - Projectile library and Miller stability
+ * 177 factory and match bullets across popular target and hunting calibres.
+ *
+ * Ballistic coefficients (lb/in², standard G1 / G7 drag functions):
+ * - bcSource names where both BCs were checked: Hornady's published BC table (hornady.com/bc,
+ *   Mach 2.25 band), the Berger 2026 catalogue, or, for the Sierra 168/175 gr MatchKing G7, Bryan Litz's
+ *   measured values (Sierra publishes G1 only).
+ * - bcG7Estimated: true marks entries whose G7 BC has not been checked against a published value;
+ *   most were derived as roughly G1 / 2, which is only an approximation (the G1/G7 ratio depends on
+ *   the bullet shape and velocity). Prefer the bullet maker's published G7 when you have it.
  */
 
 export const PROJECTILES = [
@@ -19,7 +27,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2900,
     "factoryVelocityMs": 884,
     "velocityRangeFps": "2750 - 3100 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-224-77-smk",
@@ -36,7 +45,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2750,
     "factoryVelocityMs": 838,
     "velocityRangeFps": "2600 - 2950 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-224-69-tmk",
@@ -53,7 +63,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2900,
     "factoryVelocityMs": 884,
     "velocityRangeFps": "2750 - 3100 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-224-77-tmk",
@@ -70,7 +81,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2740,
     "factoryVelocityMs": 835,
     "velocityRangeFps": "2550 - 2950 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-224-64-tgk",
@@ -87,7 +99,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2985,
     "factoryVelocityMs": 910,
     "velocityRangeFps": "2750 - 3200 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "hornady-224-73-eldm",
@@ -104,7 +117,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2790,
     "factoryVelocityMs": 850,
     "velocityRangeFps": "2600 - 3000 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-224-75-eldm",
@@ -121,7 +135,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2750,
     "factoryVelocityMs": 838,
     "velocityRangeFps": "2550 - 2950 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-224-55-cx",
@@ -138,7 +153,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3240,
     "factoryVelocityMs": 988,
     "velocityRangeFps": "3000 - 3450 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-223-55-blade",
@@ -155,7 +171,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3182,
     "factoryVelocityMs": 970,
     "velocityRangeFps": "2900 - 3400 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-223-69-racehead",
@@ -172,7 +189,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2904,
     "factoryVelocityMs": 885,
     "velocityRangeFps": "2750 - 3100 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-223-55-oryx",
@@ -189,7 +207,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3182,
     "factoryVelocityMs": 970,
     "velocityRangeFps": "2900 - 3400 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-223-77-match",
@@ -206,7 +225,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2723,
     "factoryVelocityMs": 830,
     "velocityRangeFps": "2550 - 2950 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "ggg-223-69-smk",
@@ -223,7 +243,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2920,
     "factoryVelocityMs": 890,
     "velocityRangeFps": "2750 - 3100 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "ggg-223-77-smk",
@@ -240,7 +261,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2740,
     "factoryVelocityMs": 835,
     "velocityRangeFps": "2550 - 2950 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "ggg-556-62-ss109",
@@ -257,7 +279,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3084,
     "factoryVelocityMs": 940,
     "velocityRangeFps": "2900 - 3300 fps",
-    "recommendedTwist": "1:7\" to 1:9\""
+    "recommendedTwist": "1:7\" to 1:9\"",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-224-69-scenarl",
@@ -274,7 +297,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2871,
     "factoryVelocityMs": 875,
     "velocityRangeFps": "2700 - 3050 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-224-77-scenarl",
@@ -291,7 +315,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2723,
     "factoryVelocityMs": 830,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "federal-223-73-berger",
@@ -302,13 +327,14 @@ export const PROJECTILES = [
     "weightGr": 73,
     "diameterIn": 0.224,
     "lengthIn": 0.985,
-    "bcG1": 0.398,
-    "bcG7": 0.2,
+    "bcG1": 0.348,
+    "bcG7": 0.178,
     "dragModel": "G7",
     "factoryVelocityFps": 2800,
     "factoryVelocityMs": 853,
     "velocityRangeFps": "2600 - 3000 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "berger-224-77-otm",
@@ -325,7 +351,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2750,
     "factoryVelocityMs": 838,
     "velocityRangeFps": "2600 - 2950 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "barnes-224-55-ttsx",
@@ -342,7 +369,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3240,
     "factoryVelocityMs": 988,
     "velocityRangeFps": "3000 - 3400 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "hornady-6mm-108-eldm",
@@ -359,7 +387,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2960,
     "factoryVelocityMs": 902,
     "velocityRangeFps": "2800 - 3150 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-6mm-103-eldx",
@@ -376,7 +405,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3051,
     "factoryVelocityMs": 930,
     "velocityRangeFps": "2850 - 3250 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-6mm-90-cx",
@@ -393,7 +423,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3180,
     "factoryVelocityMs": 969,
     "velocityRangeFps": "2950 - 3350 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "berger-6mm-105-hybrid",
@@ -404,13 +435,14 @@ export const PROJECTILES = [
     "weightGr": 105,
     "diameterIn": 0.243,
     "lengthIn": 1.25,
-    "bcG1": 0.547,
-    "bcG7": 0.28,
+    "bcG1": 0.536,
+    "bcG7": 0.275,
     "dragModel": "G7",
     "factoryVelocityFps": 3025,
     "factoryVelocityMs": 922,
     "velocityRangeFps": "2850 - 3200 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "sierra-6mm-107-smk",
@@ -427,7 +459,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2970,
     "factoryVelocityMs": 905,
     "velocityRangeFps": "2800 - 3150 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-6mm-107-tmk",
@@ -444,7 +477,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2970,
     "factoryVelocityMs": 905,
     "velocityRangeFps": "2750 - 3150 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-6mm-90-tgk",
@@ -461,7 +495,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3117,
     "factoryVelocityMs": 950,
     "velocityRangeFps": "2850 - 3300 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-6mm-105-scenar",
@@ -478,7 +513,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3020,
     "factoryVelocityMs": 920,
     "velocityRangeFps": "2850 - 3200 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-6mm-105-diamond",
@@ -495,7 +531,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2854,
     "factoryVelocityMs": 870,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "federal-6mm-105-berger",
@@ -506,13 +543,14 @@ export const PROJECTILES = [
     "weightGr": 105,
     "diameterIn": 0.243,
     "lengthIn": 1.25,
-    "bcG1": 0.547,
-    "bcG7": 0.28,
+    "bcG1": 0.536,
+    "bcG7": 0.275,
     "dragModel": "G7",
     "factoryVelocityFps": 3025,
     "factoryVelocityMs": 922,
     "velocityRangeFps": "2800 - 3200 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "hornady-65-140-eldm",
@@ -529,7 +567,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2710,
     "factoryVelocityMs": 826,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-65-147-eldm",
@@ -546,7 +585,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2695,
     "factoryVelocityMs": 821,
     "velocityRangeFps": "2500 - 2850 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-65prc-147-eldm",
@@ -563,7 +603,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2910,
     "factoryVelocityMs": 887,
     "velocityRangeFps": "2750 - 3100 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-65-143-eldx",
@@ -580,7 +621,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2700,
     "factoryVelocityMs": 823,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-65prc-143-eldx",
@@ -597,7 +639,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2950,
     "factoryVelocityMs": 899,
     "velocityRangeFps": "2750 - 3150 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-65-120-cx",
@@ -614,7 +657,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2904,
     "factoryVelocityMs": 885,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "hornady-65prc-130-cx",
@@ -631,7 +675,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3000,
     "factoryVelocityMs": 915,
     "velocityRangeFps": "2800 - 3200 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-65-136-trg",
@@ -648,7 +693,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2707,
     "factoryVelocityMs": 825,
     "velocityRangeFps": "2550 - 2950 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-65-120-blade",
@@ -665,7 +711,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2822,
     "factoryVelocityMs": 860,
     "velocityRangeFps": "2600 - 3100 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-65prc-120-blade",
@@ -682,7 +729,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3051,
     "factoryVelocityMs": 930,
     "velocityRangeFps": "2800 - 3300 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-65-140-hammerhead",
@@ -699,7 +747,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2690,
     "factoryVelocityMs": 820,
     "velocityRangeFps": "2500 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-65-130-gamehead",
@@ -716,7 +765,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2756,
     "factoryVelocityMs": 840,
     "velocityRangeFps": "2600 - 3000 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-65-130-diamond",
@@ -733,7 +783,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2805,
     "factoryVelocityMs": 855,
     "velocityRangeFps": "2650 - 3050 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-65-143-match",
@@ -750,7 +801,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2690,
     "factoryVelocityMs": 820,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-65prc-143-match",
@@ -767,7 +819,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2936,
     "factoryVelocityMs": 895,
     "velocityRangeFps": "2800 - 3150 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-65-143-bondstrike",
@@ -784,7 +837,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2690,
     "factoryVelocityMs": 820,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-65prc-143-bondstrike",
@@ -801,7 +855,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2953,
     "factoryVelocityMs": 900,
     "velocityRangeFps": "2800 - 3200 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-65-156-oryx",
@@ -818,7 +873,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2559,
     "factoryVelocityMs": 780,
     "velocityRangeFps": "2400 - 2750 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-65-136-scenarl",
@@ -835,7 +891,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2723,
     "factoryVelocityMs": 830,
     "velocityRangeFps": "2550 - 2950 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-65-120-scenarl",
@@ -852,7 +909,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2887,
     "factoryVelocityMs": 880,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-65-140-scenar",
@@ -869,7 +927,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2723,
     "factoryVelocityMs": 830,
     "velocityRangeFps": "2550 - 2950 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-65-156-mega",
@@ -886,7 +945,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2559,
     "factoryVelocityMs": 780,
     "velocityRangeFps": "2350 - 2750 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-65-140-naturalis",
@@ -903,7 +963,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2657,
     "factoryVelocityMs": 810,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "berger-65-140-hybrid",
@@ -920,7 +981,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2720,
     "factoryVelocityMs": 829,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "berger-65-144-hybrid",
@@ -937,7 +999,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2680,
     "factoryVelocityMs": 817,
     "velocityRangeFps": "2500 - 2850 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "sierra-65-142-smk",
@@ -954,7 +1017,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2700,
     "factoryVelocityMs": 823,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-65-130-tmk",
@@ -971,7 +1035,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2800,
     "factoryVelocityMs": 853,
     "velocityRangeFps": "2600 - 3000 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-65-150-smk",
@@ -988,7 +1053,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2887,
     "factoryVelocityMs": 880,
     "velocityRangeFps": "2600 - 3050 fps",
-    "recommendedTwist": "1:7.5\" or faster"
+    "recommendedTwist": "1:7.5\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-65-130-tgk",
@@ -1005,7 +1071,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2800,
     "factoryVelocityMs": 853,
     "velocityRangeFps": "2600 - 3000 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-65-140-tgk",
@@ -1022,7 +1089,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2707,
     "factoryVelocityMs": 825,
     "velocityRangeFps": "2500 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "nosler-65-142-abalone",
@@ -1039,7 +1107,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2700,
     "factoryVelocityMs": 823,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "federal-65-130-berger",
@@ -1056,7 +1125,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2875,
     "factoryVelocityMs": 876,
     "velocityRangeFps": "2650 - 3050 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "federal-65-140-berger",
@@ -1073,7 +1143,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2675,
     "factoryVelocityMs": 815,
     "velocityRangeFps": "2500 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "federal-65-130-tascent",
@@ -1090,7 +1161,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2800,
     "factoryVelocityMs": 853,
     "velocityRangeFps": "2600 - 3000 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "federal-65prc-130-tascent",
@@ -1107,7 +1179,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3000,
     "factoryVelocityMs": 914,
     "velocityRangeFps": "2800 - 3200 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-308-168-smk",
@@ -1119,12 +1192,13 @@ export const PROJECTILES = [
     "diameterIn": 0.308,
     "lengthIn": 1.215,
     "bcG1": 0.462,
-    "bcG7": 0.224,
+    "bcG7": 0.218,
     "dragModel": "G7",
     "factoryVelocityFps": 2650,
     "factoryVelocityMs": 808,
     "velocityRangeFps": "2500 - 2800 fps",
-    "recommendedTwist": "1:12\" or faster"
+    "recommendedTwist": "1:12\" or faster",
+    "bcSource": "Litz / Applied Ballistics (measured)"
   },
   {
     "id": "sierra-308-175-smk",
@@ -1136,12 +1210,13 @@ export const PROJECTILES = [
     "diameterIn": 0.308,
     "lengthIn": 1.24,
     "bcG1": 0.505,
-    "bcG7": 0.252,
+    "bcG7": 0.243,
     "dragModel": "G7",
     "factoryVelocityFps": 2600,
     "factoryVelocityMs": 792,
     "velocityRangeFps": "2450 - 2750 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcSource": "Litz / Applied Ballistics (measured)"
   },
   {
     "id": "sierra-308-168-tmk",
@@ -1158,7 +1233,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2650,
     "factoryVelocityMs": 808,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-308-175-tmk",
@@ -1175,7 +1251,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2600,
     "factoryVelocityMs": 792,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-308-165-tgk",
@@ -1192,7 +1269,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2690,
     "factoryVelocityMs": 820,
     "velocityRangeFps": "2500 - 2900 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "hornady-308-168-eldm",
@@ -1209,7 +1287,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2700,
     "factoryVelocityMs": 823,
     "velocityRangeFps": "2500 - 2850 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-308-178-eldm",
@@ -1226,7 +1305,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2600,
     "factoryVelocityMs": 792,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-308-178-eldx",
@@ -1243,7 +1323,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2600,
     "factoryVelocityMs": 792,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-308-165-cx",
@@ -1260,7 +1341,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2700,
     "factoryVelocityMs": 823,
     "velocityRangeFps": "2500 - 2900 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "hornady-308-208-eldm",
@@ -1277,7 +1359,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2450,
     "factoryVelocityMs": 747,
     "velocityRangeFps": "2300 - 2650 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "sako-308-175-trg",
@@ -1294,7 +1377,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2592,
     "factoryVelocityMs": 790,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-308-162-blade",
@@ -1311,7 +1395,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2674,
     "factoryVelocityMs": 815,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-308-150-hammerhead",
@@ -1328,7 +1413,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2822,
     "factoryVelocityMs": 860,
     "velocityRangeFps": "2600 - 3000 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-308-180-hammerhead",
@@ -1345,7 +1431,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2592,
     "factoryVelocityMs": 790,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-308-165-gamehead",
@@ -1362,7 +1449,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2690,
     "factoryVelocityMs": 820,
     "velocityRangeFps": "2500 - 2900 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-308-168-racehead",
@@ -1379,7 +1467,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2641,
     "factoryVelocityMs": 805,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:12\" or faster"
+    "recommendedTwist": "1:12\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-308-168-diamond",
@@ -1396,7 +1485,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2641,
     "factoryVelocityMs": 805,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:12\" or faster"
+    "recommendedTwist": "1:12\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-308-168-match",
@@ -1413,7 +1503,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2641,
     "factoryVelocityMs": 805,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-308-175-match",
@@ -1430,7 +1521,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2592,
     "factoryVelocityMs": 790,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-308-180-bondstrike",
@@ -1447,7 +1539,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2592,
     "factoryVelocityMs": 790,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-308-170-tipstrike",
@@ -1464,7 +1557,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2657,
     "factoryVelocityMs": 810,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-308-165-oryx",
@@ -1481,7 +1575,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2690,
     "factoryVelocityMs": 820,
     "velocityRangeFps": "2500 - 2900 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-308-180-oryx",
@@ -1498,7 +1593,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2612,
     "factoryVelocityMs": 796,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "ggg-308-168-smk",
@@ -1510,12 +1606,13 @@ export const PROJECTILES = [
     "diameterIn": 0.308,
     "lengthIn": 1.215,
     "bcG1": 0.462,
-    "bcG7": 0.224,
+    "bcG7": 0.218,
     "dragModel": "G7",
     "factoryVelocityFps": 2641,
     "factoryVelocityMs": 805,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:12\" or faster"
+    "recommendedTwist": "1:12\" or faster",
+    "bcSource": "Litz / Applied Ballistics (measured)"
   },
   {
     "id": "ggg-308-175-smk",
@@ -1527,12 +1624,13 @@ export const PROJECTILES = [
     "diameterIn": 0.308,
     "lengthIn": 1.24,
     "bcG1": 0.505,
-    "bcG7": 0.252,
+    "bcG7": 0.243,
     "dragModel": "G7",
     "factoryVelocityFps": 2592,
     "factoryVelocityMs": 790,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcSource": "Litz / Applied Ballistics (measured)"
   },
   {
     "id": "ggg-308-180-smk",
@@ -1549,7 +1647,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2543,
     "factoryVelocityMs": 775,
     "velocityRangeFps": "2350 - 2750 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-308-155-scenar",
@@ -1566,7 +1665,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2750,
     "factoryVelocityMs": 838,
     "velocityRangeFps": "2550 - 2950 fps",
-    "recommendedTwist": "1:12\" or faster"
+    "recommendedTwist": "1:12\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-308-167-scenar",
@@ -1583,7 +1683,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2674,
     "factoryVelocityMs": 815,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:12\" or faster"
+    "recommendedTwist": "1:12\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-308-175-scenarl",
@@ -1600,7 +1701,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2600,
     "factoryVelocityMs": 792,
     "velocityRangeFps": "2450 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-308-185-scenar",
@@ -1617,7 +1719,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2543,
     "factoryVelocityMs": 775,
     "velocityRangeFps": "2350 - 2750 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-308-185-mega",
@@ -1634,7 +1737,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2510,
     "factoryVelocityMs": 765,
     "velocityRangeFps": "2300 - 2700 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-308-200-mega",
@@ -1651,7 +1755,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2428,
     "factoryVelocityMs": 740,
     "velocityRangeFps": "2200 - 2600 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-308-170-naturalis",
@@ -1668,7 +1773,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2625,
     "factoryVelocityMs": 800,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "federal-308-168-smk",
@@ -1680,12 +1786,13 @@ export const PROJECTILES = [
     "diameterIn": 0.308,
     "lengthIn": 1.215,
     "bcG1": 0.462,
-    "bcG7": 0.224,
+    "bcG7": 0.218,
     "dragModel": "G7",
     "factoryVelocityFps": 2650,
     "factoryVelocityMs": 808,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcSource": "Litz / Applied Ballistics (measured)"
   },
   {
     "id": "federal-308-175-smk",
@@ -1697,12 +1804,13 @@ export const PROJECTILES = [
     "diameterIn": 0.308,
     "lengthIn": 1.24,
     "bcG1": 0.505,
-    "bcG7": 0.252,
+    "bcG7": 0.243,
     "dragModel": "G7",
     "factoryVelocityFps": 2600,
     "factoryVelocityMs": 792,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcSource": "Litz / Applied Ballistics (measured)"
   },
   {
     "id": "federal-308-185-berger",
@@ -1719,7 +1827,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2550,
     "factoryVelocityMs": 777,
     "velocityRangeFps": "2350 - 2750 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "federal-308-175-tascent",
@@ -1736,7 +1845,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2600,
     "factoryVelocityMs": 792,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "berger-308-185-juggernaut",
@@ -1747,13 +1857,14 @@ export const PROJECTILES = [
     "weightGr": 185,
     "diameterIn": 0.308,
     "lengthIn": 1.365,
-    "bcG1": 0.556,
+    "bcG1": 0.555,
     "bcG7": 0.284,
     "dragModel": "G7",
     "factoryVelocityFps": 2550,
     "factoryVelocityMs": 777,
     "velocityRangeFps": "2400 - 2750 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "berger-308-200x-hybrid",
@@ -1770,7 +1881,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2500,
     "factoryVelocityMs": 762,
     "velocityRangeFps": "2350 - 2700 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "nosler-308-180-partition",
@@ -1787,7 +1899,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2600,
     "factoryVelocityMs": 792,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "barnes-308-168-ttsx",
@@ -1804,7 +1917,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2680,
     "factoryVelocityMs": 817,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "hornady-308-230-atip",
@@ -1816,12 +1930,13 @@ export const PROJECTILES = [
     "diameterIn": 0.308,
     "lengthIn": 1.765,
     "bcG1": 0.823,
-    "bcG7": 0.415,
-    "dragModel": "DOPPLER",
+    "bcG7": 0.414,
+    "dragModel": "G7",
     "factoryVelocityFps": 2850,
     "factoryVelocityMs": 869,
     "velocityRangeFps": "2700 - 3050 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-300wm-200-eldx",
@@ -1832,13 +1947,14 @@ export const PROJECTILES = [
     "weightGr": 200,
     "diameterIn": 0.308,
     "lengthIn": 1.52,
-    "bcG1": 0.626,
-    "bcG7": 0.315,
+    "bcG1": 0.597,
+    "bcG7": 0.301,
     "dragModel": "G7",
     "factoryVelocityFps": 2854,
     "factoryVelocityMs": 870,
     "velocityRangeFps": "2650 - 3050 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-300wm-180-cx",
@@ -1855,7 +1971,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2950,
     "factoryVelocityMs": 899,
     "velocityRangeFps": "2750 - 3150 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "hornady-300prc-212-eldx",
@@ -1866,13 +1983,14 @@ export const PROJECTILES = [
     "weightGr": 212,
     "diameterIn": 0.308,
     "lengthIn": 1.6,
-    "bcG1": 0.673,
-    "bcG7": 0.339,
+    "bcG1": 0.663,
+    "bcG7": 0.334,
     "dragModel": "G7",
     "factoryVelocityFps": 2860,
     "factoryVelocityMs": 872,
     "velocityRangeFps": "2650 - 3050 fps",
-    "recommendedTwist": "1:9.5\" or faster"
+    "recommendedTwist": "1:9.5\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-300prc-225-eldm",
@@ -1889,7 +2007,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2810,
     "factoryVelocityMs": 856,
     "velocityRangeFps": "2600 - 3000 fps",
-    "recommendedTwist": "1:9.5\" or faster"
+    "recommendedTwist": "1:9.5\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-300prc-190-cx",
@@ -1906,7 +2025,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3000,
     "factoryVelocityMs": 914,
     "velocityRangeFps": "2800 - 3200 fps",
-    "recommendedTwist": "1:9.5\" or faster"
+    "recommendedTwist": "1:9.5\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-300wm-170-blade",
@@ -1923,7 +2043,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3002,
     "factoryVelocityMs": 915,
     "velocityRangeFps": "2800 - 3200 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-300wm-180-hammerhead",
@@ -1940,7 +2061,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2953,
     "factoryVelocityMs": 900,
     "velocityRangeFps": "2750 - 3150 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-300wm-165-gamehead",
@@ -1957,7 +2079,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3051,
     "factoryVelocityMs": 930,
     "velocityRangeFps": "2850 - 3250 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-300wm-190-diamond",
@@ -1974,7 +2097,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2920,
     "factoryVelocityMs": 890,
     "velocityRangeFps": "2750 - 3100 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-300wm-180-bondstrike",
@@ -1991,7 +2115,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3051,
     "factoryVelocityMs": 930,
     "velocityRangeFps": "2850 - 3250 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-300prc-180-bondstrike",
@@ -2008,7 +2133,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3100,
     "factoryVelocityMs": 945,
     "velocityRangeFps": "2900 - 3300 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-300wm-170-tipstrike",
@@ -2025,7 +2151,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3051,
     "factoryVelocityMs": 930,
     "velocityRangeFps": "2850 - 3250 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-300wm-200-oryx",
@@ -2042,7 +2169,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2822,
     "factoryVelocityMs": 860,
     "velocityRangeFps": "2650 - 3000 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-300wm-170-naturalis",
@@ -2059,7 +2187,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2986,
     "factoryVelocityMs": 910,
     "velocityRangeFps": "2750 - 3150 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "federal-300wm-200-tascent",
@@ -2076,7 +2205,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2810,
     "factoryVelocityMs": 856,
     "velocityRangeFps": "2600 - 3000 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "federal-300wm-215-berger",
@@ -2087,13 +2217,14 @@ export const PROJECTILES = [
     "weightGr": 215,
     "diameterIn": 0.308,
     "lengthIn": 1.6,
-    "bcG1": 0.696,
-    "bcG7": 0.356,
+    "bcG1": 0.691,
+    "bcG7": 0.354,
     "dragModel": "G7",
     "factoryVelocityFps": 2854,
     "factoryVelocityMs": 870,
     "velocityRangeFps": "2650 - 3050 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "federal-300prc-215-berger",
@@ -2104,13 +2235,14 @@ export const PROJECTILES = [
     "weightGr": 215,
     "diameterIn": 0.308,
     "lengthIn": 1.6,
-    "bcG1": 0.696,
-    "bcG7": 0.356,
+    "bcG1": 0.691,
+    "bcG7": 0.354,
     "dragModel": "G7",
     "factoryVelocityFps": 2900,
     "factoryVelocityMs": 884,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:9.5\" or faster"
+    "recommendedTwist": "1:9.5\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "federal-300prc-210-tascent",
@@ -2127,7 +2259,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2870,
     "factoryVelocityMs": 875,
     "velocityRangeFps": "2650 - 3050 fps",
-    "recommendedTwist": "1:9.5\" or faster"
+    "recommendedTwist": "1:9.5\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-308-180-tgk",
@@ -2144,7 +2277,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2953,
     "factoryVelocityMs": 900,
     "velocityRangeFps": "2750 - 3150 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-308-200-smk",
@@ -2161,7 +2295,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2854,
     "factoryVelocityMs": 870,
     "velocityRangeFps": "2650 - 3050 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-308-220-smk",
@@ -2178,7 +2313,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2822,
     "factoryVelocityMs": 860,
     "velocityRangeFps": "2600 - 3000 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "berger-308-215-hybrid",
@@ -2189,13 +2325,14 @@ export const PROJECTILES = [
     "weightGr": 215,
     "diameterIn": 0.308,
     "lengthIn": 1.6,
-    "bcG1": 0.696,
-    "bcG7": 0.356,
+    "bcG1": 0.691,
+    "bcG7": 0.354,
     "dragModel": "G7",
     "factoryVelocityFps": 2890,
     "factoryVelocityMs": 881,
     "velocityRangeFps": "2700 - 3050 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "berger-308-230-otm",
@@ -2212,7 +2349,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2830,
     "factoryVelocityMs": 863,
     "velocityRangeFps": "2650 - 3000 fps",
-    "recommendedTwist": "1:9.5\" or faster"
+    "recommendedTwist": "1:9.5\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "lapua-338-250-scenar",
@@ -2229,7 +2367,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2953,
     "factoryVelocityMs": 900,
     "velocityRangeFps": "2750 - 3100 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-338-300-scenar",
@@ -2246,7 +2385,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2723,
     "factoryVelocityMs": 830,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-338-231-naturalis",
@@ -2263,7 +2403,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3018,
     "factoryVelocityMs": 920,
     "velocityRangeFps": "2800 - 3200 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-338-250-trg",
@@ -2280,7 +2421,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2953,
     "factoryVelocityMs": 900,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-338-300-trg",
@@ -2297,7 +2439,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2723,
     "factoryVelocityMs": 830,
     "velocityRangeFps": "2500 - 2850 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-338-250-match",
@@ -2314,7 +2457,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2920,
     "factoryVelocityMs": 890,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "hornady-338-285-eldm",
@@ -2331,7 +2475,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2750,
     "factoryVelocityMs": 838,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-338-270-eldx",
@@ -2343,12 +2488,13 @@ export const PROJECTILES = [
     "diameterIn": 0.338,
     "lengthIn": 1.73,
     "bcG1": 0.757,
-    "bcG7": 0.38,
+    "bcG7": 0.381,
     "dragModel": "G7",
     "factoryVelocityFps": 2800,
     "factoryVelocityMs": 853,
     "velocityRangeFps": "2600 - 3000 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-338-250-cx",
@@ -2365,7 +2511,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2900,
     "factoryVelocityMs": 884,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "federal-338-250-berger",
@@ -2382,7 +2529,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2900,
     "factoryVelocityMs": 884,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "federal-338-300-smk",
@@ -2399,7 +2547,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2700,
     "factoryVelocityMs": 823,
     "velocityRangeFps": "2500 - 2900 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-338-250-smk",
@@ -2416,7 +2565,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2904,
     "factoryVelocityMs": 885,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sierra-338-300-smk",
@@ -2433,7 +2583,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2700,
     "factoryVelocityMs": 823,
     "velocityRangeFps": "2500 - 2900 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "berger-338-300-hybrid",
@@ -2444,13 +2595,14 @@ export const PROJECTILES = [
     "weightGr": 300,
     "diameterIn": 0.338,
     "lengthIn": 1.82,
-    "bcG1": 0.818,
-    "bcG7": 0.419,
+    "bcG1": 0.822,
+    "bcG7": 0.421,
     "dragModel": "G7",
     "factoryVelocityFps": 2720,
     "factoryVelocityMs": 829,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcSource": "Berger 2026 catalog"
   },
   {
     "id": "warner-375-361-flatline",
@@ -2467,7 +2619,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2980,
     "factoryVelocityMs": 908,
     "velocityRangeFps": "2800 - 3200 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "hornady-50-750-amax",
@@ -2484,7 +2637,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2820,
     "factoryVelocityMs": 860,
     "velocityRangeFps": "2650 - 3000 fps",
-    "recommendedTwist": "1:15\" or faster"
+    "recommendedTwist": "1:15\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "barnes-50-750-solid",
@@ -2501,7 +2655,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2800,
     "factoryVelocityMs": 853,
     "velocityRangeFps": "2650 - 3000 fps",
-    "recommendedTwist": "1:15\" or faster"
+    "recommendedTwist": "1:15\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-308-130-blade",
@@ -2518,7 +2673,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3051,
     "factoryVelocityMs": 930,
     "velocityRangeFps": "2850 - 3250 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-338-225-blade",
@@ -2535,7 +2691,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3084,
     "factoryVelocityMs": 940,
     "velocityRangeFps": "2850 - 3250 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sako-223-50-gamehead",
@@ -2552,7 +2709,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3346,
     "factoryVelocityMs": 1020,
     "velocityRangeFps": "3100 - 3550 fps",
-    "recommendedTwist": "1:12\" or faster"
+    "recommendedTwist": "1:12\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-6mm-107-match",
@@ -2569,7 +2727,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2953,
     "factoryVelocityMs": 900,
     "velocityRangeFps": "2800 - 3150 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-6mm-90-tipstrike",
@@ -2586,7 +2745,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3150,
     "factoryVelocityMs": 960,
     "velocityRangeFps": "2950 - 3350 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-223-69-match",
@@ -2603,7 +2763,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2887,
     "factoryVelocityMs": 880,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-65-140-tipstrike",
@@ -2620,7 +2781,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2723,
     "factoryVelocityMs": 830,
     "velocityRangeFps": "2550 - 2950 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "norma-338-300-match",
@@ -2637,7 +2799,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2700,
     "factoryVelocityMs": 823,
     "velocityRangeFps": "2500 - 2850 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "ggg-223-55-fmj",
@@ -2654,7 +2817,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 3240,
     "factoryVelocityMs": 988,
     "velocityRangeFps": "3050 - 3400 fps",
-    "recommendedTwist": "1:12\" or faster"
+    "recommendedTwist": "1:12\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "ggg-308-147-fmj",
@@ -2671,7 +2835,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2750,
     "factoryVelocityMs": 838,
     "velocityRangeFps": "2600 - 2950 fps",
-    "recommendedTwist": "1:12\" or faster"
+    "recommendedTwist": "1:12\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "rws-223-69-target",
@@ -2688,7 +2853,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2900,
     "factoryVelocityMs": 884,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "rws-65-130-target",
@@ -2705,7 +2871,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2850,
     "factoryVelocityMs": 869,
     "velocityRangeFps": "2650 - 3050 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "rws-308-168-target",
@@ -2722,7 +2889,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2657,
     "factoryVelocityMs": 810,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "rws-308-165-hit",
@@ -2739,7 +2907,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2690,
     "factoryVelocityMs": 820,
     "velocityRangeFps": "2500 - 2900 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "rws-308-136-evogreen",
@@ -2756,7 +2925,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2920,
     "factoryVelocityMs": 890,
     "velocityRangeFps": "2700 - 3100 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "rws-300wm-190-target",
@@ -2773,7 +2943,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2953,
     "factoryVelocityMs": 900,
     "velocityRangeFps": "2750 - 3150 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "rws-338-250-target",
@@ -2790,7 +2961,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2953,
     "factoryVelocityMs": 900,
     "velocityRangeFps": "2700 - 3150 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sb-223-69-match",
@@ -2807,7 +2979,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2920,
     "factoryVelocityMs": 890,
     "velocityRangeFps": "2750 - 3100 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sb-65-140-match",
@@ -2824,7 +2997,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2657,
     "factoryVelocityMs": 810,
     "velocityRangeFps": "2500 - 2900 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sb-308-168-match",
@@ -2841,7 +3015,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2641,
     "factoryVelocityMs": 805,
     "velocityRangeFps": "2450 - 2850 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sb-308-175-match",
@@ -2858,7 +3033,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2592,
     "factoryVelocityMs": 790,
     "velocityRangeFps": "2400 - 2800 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sb-300wm-180-pts",
@@ -2875,7 +3051,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2953,
     "factoryVelocityMs": 900,
     "velocityRangeFps": "2750 - 3150 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "sb-338-250-match",
@@ -2892,7 +3069,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2854,
     "factoryVelocityMs": 870,
     "velocityRangeFps": "2650 - 3050 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "hornady-6mm-110-atip",
@@ -2905,11 +3083,12 @@ export const PROJECTILES = [
     "lengthIn": 1.28,
     "bcG1": 0.604,
     "bcG7": 0.304,
-    "dragModel": "DOPPLER",
+    "dragModel": "G7",
     "factoryVelocityFps": 2930,
     "factoryVelocityMs": 893,
     "velocityRangeFps": "2750 - 3100 fps",
-    "recommendedTwist": "1:7.5\" or faster"
+    "recommendedTwist": "1:7.5\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-65-153-atip",
@@ -2922,11 +3101,12 @@ export const PROJECTILES = [
     "lengthIn": 1.45,
     "bcG1": 0.704,
     "bcG7": 0.355,
-    "dragModel": "DOPPLER",
+    "dragModel": "G7",
     "factoryVelocityFps": 2650,
     "factoryVelocityMs": 808,
     "velocityRangeFps": "2500 - 2850 fps",
-    "recommendedTwist": "1:8\" or faster"
+    "recommendedTwist": "1:8\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-308-250-atip",
@@ -2939,11 +3119,12 @@ export const PROJECTILES = [
     "lengthIn": 1.83,
     "bcG1": 0.878,
     "bcG7": 0.442,
-    "dragModel": "DOPPLER",
+    "dragModel": "G7",
     "factoryVelocityFps": 2750,
     "factoryVelocityMs": 838,
     "velocityRangeFps": "2600 - 2900 fps",
-    "recommendedTwist": "1:8.5\" or faster"
+    "recommendedTwist": "1:8.5\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "hornady-338-300-atip",
@@ -2956,11 +3137,12 @@ export const PROJECTILES = [
     "lengthIn": 1.77,
     "bcG1": 0.863,
     "bcG7": 0.435,
-    "dragModel": "DOPPLER",
+    "dragModel": "G7",
     "factoryVelocityFps": 2700,
     "factoryVelocityMs": 823,
     "velocityRangeFps": "2500 - 2850 fps",
-    "recommendedTwist": "1:9\" or faster"
+    "recommendedTwist": "1:9\" or faster",
+    "bcSource": "Hornady (hornady.com/bc)"
   },
   {
     "id": "lapua-300wm-185-scenar",
@@ -2977,7 +3159,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2936,
     "factoryVelocityMs": 895,
     "velocityRangeFps": "2750 - 3150 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-338-250-lockbase",
@@ -2994,7 +3177,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2953,
     "factoryVelocityMs": 900,
     "velocityRangeFps": "2750 - 3150 fps",
-    "recommendedTwist": "1:11\" or faster"
+    "recommendedTwist": "1:11\" or faster",
+    "bcG7Estimated": true
   },
   {
     "id": "lapua-338-300-scenarl",
@@ -3011,7 +3195,8 @@ export const PROJECTILES = [
     "factoryVelocityFps": 2723,
     "factoryVelocityMs": 830,
     "velocityRangeFps": "2550 - 2900 fps",
-    "recommendedTwist": "1:10\" or faster"
+    "recommendedTwist": "1:10\" or faster",
+    "bcG7Estimated": true
   }
 ];
 
@@ -3047,10 +3232,14 @@ export function calculateStability(
   // Uncorrected Miller Sg
   let sg = (30 * weightGr) / (Math.pow(T, 2) * Math.pow(diameterIn, 3) * L * (1 + Math.pow(L, 2)));
 
-  // Atmospheric and velocity correction
-  const tempRankine = tempF + 459.67;
-  const tempCorrection = 518.67 / tempRankine;
-  const pressureCorrection = pressureInHg / 29.92;
+  // Atmospheric and velocity corrections (Miller): Sg is inversely proportional to air density, so
+  // Sg scales with (T / 518.67 °R) · (29.92 / P inHg). Hot or thin air makes a bullet MORE stable.
+  // Non-numeric atmosphere arguments fall back to the standard 59 °F / 29.92 inHg.
+  const tF = Number.isFinite(tempF) ? tempF : 59;
+  const pInHg = Number.isFinite(pressureInHg) && pressureInHg > 0 ? pressureInHg : 29.92;
+  const tempRankine = tF + 459.67;
+  const tempCorrection = tempRankine / 518.67;
+  const pressureCorrection = 29.92 / pInHg;
   const velocityCorrection = Math.pow(Math.max(100, velocityFps) / 2800, 1.0 / 3.0);
 
   sg = sg * pressureCorrection * tempCorrection * velocityCorrection;

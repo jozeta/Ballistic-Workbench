@@ -226,6 +226,7 @@ export class WorkspaceView {
       includeSpinDrift: config.includeSpinDrift,
       includeCoriolis: config.includeCoriolis,
       includeAerodynamicJump: config.includeAerodynamicJump,
+      targetHeightM: (target.targetSizeHeightCm || 50) / 100,
     });
     this.activeSolution = solution;
 
@@ -344,7 +345,7 @@ export class WorkspaceView {
         <div><dt>${icon('speed')} Velocity</dt><dd>${Math.round(velVal)} ${isMetric ? 'm/s' : 'fps'} <span class="lg-badge lg-badge-${regimeClass}">Mach ${targetPoint.mach.toFixed(2)}</span></dd></div>
         <div><dt>${icon('clock')} Time of flight</dt><dd>${targetPoint.tofS.toFixed(2)} s</dd></div>
         <div><dt>${icon('energy')} Energy</dt><dd>${Math.round(energyVal)} ${isMetric ? 'J' : 'ft·lb'}</dd></div>
-        <div><dt>${icon('trajectory')} Supersonic to</dt><dd>${dist(solution.telemetry.supersonicRangeM)} ${esc(dispUnits.distance)}</dd></div>
+        <div><dt>${icon('trajectory')} Supersonic to</dt><dd>${solution.telemetry.transonicRangeM >= solution.trajectory[solution.trajectory.length - 1].distanceM ? 'beyond ' : ''}${dist(solution.telemetry.transonicRangeM)} ${esc(dispUnits.distance)}</dd></div>
       </dl>
     `;
 

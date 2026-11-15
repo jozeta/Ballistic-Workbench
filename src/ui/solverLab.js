@@ -33,7 +33,7 @@ const MODELS = [
   },
   {
     id: '4DOF', key: 'dof4', label: '4DOF', name: 'Four degrees of freedom', color: 'accent2', dash: [12, 4, 2, 4],
-    about: 'Also models bullet spin; spin drift comes from the physics rather than a formula.',
+    about: 'Modified point mass plus an estimate of how the bullet\'s spin slows down over the flight.',
   },
 ];
 const ABBR = {

@@ -1,13 +1,13 @@
 /**
- * Ballistic Workbench - Weapon Employment Zone (WEZ) & Monte Carlo Engine
- * Runs 1,000-shot stochastic simulations to determine:
+ * Ballistic Workbench - Hit probability (WEZ) Monte Carlo simulation
+ * Simulates many shots (1,000 by default) to estimate:
  * - Hit Probability on steel & tactical targets
  * - CEP (Circular Error Probable - 50% radius) and R95 (95% radius)
  * - Sensitivity analysis (variance contribution of MV, Wind, Range, and Shooter dispersion)
  * - Dispersion scatter coordinates for high-DPI visual canvas rendering
  */
 
-import { solveTrajectory } from './solvers.js';
+import { solveTrajectory, solveZeroAngle, pointAtDistance } from './solvers.js';
 
 /**
  * Standard Gaussian random generator using Box-Muller transform
@@ -61,8 +61,36 @@ export function isTargetHit(xCm, yCm, target) {
   }
 }
 
+const DEFAULT_UNCERTAINTIES = {
+  mvSdMs: 3.0, // Muzzle velocity SD (m/s)
+  rangeSdM: 5.0, // Rangefinder error SD (m)
+  windSpeedSdMs: 1.0, // Wind speed reading SD (m/s)
+  windDirSdDeg: 12.0, // Wind angle estimation SD (deg)
+  shooterPrecisionRad: 0.000145, // 0.5 MOA / 0.145 MRAD rifle+shooter dispersion
+};
+
+/** The same environment with every wind reading (main wind and zones) changed by fn. */
+function shiftWind(environment, fn) {
+  const base = fn({ speedMs: environment.windSpeedMs ?? 0, directionDeg: environment.windDirectionDeg ?? 90 });
+  return {
+    ...environment,
+    windSpeedMs: base.speedMs,
+    windDirectionDeg: base.directionDeg,
+    windZones: (environment.windZones || []).map((z) => ({ ...z, ...fn({ speedMs: z.speedMs, directionDeg: z.directionDeg }) })),
+  };
+}
+
 /**
- * Run 1,000-shot Monte Carlo WEZ simulation
+ * Run a Monte Carlo hit-probability (WEZ) simulation.
+ *
+ * Each error source is turned into a miss distance at the target with a first-order sensitivity,
+ * computed from full trajectory solves that all use the same fixed zero angle and are interpolated
+ * at the exact target distance:
+ * - MV: change in drop per m/s of muzzle velocity (the zero does not move shot to shot),
+ * - range: the shooter dials the elevation for the distance they measured, so a ranging error δ
+ *   gives a vertical miss of R · dE/dR · δ (= (Y/R − dY/dR) · δ for drop Y below the line of sight),
+ * - wind speed and direction: change in drift per m/s and per degree (all wind zones shifted together),
+ * - shooter/rifle: angular dispersion times distance.
  */
 export function runWezSimulation({
   profile,
@@ -70,98 +98,56 @@ export function runWezSimulation({
   airDensity,
   speedOfSound,
   target,
-  numShots = 1000,
-  uncertainties = {
-    mvSdMs: 3.0, // Muzzle velocity SD (m/s)
-    rangeSdM: 5.0, // Rangefinder error SD (m)
-    windSpeedSdMs: 1.0, // Wind speed reading SD (m/s)
-    windDirSdDeg: 12.0, // Wind angle estimation SD (deg)
-    shooterPrecisionRad: 0.000145, // 0.5 MOA / 0.145 MRAD rifle+shooter dispersion
-  },
+  numShots: rawNumShots = 1000,
+  algorithm = null,
+  uncertainties: rawUncertainties = {},
 }) {
-  const targetDistM = target.distanceM || 600;
+  const targetDistM = target.distanceM > 0 ? target.distanceM : 600;
+  const numShots = Math.max(1, Math.round(Number.isFinite(rawNumShots) ? rawNumShots : 1000));
+  const uncertainties = { ...DEFAULT_UNCERTAINTIES };
+  for (const [k, v] of Object.entries(rawUncertainties || {})) {
+    if (Number.isFinite(v) && v >= 0) uncertainties[k] = v;
+  }
+  const alg = algorithm || (profile.bullet.dragModel === 'G1' ? 'G1' : 'G7');
 
-  // 1. Nominal trajectory integration around target range
-  const baselineSol = solveTrajectory({
-    profile,
-    environment,
-    airDensity,
-    speedOfSound,
-    algorithm: profile.bullet.dragModel === 'G1' ? 'G1' : 'G7',
-    stepM: 10,
-    maxRangeM: targetDistM + 50,
-  });
-
-  const getInterpolatedPoint = (dist) => {
-    const traj = baselineSol.trajectory;
-    for (let i = 0; i < traj.length - 1; i++) {
-      if (dist >= traj[i].distanceM && dist <= traj[i + 1].distanceM) {
-        const f = (dist - traj[i].distanceM) / (traj[i + 1].distanceM - traj[i].distanceM);
-        return {
-          dropM: traj[i].dropM + f * (traj[i + 1].dropM - traj[i].dropM),
-          driftM: traj[i].driftM + f * (traj[i + 1].driftM - traj[i].driftM),
-          velocityMs: traj[i].velocityMs + f * (traj[i + 1].velocityMs - traj[i].velocityMs),
-        };
-      }
-    }
-    return traj[traj.length - 1];
+  // 1. One zero for every solve, so shot-to-shot changes are not hidden by a re-zero
+  const zeroAngleRad = Number.isFinite(profile.zeroAngleRad)
+    ? profile.zeroAngleRad
+    : solveZeroAngle(profile, environment, airDensity, speedOfSound, alg);
+  const fixedProfile = { ...profile, zeroAngleRad };
+  const rangeStepM = 10;
+  const solveAt = (prof, env) => {
+    const sol = solveTrajectory({
+      profile: prof,
+      environment: env,
+      airDensity,
+      speedOfSound,
+      algorithm: alg,
+      stepM: 5,
+      maxRangeM: targetDistM + rangeStepM + 10,
+    });
+    return (d) => pointAtDistance(sol.trajectory, d);
   };
 
-  const nominalPoint = getInterpolatedPoint(targetDistM);
+  const nominal = solveAt(fixedProfile, environment);
+  const nominalPoint = nominal(targetDistM);
 
-  // 2. Sensitivity derivatives via finite perturbation
-  // dY/dMV
+  // 2. Sensitivities
   const mvPerturb = 2.0;
-  const solMvPlus = solveTrajectory({
-    profile: { ...profile, muzzleVelocityMs: profile.muzzleVelocityMs + mvPerturb },
-    environment,
-    airDensity,
-    speedOfSound,
-    algorithm: profile.bullet.dragModel === 'G1' ? 'G1' : 'G7',
-    stepM: 25,
-    maxRangeM: targetDistM + 50,
-  });
-  const pointMvPlus = solMvPlus.trajectory.reduce((p, c) =>
-    Math.abs(c.distanceM - targetDistM) < Math.abs(p.distanceM - targetDistM) ? c : p
-  );
-  const dYdMv = (pointMvPlus.dropM - nominalPoint.dropM) / mvPerturb; // m per m/s
+  const mvPlus = solveAt({ ...fixedProfile, muzzleVelocityMs: profile.muzzleVelocityMs + mvPerturb }, environment);
+  const dYdMv = (mvPlus(targetDistM).dropM - nominalPoint.dropM) / mvPerturb; // m per m/s
 
-  // dY/dRange (trajectory angle at target)
-  const rangePerturb = 10.0;
-  const pointRangePlus = getInterpolatedPoint(targetDistM + rangePerturb);
-  const dYdRange = (pointRangePlus.dropM - nominalPoint.dropM) / rangePerturb; // m per m
+  const dEdR = (nominal(targetDistM + rangeStepM).elevationRad - nominal(targetDistM - rangeStepM).elevationRad) / (2 * rangeStepM);
+  const dYdRange = targetDistM * dEdR; // m of vertical miss per m of ranging error
 
-  // dZ/dWindSpeed
   const windPerturb = 1.0;
-  const solWindPlus = solveTrajectory({
-    profile,
-    environment: { ...environment, windSpeedMs: (environment.windSpeedMs || 4.0) + windPerturb },
-    airDensity,
-    speedOfSound,
-    algorithm: profile.bullet.dragModel === 'G1' ? 'G1' : 'G7',
-    stepM: 25,
-    maxRangeM: targetDistM + 50,
-  });
-  const pointWindPlus = solWindPlus.trajectory.reduce((p, c) =>
-    Math.abs(c.distanceM - targetDistM) < Math.abs(p.distanceM - targetDistM) ? c : p
-  );
-  const dZdWind = (pointWindPlus.driftM - nominalPoint.driftM) / windPerturb; // m per m/s
+  const windPlus = solveAt(fixedProfile, shiftWind(environment, (w) => ({ speedMs: w.speedMs + windPerturb, directionDeg: w.directionDeg })));
+  const dZdWind = (windPlus(targetDistM).driftM - nominalPoint.driftM) / windPerturb; // m per m/s
 
-  // dZ/dWindDir
-  const dirPerturbDeg = 10.0;
-  const solDirPlus = solveTrajectory({
-    profile,
-    environment: { ...environment, windDirectionDeg: (environment.windDirectionDeg || 90.0) + dirPerturbDeg },
-    airDensity,
-    speedOfSound,
-    algorithm: profile.bullet.dragModel === 'G1' ? 'G1' : 'G7',
-    stepM: 25,
-    maxRangeM: targetDistM + 50,
-  });
-  const pointDirPlus = solDirPlus.trajectory.reduce((p, c) =>
-    Math.abs(c.distanceM - targetDistM) < Math.abs(p.distanceM - targetDistM) ? c : p
-  );
-  const dZdDir = (pointDirPlus.driftM - nominalPoint.driftM) / dirPerturbDeg;
+  const dirPerturbDeg = 5.0;
+  const dirPlus = solveAt(fixedProfile, shiftWind(environment, (w) => ({ speedMs: w.speedMs, directionDeg: w.directionDeg + dirPerturbDeg })));
+  const dirMinus = solveAt(fixedProfile, shiftWind(environment, (w) => ({ speedMs: w.speedMs, directionDeg: w.directionDeg - dirPerturbDeg })));
+  const dZdDir = (dirPlus(targetDistM).driftM - dirMinus(targetDistM).driftM) / (2 * dirPerturbDeg); // m per degree
 
   // 3. Monte Carlo Loop
   let hits = 0;
@@ -216,7 +202,8 @@ export function runWezSimulation({
   const varZ_Shooter = varY_Shooter;
   const varTotalZ = varZ_Wind + varZ_Shooter;
 
-  const varTotal = varTotalY + varTotalZ;
+  // Guard against a 0/0 when every error source is zero
+  const varTotal = varTotalY + varTotalZ > 0 ? varTotalY + varTotalZ : 1;
 
   const sensitivity = [
     { factor: 'Wind Uncertainty', variancePercent: Number(((varZ_Wind / varTotal) * 100).toFixed(1)), category: 'Wind' },
@@ -236,5 +223,9 @@ export function runWezSimulation({
     meanRadiusCm: Number(meanRadiusCm.toFixed(1)),
     sensitivity,
     shotCoords,
+    // First-order sensitivities used for the simulation (SI: m per m/s, m per m, m per degree)
+    derivatives: { dYdMv, dYdRange, dZdWind, dZdDir },
+    zeroAngleRad,
+    algorithm: alg,
   };
 }

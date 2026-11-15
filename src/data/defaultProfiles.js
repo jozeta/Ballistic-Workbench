@@ -6,7 +6,7 @@ export const DEFAULT_PROFILES = [
   {
     id: 'profile-65cm-prs',
     name: 'Bergara Premier HMR Pro - 6.5 Creedmoor',
-    description: 'Precision Rifle Series (PRS) Competition Setup',
+    description: 'PRS competition rifle',
     caliber: '6.5mm / .264',
     bullet: {
       id: 'hornady-65-140-eldm',
@@ -19,7 +19,7 @@ export const DEFAULT_PROFILES = [
       dragModel: 'G7',
     },
     muzzleVelocityMs: 825.0, // 2707 fps
-    powderTempSensitivity: 0.8, // m/s per 10 deg C change
+    powderTempSensitivity: 0.8, // m/s per °C away from powderRefTempC
     powderRefTempC: 15.0,
     sightHeightM: 0.048, // 1.89 inches (4.8 cm above bore)
     zeroDistanceM: 100.0, // 100m zero
@@ -43,7 +43,7 @@ export const DEFAULT_PROFILES = [
   {
     id: 'profile-300prc-elr',
     name: 'Accuracy International AXSR - .300 PRC',
-    description: 'Extreme Long Range (ELR) 2000m Anti-Materiel / Match Platform',
+    description: 'Extreme long range (ELR) match rifle',
     caliber: '.300 Mag / .300 PRC',
     bullet: {
       id: 'hornady-308-230-atip',
@@ -52,8 +52,8 @@ export const DEFAULT_PROFILES = [
       diameterIn: 0.308,
       lengthIn: 1.765,
       bcG1: 0.823,
-      bcG7: 0.415,
-      dragModel: 'DOPPLER',
+      bcG7: 0.414,
+      dragModel: 'G7',
     },
     muzzleVelocityMs: 885.0, // 2904 fps
     powderTempSensitivity: 0.9,
@@ -80,7 +80,7 @@ export const DEFAULT_PROFILES = [
   {
     id: 'profile-308-tactical',
     name: 'Tikka T3x TAC A1 - .308 Winchester',
-    description: 'Tactical Law Enforcement / Military Precision Scout',
+    description: 'All-round precision rifle',
     caliber: '.308 / 7.62mm',
     bullet: {
       id: 'sierra-308-175-smk',
@@ -89,7 +89,7 @@ export const DEFAULT_PROFILES = [
       diameterIn: 0.308,
       lengthIn: 1.240,
       bcG1: 0.505,
-      bcG7: 0.252,
+      bcG7: 0.243, // Litz measured
       dragModel: 'G7',
     },
     muzzleVelocityMs: 790.0, // 2592 fps
@@ -117,7 +117,7 @@ export const DEFAULT_PROFILES = [
   {
     id: 'profile-223-match',
     name: 'Remington 700 Varmint - .223 Remington',
-    description: 'Mid-Range Precision & Varmint Precision Rig',
+    description: 'Mid-range and varmint rifle',
     caliber: '5.56mm / .224',
     bullet: {
       id: 'sierra-224-77-smk',
@@ -127,6 +127,7 @@ export const DEFAULT_PROFILES = [
       lengthIn: 0.990,
       bcG1: 0.372,
       bcG7: 0.190,
+      bcG7Estimated: true,
       dragModel: 'G7',
     },
     muzzleVelocityMs: 840.0, // 2756 fps
@@ -156,7 +157,7 @@ export const DEFAULT_PROFILES = [
 export const DEFAULT_ENVIRONMENTS = [
   {
     id: 'env-icao-sea-level',
-    name: 'ICAO Standard Atmosphere (Sea Level)',
+    name: 'Standard atmosphere, sea level (15 °C)',
     altitudeM: 0,
     temperatureC: 15.0,
     pressureHpa: 1013.25,
@@ -173,7 +174,7 @@ export const DEFAULT_ENVIRONMENTS = [
   },
   {
     id: 'env-alpine-high',
-    name: 'Alpine High Altitude (1,950m)',
+    name: 'Mountains, 1,950 m (4 °C)',
     altitudeM: 1950,
     temperatureC: 4.0,
     pressureHpa: 805.0,
@@ -192,7 +193,7 @@ export const DEFAULT_ENVIRONMENTS = [
   },
   {
     id: 'env-desert-heat',
-    name: 'Desert High Temperature & Mirage (38°C)',
+    name: 'Desert heat (38 °C)',
     altitudeM: 800,
     temperatureC: 38.0,
     pressureHpa: 925.0,
@@ -210,7 +211,7 @@ export const DEFAULT_ENVIRONMENTS = [
   },
   {
     id: 'env-subzero-winter',
-    name: 'Sub-Zero Winter Hunt (-12°C)',
+    name: 'Winter (−12 °C)',
     altitudeM: 350,
     temperatureC: -12.0,
     pressureHpa: 1025.0,
