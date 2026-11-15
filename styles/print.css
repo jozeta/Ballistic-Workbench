@@ -19,8 +19,7 @@
   .no-print,
   .lg-toaster,
   .lg-overlay,
-  .palette-modal,
-  #telemetry-hud {
+  .palette-modal {
     display: none !important;
   }
 

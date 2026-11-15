@@ -18,7 +18,7 @@ import { getAtmosphericConditions } from '../physics/atmosphere.js';
 import { solveTrajectory, solveZeroAngle } from '../physics/solvers.js';
 import { icon } from './icons.js';
 import { toast } from './notify.js';
-import { bindNumber } from './fields.js';
+import { bindNumber, setFieldError } from './fields.js';
 
 const PRS_STAGE_STORAGE_KEY = 'ballistic_workbench_prs_stage_v2';
 const SETTINGS_KEY = 'ballistic_workbench_dope_settings_v1';
@@ -115,6 +115,7 @@ const FORMATS = [
   },
 ];
 const FORMAT_IDS = FORMATS.map((f) => f.id);
+const FOCUSABLE = 'button, input, select, textarea, a[href], [tabindex]';
 
 // Scope cap text styles as SVG presentation attributes (the CSP blocks <style> elements), so a
 // saved SVG file looks the same as the preview
@@ -278,6 +279,19 @@ export class DopeStudioView {
     this._onKeydown = (e) => this._handleKeydown(e);
     this._onPointerOver = (e) => this._handleHover(e, true);
     this._onPointerOut = (e) => this._handleHover(e, false);
+    this._onPointerDown = () => { this._pointerHeld = true; };
+    this._onPointerUp = () => {
+      this._pointerHeld = false;
+      if (this._renderPending) {
+        this._renderPending = false;
+        this._scheduleRender();
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('pointerdown', this._onPointerDown, true);
+      document.addEventListener('pointerup', this._onPointerUp, true);
+      document.addEventListener('pointercancel', this._onPointerUp, true);
+    }
     if (typeof this.container.addEventListener === 'function') {
       this.container.addEventListener('click', this._onClick);
       this.container.addEventListener('change', this._onChange);
@@ -303,6 +317,7 @@ export class DopeStudioView {
   }
 
   destroy() {
+    clearTimeout(this._renderTimer);
     if (this.unsubscribe) this.unsubscribe();
     this.unsubscribe = null;
     if (typeof this.container.removeEventListener === 'function') {
@@ -311,6 +326,11 @@ export class DopeStudioView {
       this.container.removeEventListener('keydown', this._onKeydown);
       this.container.removeEventListener('pointerover', this._onPointerOver);
       this.container.removeEventListener('pointerout', this._onPointerOut);
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('pointerdown', this._onPointerDown, true);
+      document.removeEventListener('pointerup', this._onPointerUp, true);
+      document.removeEventListener('pointercancel', this._onPointerUp, true);
     }
     this._resizeObserver?.disconnect();
     this._resizeObserver = null;
@@ -488,7 +508,7 @@ export class DopeStudioView {
     const profile = appState.getActiveProfile();
     const env = appState.getActiveEnvironment();
     const config = appState.state.solverConfig || {};
-    const algorithm = config.activeAlgorithm || (profile.bullet?.dragModel === 'G1' ? 'G1' : 'G7');
+    const algorithm = typeof appState.solverAlgorithm === 'function' ? appState.solverAlgorithm() : (profile.bullet?.dragModel === 'G1' ? 'G1' : 'G7');
     const atmos = getAtmosphericConditions({
       pressurePa: env.pressureHpa * 100,
       tempK: env.temperatureC + 273.15,
@@ -898,7 +918,7 @@ export class DopeStudioView {
 
   /** Returns the tape markup; this._turretOffTurn counts distances that need more than one turn. */
   renderTurretTape(rowsIn, dopeIn, uIn) {
-    const { rows, dope, u } = this._cardArgs('turret-tape', rowsIn, dopeIn, uIn);
+    const { rows, dope } = this._cardArgs('turret-tape', rowsIn, dopeIn, uIn);
     const circMm = this.turretCircumferenceMm;
     const heightMm = this.turretTapeHeightMm;
     const total = this.turretClicksPerTurn;
@@ -1144,12 +1164,19 @@ export class DopeStudioView {
   /**
    * Top-down drawing of the stage: targets in shooting order (dashed path), distance grid, firing
    * line at the bottom and a wind arrow. Colours come from the card colour theme in dope.css.
+   * The drawing is shorter on the 3 × 5 in card and taller on the full page when there are many
+   * targets; grid labels are thinned so they never stack, and callouts that would overlap anything
+   * are left out (the table below lists every target anyway).
    */
   renderStageSchematicSvg(stage, targetsWithBallistics, dope, isImperial) {
     if (!targetsWithBallistics || targetsWithBallistics.length === 0) return '';
     const u = this._units();
+    const n = targetsWithBallistics.length;
+    const portrait = this.printOrientation === 'portrait-3x5';
+    const fullPage = this.printOrientation === 'full-page';
     // A narrower drawing on the portrait card keeps its text legible once printed
-    const VW = this.printOrientation === 'portrait-3x5' ? 360 : 540;
+    const VW = portrait ? 360 : 540;
+    const VH = portrait ? 146 : fullPage && n > 8 ? 250 : 182;
     const cx0 = VW / 2;
     const distUnit = isImperial ? 'yd' : 'm';
     const toDisp = (m) => (isImperial ? m / M_PER_YD : m);
@@ -1158,14 +1185,17 @@ export class DopeStudioView {
     const maxD = Math.max(...distances) + 50;
     const spanD = Math.max(100, maxD - minD);
     const sameDistance = Math.max(...distances) - Math.min(...distances) < 15;
-    const yAt = (m) => Math.round(145 - ((m - minD) / spanD) * 105);
+    const yTop = portrait ? 36 : 40;
+    const yBot = VH - 37;
+    const yAt = (m) => Math.round(yBot - ((m - minD) / spanD) * (yBot - yTop));
+    // Smaller target marks when the drawing is crowded
+    const nodeScale = n > 16 ? 0.6 : n > 8 ? 0.78 : 1;
 
     const points = targetsWithBallistics.map((t, idx) => {
       let x;
       if (sameDistance) {
-        const count = targetsWithBallistics.length;
-        const spacing = Math.min(50, (VW - 200) / Math.max(1, count - 1));
-        x = Math.round(cx0 - ((count - 1) * spacing) / 2 + idx * spacing);
+        const spacing = Math.min(50, (VW - 200) / Math.max(1, n - 1));
+        x = Math.round(cx0 - ((n - 1) * spacing) / 2 + idx * spacing);
       } else {
         x = Math.round(cx0 + num(t.offsetM, 0) * (VW / 120));
       }
@@ -1173,8 +1203,10 @@ export class DopeStudioView {
     });
     const pathD = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
-    // Distance grid in round display units
-    const stepDisp = toDisp(spanD) > 450 ? 100 : 50;
+    // Distance grid in round display units, with at least 16 px between labels
+    const spanDisp = toDisp(spanD);
+    const plotH = yBot - yTop;
+    const stepDisp = [25, 50, 100, 200, 250, 500, 1000, 2000].find((s) => (s / spanDisp) * plotH >= 16) || 2000;
     let grid = '';
     for (let g = Math.ceil(toDisp(minD) / stepDisp) * stepDisp; g <= toDisp(maxD); g += stepDisp) {
       const gy = yAt(isImperial ? g * M_PER_YD : g);
@@ -1188,38 +1220,49 @@ export class DopeStudioView {
     }
 
     // Callouts (distance and elevation): try a few spots around each target and keep the first one
-    // that overlaps no target, wind dial or earlier callout
-    const CW = 92;
+    // that overlaps no target, wind dial or earlier callout; a callout with no free spot is left out.
+    // Targets at one distance (a rack) share a single callout.
     const CH = 19;
-    const boxes = points.map((p) => ({ x: p.x - 15, y: p.y - 15, w: 30, h: 35 }));
+    const r = 15 * nodeScale;
+    const boxes = points.map((p) => ({ x: p.x - r, y: p.y - r, w: 2 * r, h: 2.3 * r }));
     boxes.push({ x: VW - 70, y: 4, w: 66, h: 58 });
     const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
-    let nodes = '';
+    const labels = [];
+    if (sameDistance && n > 1) {
+      const xs = points.map((p) => p.x);
+      const dials = new Set(points.map((p) => p.dialValue));
+      const dial = dials.size === 1 ? points[0].dialValue : `${points[0].dialValue}–${points[n - 1].dialValue}`;
+      labels.push({ text: `T1–T${n} ${points[0].displayDistance} ${points[0].displayDistUnit} · `, dial, ax: (Math.min(...xs) + Math.max(...xs)) / 2, ay: points[0].y, spread: (Math.max(...xs) - Math.min(...xs)) / 2 + r });
+    } else {
+      points.forEach((p) => labels.push({ text: `T${p.index} ${p.displayDistance} ${p.displayDistUnit} · `, dial: p.dialValue, ax: p.x, ay: p.y, spread: r }));
+    }
     let callouts = '';
-    points.forEach((p, idx) => {
+    labels.forEach((l) => {
+      const CW = Math.round((l.text.length + String(l.dial).length) * 5.2 + 12);
+      const g = l.spread + 3;
       const spots = [
-        [p.x + 17, p.y - 26], [p.x - CW - 17, p.y - 26], [p.x + 17, p.y + 4], [p.x - CW - 17, p.y + 4],
-        [p.x - CW / 2, p.y - 38], [p.x - CW / 2, p.y + 22], [p.x + 17, p.y - 11], [p.x - CW - 17, p.y - 11],
-      ].map(([x, y]) => ({ x: clamp(x, 54, VW - CW - 8), y: clamp(y, 8, 150 - CH), w: CW, h: CH }));
-      let best = spots[0];
-      let bestScore = Infinity;
-      for (const s of spots) {
-        const score = boxes.reduce((sum, b) => sum + overlap(s, b), 0);
-        if (score < bestScore) { best = s; bestScore = score; }
-        if (score === 0) break;
-      }
+        [l.ax + g, l.ay - 26], [l.ax - CW - g, l.ay - 26], [l.ax + g, l.ay + 4], [l.ax - CW - g, l.ay + 4],
+        [l.ax - CW / 2, l.ay - r - CH - 6], [l.ax - CW / 2, l.ay + r + 8], [l.ax + g, l.ay - 11], [l.ax - CW - g, l.ay - 11],
+      ].map(([x, y]) => ({ x: clamp(x, 54, VW - CW - 8), y: clamp(y, 8, VH - 32 - CH), w: CW, h: CH }));
+      const best = spots.find((s) => boxes.every((b) => overlap(s, b) === 0));
+      if (!best) return;
       boxes.push(best);
-      nodes += `
-        <g class="schematic-node" data-target-idx="${idx}" transform="translate(${p.x} ${p.y})">
-          <circle class="sch-node-bg" r="14" />
-          ${this._schematicShape(p.shape)}
-          <rect class="sch-badge" x="-10" y="8" width="20" height="11" rx="2" />
-          <text class="sch-badge-text" x="0" y="16.5" text-anchor="middle">T${p.index}</text>
-        </g>`;
       callouts += `
         <g class="schematic-callout" transform="translate(${best.x} ${best.y})">
           <rect class="sch-callout" width="${CW}" height="${CH}" rx="3" />
-          <text class="sch-callout-text" x="${CW / 2}" y="13" text-anchor="middle">T${p.index} ${p.displayDistance} ${esc(p.displayDistUnit)} · <tspan class="sch-callout-elev">${esc(p.dialValue)}</tspan></text>
+          <text class="sch-callout-text" x="${CW / 2}" y="13" text-anchor="middle">${esc(l.text)}<tspan class="sch-callout-elev">${esc(l.dial)}</tspan></text>
+        </g>`;
+    });
+
+    let nodes = '';
+    points.forEach((p, idx) => {
+      const bw = String(p.index).length > 1 ? 24 : 20;
+      nodes += `
+        <g class="schematic-node" data-target-idx="${idx}" transform="translate(${p.x} ${p.y})${nodeScale !== 1 ? ` scale(${nodeScale})` : ''}">
+          <circle class="sch-node-bg" r="14" />
+          ${this._schematicShape(p.shape)}
+          <rect class="sch-badge" x="${-bw / 2}" y="8" width="${bw}" height="11" rx="2" />
+          <text class="sch-badge-text" x="0" y="16.5" text-anchor="middle">T${p.index}</text>
         </g>`;
     });
 
@@ -1237,22 +1280,22 @@ export class DopeStudioView {
 
     return `
       <div class="stage-schematic-container">
-        <svg viewBox="0 0 ${VW} 182" class="stage-schematic-svg" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Stage drawing: ${points.length} targets in shooting order, wind from ${clockLabel(windDeg)} o’clock">
+        <svg viewBox="0 0 ${VW} ${VH}" class="stage-schematic-svg" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Stage drawing: ${points.length} targets in shooting order, wind from ${clockLabel(windDeg)} o’clock">
           <defs>
             <marker id="seq-arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path class="sch-arrow" d="M 0 1 L 9 5 L 0 9 z" />
             </marker>
           </defs>
-          <rect class="sch-bg" x="3" y="3" width="${VW - 6}" height="176" rx="6" />
-          <line class="sch-center" x1="${cx0}" y1="20" x2="${cx0}" y2="156" />
+          <rect class="sch-bg" x="3" y="3" width="${VW - 6}" height="${VH - 6}" rx="6" />
+          <line class="sch-center" x1="${cx0}" y1="20" x2="${cx0}" y2="${VH - 26}" />
           ${grid}
           ${rack}
           <path class="sch-path" d="${pathD}" marker-mid="url(#seq-arrow)" />
           ${nodes}
           ${callouts}
-          <line class="sch-firing" x1="52" y1="162" x2="${VW - 14}" y2="162" />
-          <circle class="sch-firing-dot" cx="${cx0}" cy="162" r="3.5" />
-          <text class="sch-firing-text" x="${cx0}" y="175" text-anchor="middle">FIRING LINE</text>
+          <line class="sch-firing" x1="52" y1="${VH - 20}" x2="${VW - 14}" y2="${VH - 20}" />
+          <circle class="sch-firing-dot" cx="${cx0}" cy="${VH - 20}" r="3.5" />
+          <text class="sch-firing-text" x="${cx0}" y="${VH - 7}" text-anchor="middle">FIRING LINE</text>
           <g transform="translate(${VW - 38} 30)">
             <circle class="sch-wind-bg" r="16" />
             <line class="sch-wind" x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" />
@@ -1264,23 +1307,27 @@ export class DopeStudioView {
       </div>`;
   }
 
-  /** Suggested pace: the stage time split over the positions by shot count. */
+  /**
+   * Suggested pace: the stage time split by shot count over the positions in shooting order.
+   * Only neighbouring targets on the same position are merged; a target with no position is its
+   * own step, named after the target.
+   */
   _renderParTimeFlow(stage, totalRounds, timeLimitSec) {
     if (!stage.targets || stage.targets.length === 0 || totalRounds <= 0) return '';
     const groups = [];
-    stage.targets.forEach((t) => {
-      const prop = t.prop || 'Position';
-      const shots = Number(t.rounds) || 2;
-      const g = groups.find((x) => x.prop === prop);
-      if (g) g.rounds += shots;
-      else groups.push({ prop, rounds: shots });
+    stage.targets.forEach((t, idx) => {
+      const prop = String(t.prop || '').trim();
+      const shots = Number(t.rounds) || 0;
+      const last = groups[groups.length - 1];
+      if (prop && last && last.prop === prop) last.rounds += shots;
+      else groups.push({ prop, label: prop || `T${idx + 1}`, rounds: shots });
     });
     const perShot = timeLimitSec / totalRounds;
     let acc = 0;
     const splits = groups.map((g) => {
       const start = Math.round(acc);
       acc += g.rounds * perShot;
-      return `<li class="pace-split-pill"><span class="split-prop-name">${esc(g.prop)}</span> <span class="split-time">${start}–${Math.round(acc)} s (${g.rounds})</span></li>`;
+      return `<li class="pace-split-pill"><span class="split-prop-name">${esc(g.label)}</span> <span class="split-time">${start}–${Math.round(acc)} s (${g.rounds})</span></li>`;
     }).join('');
     return `
       <div class="par-time-flow-bar">
@@ -1372,7 +1419,7 @@ export class DopeStudioView {
                     <span class="tgt-name-sub">${esc(t.name)}</span>
                   </td>
                   <td class="col-prop">
-                    <span class="prop-badge-pill">${esc(t.prop || `Position ${t.index}`)}</span>
+                    ${t.prop ? `<span class="prop-badge-pill">${esc(t.prop)}</span>` : ''}
                     <span class="rounds-alloc-tag">${fmtInt(t.rounds)} ${Number(t.rounds) === 1 ? 'shot' : 'shots'}</span>
                   </td>
                   <td class="cell-range">
@@ -1488,7 +1535,7 @@ export class DopeStudioView {
         </div>
         <div class="field-row">
           <label class="field-label" for="scope-cap-diameter-input">Diameter (mm)</label>
-          <input type="number" inputmode="decimal" id="scope-cap-diameter-input" class="lg-input" min="25" max="85" step="0.1" value="${d}" />
+          <input type="text" inputmode="decimal" autocomplete="off" id="scope-cap-diameter-input" class="lg-input" min="25" max="85" step="0.1" value="${d}" />
           <p class="field-hint">Measure the inside of the clear cap lid.</p>
         </div>
       </div>`;
@@ -1510,15 +1557,15 @@ export class DopeStudioView {
         <div class="field-grid-2">
           <div>
             <label class="field-label" for="tape-circ-input">Length around (mm)</label>
-            <input type="number" inputmode="decimal" id="tape-circ-input" class="lg-input" min="60" max="180" step="0.1" value="${circ}" />
+            <input type="text" inputmode="decimal" autocomplete="off" id="tape-circ-input" class="lg-input" min="60" max="180" step="0.1" value="${circ}" />
           </div>
           <div>
             <label class="field-label" for="tape-height-input">Height (mm)</label>
-            <input type="number" inputmode="decimal" id="tape-height-input" class="lg-input" min="8" max="25" step="0.5" value="${this.turretTapeHeightMm}" />
+            <input type="text" inputmode="decimal" autocomplete="off" id="tape-height-input" class="lg-input" min="8" max="25" step="0.5" value="${this.turretTapeHeightMm}" />
           </div>
           <div>
             <label class="field-label" for="tape-clicks-input">Clicks per turn</label>
-            <input type="number" inputmode="numeric" id="tape-clicks-input" class="lg-input" min="40" max="200" step="1" value="${this.turretClicksPerTurn}" />
+            <input type="text" inputmode="numeric" autocomplete="off" id="tape-clicks-input" class="lg-input" min="40" max="200" step="1" value="${this.turretClicksPerTurn}" />
           </div>
         </div>
         <p class="field-hint">Wrap a strip of paper around the turret and measure it for the exact length. The distance marks show hundreds (3 = 300).</p>
@@ -1535,7 +1582,7 @@ export class DopeStudioView {
     const windField = (key, label, ms) => `
       <div>
         <label class="field-label" for="input-wind-${key}">${label}</label>
-        <input type="number" inputmode="decimal" id="input-wind-${key}" class="lg-input" min="0" max="${windMax}" step="0.5" value="${fmtTrim(u.windFromMs(num(ms, 0)), 1)}" />
+        <input type="text" inputmode="decimal" autocomplete="off" id="input-wind-${key}" class="lg-input" min="0" max="${windMax}" step="0.5" value="${fmtTrim(u.windFromMs(num(ms, 0)), 1)}" />
       </div>`;
     return `
       <div class="dope-block">
@@ -1580,7 +1627,7 @@ export class DopeStudioView {
           </div>
           <div>
             <label class="field-label" for="input-wind-direction">Angle (°)</label>
-            <input type="number" inputmode="numeric" id="input-wind-direction" class="lg-input" min="0" max="359" step="15" value="${fmtInt(windDir)}" />
+            <input type="text" inputmode="numeric" autocomplete="off" id="input-wind-direction" class="lg-input" min="0" max="359" step="15" value="${fmtInt(windDir)}" />
           </div>
         </div>
         <fieldset class="dope-fieldset">
@@ -1626,7 +1673,7 @@ export class DopeStudioView {
           </div>
           <button type="button" class="lg-btn" id="btn-add-target-top" data-action="add-target" ${n >= 30 ? 'disabled' : ''}>${icon('plus')} Add target</button>
         </div>
-        <p class="field-hint">Left / right places the target on the drawing: minus is left of centre, plus is right.</p>
+        <p class="field-hint">Left / right places the target on the drawing: minus is left of centre, plus is right. The +/− button switches a target to the other side.</p>
         ${this._undoHtml('editor')}
         <ol class="target-list">
           ${stage.targets.map((t, idx) => this._targetEditorHtml(t, idx, n, u)).join('')}
@@ -1660,11 +1707,11 @@ export class DopeStudioView {
         </div>
         <div class="target-row-fields">
           ${field('shape', 'shape', 'Shape', `<select id="${id('shape')}" class="lg-select" data-target-field="shape">${Object.entries(SHAPES).map(([k, v]) => `<option value="${k}" ${t.shape === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`)}
-          ${field('dist', 'distanceM', `Distance (${u.dist})`, `<input type="number" inputmode="numeric" id="${id('distanceM')}" class="lg-input" data-target-num="distanceM" min="${Math.ceil(u.fromM(10))}" max="${maxDist}" step="5" value="${fmtInt(u.fromM(num(t.distanceM, 300)))}" />`)}
+          ${field('dist', 'distanceM', `Distance (${u.dist})`, `<input type="text" inputmode="numeric" autocomplete="off" id="${id('distanceM')}" class="lg-input" data-target-num="distanceM" min="${Math.ceil(u.fromM(10))}" max="${maxDist}" step="5" value="${fmtInt(u.fromM(num(t.distanceM, 300)))}" />`)}
           ${field('shots', 'rounds', 'Shots', this._stepper(id('rounds'), 'inputmode="numeric" data-target-num="rounds" min="1" max="20" step="1"', fmtInt(t.rounds), `${tn} shots`))}
-          ${field('w', 'widthCm', `Width (${u.size})`, `<input type="number" inputmode="decimal" id="${id('widthCm')}" class="lg-input" data-target-num="widthCm" min="1" max="${maxSize}" step="1" value="${fmtTrim(u.fromCm(num(t.widthCm, 30)), 1)}" />`)}
-          ${field('h', 'heightCm', `Height (${u.size})`, `<input type="number" inputmode="decimal" id="${id('heightCm')}" class="lg-input" data-target-num="heightCm" min="1" max="${maxSize}" step="1" value="${fmtTrim(u.fromCm(num(t.heightCm, num(t.widthCm, 30))), 1)}" />`)}
-          ${field('off', 'offsetM', `Left / right (${u.dist})`, `<input type="number" inputmode="numeric" id="${id('offsetM')}" class="lg-input" data-target-num="offsetM" min="${-maxOff}" max="${maxOff}" step="1" value="${fmtInt(u.fromM(num(t.offsetM, 0)))}" />`)}
+          ${field('w', 'widthCm', `Width (${u.size})`, `<input type="text" inputmode="decimal" autocomplete="off" id="${id('widthCm')}" class="lg-input" data-target-num="widthCm" min="1" max="${maxSize}" step="1" value="${fmtTrim(u.fromCm(num(t.widthCm, 30)), 1)}" />`)}
+          ${field('h', 'heightCm', `Height (${u.size})`, `<input type="text" inputmode="decimal" autocomplete="off" id="${id('heightCm')}" class="lg-input" data-target-num="heightCm" min="1" max="${maxSize}" step="1" value="${fmtTrim(u.fromCm(num(t.heightCm, num(t.widthCm, 30))), 1)}" />`)}
+          ${field('off', 'offsetM', `Left / right (${u.dist})`, `<div class="dope-offset"><input type="text" inputmode="decimal" autocomplete="off" id="${id('offsetM')}" class="lg-input" data-target-num="offsetM" min="${-maxOff}" max="${maxOff}" step="1" value="${fmtInt(u.fromM(num(t.offsetM, 0)))}" /><button type="button" class="lg-btn dope-sign-btn" id="${id('sign')}" data-action="target-flip" data-idx="${idx}" aria-label="Switch ${tn} to the other side of centre">+/−</button></div><p class="field-error" id="${id('offsetM')}-error" role="alert" hidden></p>`)}
           ${field('pos', 'prop', 'Position', `<input type="text" id="${id('prop')}" class="lg-input" maxlength="60" data-target-field="prop" value="${esc(t.prop || '')}" placeholder="Barricade" />`)}
           ${field('note', 'notes', 'Note', `<input type="text" id="${id('notes')}" class="lg-input" maxlength="80" data-target-field="notes" value="${esc(t.notes || '')}" placeholder="Hold or order note" />`)}
         </div>
@@ -1674,9 +1721,11 @@ export class DopeStudioView {
   // ---- main render ------------------------------------------------------------------------------
 
   render() {
+    clearTimeout(this._renderTimer);
+    this._renderTimer = 0;
     const fmtDef = FORMATS.find((f) => f.id === this.activeFormat) || FORMATS[0];
     const u = this._units();
-    const focusId = typeof document !== 'undefined' ? document.activeElement?.id : null;
+    const focusId = this._focusLocator();
 
     let paperHtml = '';
     let settingsHtml = '';
@@ -1769,6 +1818,7 @@ export class DopeStudioView {
             <div class="dope-preview-head no-print">
               <h2 class="lg-subtitle dope-preview-title" id="dope-preview-heading">Preview <span class="lg-chip lg-plain">${badge}</span></h2>
               <div class="dope-actions">
+                <button type="button" class="lg-btn" data-action="toggle-zoom" id="btn-zoom" hidden>${icon('search')} ${this._zoomFull ? 'Fit to screen' : 'Zoom in'}</button>
                 <button type="button" class="lg-btn" data-action="copy-text" id="btn-copy-text">${icon('copy')} Copy as text</button>
                 <button type="button" class="lg-btn" data-action="save-image" id="btn-save-image">${icon('download')} ${vector ? 'Save SVG' : 'Save PNG'}</button>
                 <button type="button" class="lg-btn lg-btn-primary btn-print" id="btn-print">${icon('print')} Print</button>
@@ -1789,15 +1839,47 @@ export class DopeStudioView {
     this._afterRender(focusId);
   }
 
-  _afterRender(focusId) {
+  _afterRender(focus) {
     this.applyDynamicStyles();
     this._bindNumberFields();
     this._fitPreview();
     this._observeDesk();
-    if (focusId && typeof document !== 'undefined') {
-      const el = document.getElementById(focusId);
-      if (el && this.container.contains?.(el)) el.focus({ preventScroll: true });
-    }
+    this._restoreFocus(focus);
+  }
+
+  /** Where the keyboard focus is in the view: an id, a help button key, or a position. */
+  _focusLocator() {
+    if (typeof document === 'undefined') return null;
+    const el = document.activeElement;
+    if (!el || el === document.body || !this.container.contains?.(el)) return null;
+    if (el.id) return { id: el.id };
+    if (el.dataset?.help) return { help: el.dataset.help };
+    const all = [...this.container.querySelectorAll(FOCUSABLE)];
+    const index = all.indexOf(el);
+    return index >= 0 ? { index } : null;
+  }
+
+  /**
+   * Puts the focus back on the same control after a re-render. Runs after the help system has
+   * added its "i" buttons to the new markup (its MutationObserver callback is queued first).
+   */
+  _restoreFocus(focus) {
+    if (!focus || typeof document === 'undefined') return;
+    const find = () => {
+      if (focus.id) return document.getElementById(focus.id);
+      if (focus.help) return this.container.querySelector(`[data-help="${CSS.escape(focus.help)}"]`);
+      return this.container.querySelectorAll(FOCUSABLE)[focus.index];
+    };
+    const apply = () => {
+      const active = document.activeElement;
+      // Something else took the focus meanwhile (e.g. a click handler): leave it there
+      if (active && active !== document.body && this.container.contains(active)) return;
+      const el = find();
+      if (el && this.container.contains(el)) el.focus({ preventScroll: true });
+    };
+    const el = focus.id ? find() : null;
+    if (el && this.container.contains?.(el)) el.focus({ preventScroll: true });
+    else Promise.resolve().then(apply);
   }
 
   /**
@@ -1837,7 +1919,15 @@ export class DopeStudioView {
     if (this.activeFormat === 'scope-cap') maxZoom = 480 / (this.scopeCapDiameterMm * PX_PER_MM);
     else if (this.activeFormat === 'prs-stage') maxZoom = (STAGE_SIZES.find((s) => s.id === this.printOrientation) || STAGE_SIZES[0]).maxZoom;
     else maxZoom = FORMATS.find((f) => f.id === this.activeFormat)?.maxZoom || 1;
-    const zoom = clamp(Math.min(maxZoom, avail / naturalPx), 0.3, 4);
+    const fitZoom = clamp(Math.min(maxZoom, avail / naturalPx), 0.3, 4);
+    // On a narrow screen a wide card is too small to read: "Zoom in" shows it at true size (or
+    // larger), and the desk scrolls sideways inside its own frame
+    const small = fitZoom < 0.8;
+    if (!small) this._zoomFull = false;
+    const zoom = this._zoomFull ? Math.max(1, fitZoom) : fitZoom;
+    const zoomBtn = this.container.querySelector('#btn-zoom');
+    if (zoomBtn) zoomBtn.hidden = !small;
+    desk.classList.toggle('is-zoomed', !!this._zoomFull);
     area.style.setProperty('--preview-zoom', zoom.toFixed(3));
     // The scale bar is shown near true size, whatever the card's preview zoom
     area.style.setProperty('--ruler-zoom', (Math.min(zoom, 1.25) / zoom).toFixed(3));
@@ -1862,68 +1952,130 @@ export class DopeStudioView {
     }
   }
 
-  /** Warns when the 3 × 5 in stage card overflows its fixed height. */
+  /**
+   * Keeps the 3 × 5 in / 5 × 3 in stage card inside its fixed height: when the content is taller,
+   * the card text steps down (fit-1, fit-2); only when that is not enough is the warning shown.
+   * Print lays text out about 2% taller than the screen, so the content must fit with that margin.
+   */
   _checkStageFit() {
     const warn = this.container.querySelector('#stage-fit-warning');
     const card = this.container.querySelector('#prs-arm-board-card');
-    if (!warn || !card) return;
+    if (!warn || !card || typeof getComputedStyle !== 'function') return;
     const inner = card.querySelector('.lamination-guide-border');
-    const overflow = this.printOrientation !== 'full-page' && inner && inner.scrollHeight > card.clientHeight + 2;
-    warn.hidden = !overflow;
+    card.classList.remove('fit-1', 'fit-2');
+    if (this.printOrientation === 'full-page' || !inner) {
+      warn.hidden = true;
+      return;
+    }
+    const overflows = () => {
+      const cs = getComputedStyle(card);
+      const avail = card.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      const gap = parseFloat(getComputedStyle(inner).rowGap) || 0;
+      const kids = [...inner.children].filter((k) => k.offsetParent !== null || k.getClientRects().length);
+      const content = kids.reduce((sum, k) => sum + k.offsetHeight, 0) + gap * Math.max(0, kids.length - 1);
+      return content > avail * 0.98;
+    };
+    let level = 0;
+    while (overflows() && level < 2) {
+      if (level) card.classList.remove(`fit-${level}`);
+      level++;
+      card.classList.add(`fit-${level}`);
+    }
+    warn.hidden = !overflows();
+  }
+
+  /**
+   * Re-renders after an edit, once the browser has finished moving focus (Tab) or the click that
+   * blurred the field has run, so the focus lands on the same control in the new markup.
+   */
+  _scheduleRender() {
+    if (typeof setTimeout !== 'function' || typeof document === 'undefined') {
+      this.render();
+      return;
+    }
+    clearTimeout(this._renderTimer);
+    // A press that blurred the field: wait until it is released, so its click reaches the button
+    if (this._pointerHeld) {
+      this._renderPending = true;
+      return;
+    }
+    this._renderTimer = setTimeout(() => {
+      this._renderTimer = 0;
+      this.render();
+    }, 0);
   }
 
   _bindNumberFields() {
     const q = (sel) => this.container.querySelector(sel);
-    const u = this._units();
-
-    bindNumber(q('#scope-cap-diameter-input'), (v) => {
-      this.scopeCapDiameterMm = Math.round(v * 10) / 10;
-      this._saveSettings();
-      this.render();
-    });
-    bindNumber(q('#tape-circ-input'), (v) => {
-      this.turretCircumferenceMm = Math.round(v * 10) / 10;
-      this._saveSettings();
-      this.render();
-    });
-    bindNumber(q('#tape-height-input'), (v) => {
-      this.turretTapeHeightMm = v;
-      this._saveSettings();
-      this.render();
-    });
-    bindNumber(q('#tape-clicks-input'), (v) => {
-      this.turretClicksPerTurn = Math.round(v);
-      this._saveSettings();
-      this.render();
-    });
-
-    // Stage fields
-    const stageNum = (sel, apply) => bindNumber(q(sel), (v) => {
-      this._undo = null;
+    const settingNum = (sel, apply) => bindNumber(q(sel), (v) => {
       apply(v);
-      this._saveStageState();
-      this.render();
+      this._saveSettings();
+      this._scheduleRender();
     });
-    stageNum('#input-stage-timer', (v) => { this.prsStage.timeLimitSec = Math.round(v); });
-    stageNum('#input-wind-direction', (v) => { this.prsStage.windDirectionDeg = ((Math.round(v) % 360) + 360) % 360; });
-    stageNum('#input-wind-lull', (v) => { this.prsStage.windLullMs = u.windToMs(v); });
-    stageNum('#input-wind-base', (v) => { this.prsStage.windBaseMs = u.windToMs(v); });
-    stageNum('#input-wind-gust', (v) => { this.prsStage.windGustMs = u.windToMs(v); });
+    settingNum('#scope-cap-diameter-input', (v) => { this.scopeCapDiameterMm = Math.round(v * 10) / 10; });
+    settingNum('#tape-circ-input', (v) => { this.turretCircumferenceMm = Math.round(v * 10) / 10; });
+    settingNum('#tape-height-input', (v) => { this.turretTapeHeightMm = v; });
+    settingNum('#tape-clicks-input', (v) => { this.turretClicksPerTurn = Math.round(v); });
+
+    // Stage fields. apply() may return an error message to reject the value.
+    const stageNum = (sel, apply) => {
+      const input = q(sel);
+      bindNumber(input, (v) => {
+        const error = apply(v);
+        if (error) {
+          setFieldError(input, error);
+          return;
+        }
+        this._undo = null;
+        this._saveStageState();
+        this._scheduleRender();
+      });
+    };
+    const stage = () => this.prsStage;
+    const u = () => this._units();
+    const speed = (ms) => `${fmtTrim(u().windFromMs(ms), 1)} ${u().wind}`;
+    stageNum('#input-stage-timer', (v) => { stage().timeLimitSec = Math.round(v); });
+    stageNum('#input-wind-direction', (v) => { stage().windDirectionDeg = ((Math.round(v) % 360) + 360) % 360; });
+    // Lull, base and gust must stay in order: lull <= base <= gust
+    const lull = () => num(stage().windLullMs, 0);
+    const base = () => num(stage().windBaseMs, 0);
+    const gust = () => num(stage().windGustMs, 0);
+    const EPS = 1e-6;
+    stageNum('#input-wind-lull', (v) => {
+      const ms = u().windToMs(v);
+      if (ms > base() + EPS) return `The lull can’t be stronger than the base wind (${speed(base())})`;
+      stage().windLullMs = ms;
+      return '';
+    });
+    stageNum('#input-wind-base', (v) => {
+      const ms = u().windToMs(v);
+      if (ms < lull() - EPS) return `The base wind can’t be lighter than the lull (${speed(lull())})`;
+      if (ms > gust() + EPS) return `The base wind can’t be stronger than the gust (${speed(gust())})`;
+      stage().windBaseMs = ms;
+      return '';
+    });
+    stageNum('#input-wind-gust', (v) => {
+      const ms = u().windToMs(v);
+      if (ms < base() - EPS) return `The gust can’t be lighter than the base wind (${speed(base())})`;
+      stage().windGustMs = ms;
+      return '';
+    });
 
     this.container.querySelectorAll('[data-target-num]').forEach((input) => {
-      const idx = Number(input.closest?.('[data-target-idx]')?.dataset.targetIdx);
       const field = input.dataset.targetNum;
       bindNumber(input, (v) => {
+        const idx = Number(input.closest?.('[data-target-idx]')?.dataset.targetIdx);
         const t = this.prsStage.targets[idx];
         if (!t) return;
+        const units = this._units();
         this._undo = null;
-        if (field === 'distanceM') t.distanceM = u.toM(v);
-        else if (field === 'widthCm') t.widthCm = u.toCm(v);
-        else if (field === 'heightCm') t.heightCm = u.toCm(v);
-        else if (field === 'offsetM') t.offsetM = u.toM(v);
+        if (field === 'distanceM') t.distanceM = units.toM(v);
+        else if (field === 'widthCm') t.widthCm = units.toCm(v);
+        else if (field === 'heightCm') t.heightCm = units.toCm(v);
+        else if (field === 'offsetM') t.offsetM = units.toM(v);
         else if (field === 'rounds') t.rounds = Math.round(v);
         this._saveStageState();
-        this.render();
+        this._scheduleRender();
       });
     });
   }
@@ -1949,6 +2101,11 @@ export class DopeStudioView {
     switch (btn.dataset.action) {
       case 'copy-text':
         this._copyText();
+        break;
+      case 'toggle-zoom':
+        this._zoomFull = !this._zoomFull;
+        this.render();
+        this.container.querySelector('#btn-zoom')?.focus();
         break;
       case 'save-image':
         this._saveImage();
@@ -1985,6 +2142,17 @@ export class DopeStudioView {
         const dir = btn.dataset.action === 'target-up' ? 'up' : 'down';
         const same = this.container.querySelector(`#tgt-${j}-${dir}`);
         (same && !same.disabled ? same : this.container.querySelector(`#tgt-${j}-${dir === 'up' ? 'down' : 'up'}`))?.focus();
+        break;
+      }
+      case 'target-flip': {
+        // Phone number keyboards often have no minus key: this switches the target to the other side
+        const t = stage.targets[idx];
+        if (!t) return;
+        t.offsetM = -num(t.offsetM, 0);
+        this._undo = null;
+        this._saveStageState();
+        this.render();
+        this.container.querySelector(`#tgt-${idx}-sign`)?.focus();
         break;
       }
       case 'target-copy': {
@@ -2058,7 +2226,7 @@ export class DopeStudioView {
 
   _handleChange(e) {
     const el = e.target;
-    if (!el || !this.container.contains(el) || el.type === 'number') return;
+    if (!el || !this.container.contains(el) || el.type === 'number' || el.dataset?.targetNum || el.inputMode === 'decimal' || el.inputMode === 'numeric') return;
     const stage = this.prsStage;
     if (el.name === 'stage-size') {
       this.setPrintOrientation(el.value);
@@ -2102,13 +2270,13 @@ export class DopeStudioView {
         this._undo = null;
         stage.name = el.value.trim().slice(0, 80) || 'Match stage';
         this._saveStageState();
-        this.render();
+        this._scheduleRender();
         return;
       case 'input-stage-props':
         this._undo = null;
         stage.propsDescription = el.value.trim().slice(0, 200);
         this._saveStageState();
-        this.render();
+        this._scheduleRender();
         return;
       default:
         break;
@@ -2125,7 +2293,7 @@ export class DopeStudioView {
       else if (field === 'prop') t.prop = val.slice(0, 60);
       else if (field === 'notes') t.notes = val.slice(0, 80);
       this._saveStageState();
-      this.render();
+      this._scheduleRender();
     }
   }
 
@@ -2217,7 +2385,7 @@ export class DopeStudioView {
   }
 
   _fileName(base, ext) {
-    const name = String(base || 'card').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'card';
+    const name = String(base || 'card').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/, '') || 'card';
     return `${name}.${ext}`;
   }
 
