@@ -88,3 +88,6 @@ npm run lint
   screenshots in a grid with captions). Screenshots live in `docs/screenshots/`.
 - `PRODUCT_RESEARCH_AND_FEATURE_ROADMAP.md` (feature research) is gitignored; don't commit it.
 - Public repo: https://github.com/jozeta/Ballistic-Workbench (default branch `main`, protected by the "Protect main" ruleset: no deletion, no force push). Push only when asked.
+- GitHub Pages serves `main` as it is (`.nojekyll`): <https://jozeta.github.io/Ballistic-Workbench/>. Every
+  push to `main` goes live, so keep `main` releasable; app paths must stay relative (it runs under
+  `/Ballistic-Workbench/`).

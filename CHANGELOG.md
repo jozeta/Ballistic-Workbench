@@ -5,6 +5,9 @@ All notable changes to Ballistic Workbench. Newest first; versions follow
 
 ## Unreleased
 
+- The app is hosted on GitHub Pages: <https://jozeta.github.io/Ballistic-Workbench/>. Share links and
+  QR codes made there open on any device.
+
 ## 0.1.0 - 2026-11-16
 
 The first version: the existing app brought under version control, redesigned and audited

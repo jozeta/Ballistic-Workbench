@@ -11,6 +11,9 @@ browser; nothing is sent anywhere.
 
 **Version:** 0.1.0
 
+**Use it online:** <https://jozeta.github.io/Ballistic-Workbench/>. Nothing to install; after the
+first visit it also works offline, and you can add it to your home screen.
+
 > Ballistic Workbench is a planning and learning tool. Always confirm firing solutions with live
 > fire on a safe range before relying on them.
 
@@ -103,8 +106,11 @@ The command palette (**⌘K** on Mac, **Ctrl+K** elsewhere, or **Search** in the
 
 ## Installation
 
-There is no build step and the app has no runtime dependencies: it is plain HTML, CSS and
-JavaScript modules served as static files.
+The easiest way is the hosted app: open <https://jozeta.github.io/Ballistic-Workbench/> (GitHub
+Pages, published from `main`). Your data stays in your browser either way.
+
+To run your own copy: there is no build step and the app has no runtime dependencies (plain HTML,
+CSS and JavaScript modules served as static files).
 
 ```sh
 git clone https://github.com/jozeta/Ballistic-Workbench.git
@@ -117,7 +123,8 @@ Then open <http://localhost:8080>. You need Node.js 18 or later; the server has 
 the offline service worker don't load from `file://`). Don't use `python3 -m http.server`: it drops
 connections when the browser loads the app's modules in parallel, and the app then fails to start.
 
-**Install as an app:** in Chrome or Edge, use *Install app* in the address bar; on iPhone or iPad,
+**Install as an app:** open the hosted app (or your own copy), then in Chrome or Edge use *Install
+app* in the address bar; on iPhone or iPad,
 Safari's *Share → Add to Home Screen*. After the first visit the app works fully offline.
 
 ## Configuration
