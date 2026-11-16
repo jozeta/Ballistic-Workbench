@@ -532,8 +532,12 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
   .chart-metric .lg-tab { flex: 1 1 auto; justify-content: center; }
 }
 
-/* Settings switches are radio groups styled like Låda tabs */
-.settings-switch .lg-tab[aria-checked="true"] {
+/* Settings and wind-mode switches are radio groups styled like Låda tabs */
+.wind-mode-row { display: flex; align-items: center; gap: var(--lg-space-s); margin-top: var(--lg-space-xs); }
+.wind-mode-row .lg-label { margin: 0; }
+.wind-mode { flex: 1; display: flex; }
+.wind-mode .lg-tab { flex: 1; justify-content: center; }
+.settings-switch .lg-tab[aria-checked="true"], .wind-mode .lg-tab[aria-checked="true"] {
   color: var(--lg-text);
   background: linear-gradient(180deg, var(--lg-glass-fill-top), var(--lg-glass-fill-bottom)), var(--lg-glass-strong);
   box-shadow: 0 1px 2px rgba(0, 0, 0, .18), inset 0 0 0 1px var(--lg-glass-edge);

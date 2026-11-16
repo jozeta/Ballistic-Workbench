@@ -428,6 +428,8 @@ const TOPICS = [
         <li>Choose the reticle and the focal plane. In a <strong>first focal plane</strong> (${abbr('FFP', 'First focal plane')}) scope the marks are right at every magnification. In a <strong>second focal plane</strong> (${abbr('SFP', 'Second focal plane')}) scope they are only right at one magnification, usually the highest; move the <strong>Magnification</strong> slider to see the effect.</li>
         <li><strong>Illuminated</strong> lights the centre of the reticle.</li>
         <li>The turret has two modes. <strong>Follow solution</strong> turns it to the elevation for the target. <strong>Manual</strong> lets you dial yourself: −1 and +1 move one whole MRAD or MOA, −1c and +1c one click, 0 returns to zero, and <strong>Dial</strong> jumps to the solution. The reticle shows where the shot lands with what you have dialled.</li>
+        <li><strong>Wind</strong>: <strong>Dial</strong> puts the wind correction on the windage turret too, so the target stays on the crosshair at every distance. <strong>Hold</strong> leaves it to the reticle: the target sits on the wind mark you hold with, which moves out as the distance grows.</li>
+        <li>A farther target looks smaller, as it does in a real scope: a 45 cm target is 0.75 MRAD wide at 600 m and 0.45 MRAD at 1,000 m.</li>
       </ul>`,
     actions: [{ label: 'Open reticle and turret', icon: 'reticle', view: 'workspace', panel: 'reticle' }],
   },

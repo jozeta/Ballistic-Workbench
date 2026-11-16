@@ -5,6 +5,11 @@ All notable changes to Ballistic Workbench. Newest first; versions follow
 
 ## Unreleased
 
+- Solver, reticle view: the target no longer slides sideways as the distance changes. A new
+  **Wind: Dial / Hold** switch next to the turret; Dial (the default) puts the wind correction on the
+  windage turret too, so the target stays on the crosshair; Hold shows it on the wind mark as before.
+  The reticle caption reads "Dialed 10.2 up, 1.9 right MRAD".
+
 - Låda Glass updated to 2.2.1 (bug fixes in the design system: a dialog reopened while it is
   closing stays open, charts with very many points no longer fail, number steppers accept tiny steps).
 

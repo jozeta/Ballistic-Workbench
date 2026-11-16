@@ -281,6 +281,13 @@ export const HELP = {
     guide: 'guide-click-value',
   },
 
+  'wind-mode': {
+    title: 'Wind: dial or hold',
+    text: 'Dial sets the windage turret to the wind correction, so the target stays on the crosshair as the distance changes. Hold leaves the windage turret at zero: the reticle view then shows the target on the wind mark you hold with, on the downwind side of the centre.',
+    tip: 'Many match shooters dial elevation and hold wind, because the wind changes between shots. Hunters often dial both.',
+    guide: 'guide-solver-reticle',
+  },
+
   // ===== Solver: range table =====
   'step-select': {
     title: 'Table step',

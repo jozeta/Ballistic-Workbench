@@ -145,6 +145,7 @@ export class ReticleRenderer {
       el: snap((this.options.elevationHoldMrad || 0) - dialedEl),
       wind: snap((this.options.windageHoldMrad || 0) - dialedWind),
       dialedEl,
+      dialedWind,
     };
   }
 
@@ -164,8 +165,12 @@ export class ReticleRenderer {
     const parts = [elPart, windPart].filter((x) => !x.startsWith('no '));
     const holdValue = `${parts.join(', ')} ${unit}`;
     const holdPart = none ? 'no hold' : `hold ${holdValue}`;
-    const dialed = (hold.dialedEl || 0) * k;
-    const dialPart = Math.abs(dialed) < 0.05 ? '' : `Dialed ${fmtHold(Math.abs(dialed))} ${unit}${dialed < 0 ? ' down' : ''}`;
+    const dEl = (hold.dialedEl || 0) * k;
+    const dWind = (hold.dialedWind || 0) * k;
+    const dialBits = [];
+    if (Math.abs(dEl) >= 0.05) dialBits.push(`${fmtHold(Math.abs(dEl))}${dEl < 0 ? ' down' : Math.abs(dWind) >= 0.05 ? ' up' : ''}`);
+    if (Math.abs(dWind) >= 0.05) dialBits.push(`${fmtHold(Math.abs(dWind))} ${dWind > 0 ? 'right' : 'left'}`);
+    const dialPart = dialBits.length ? `Dialed ${dialBits.join(', ')} ${unit}` : '';
     return { elPart, windPart, unit, none, holdPart, holdValue, dialPart };
   }
 
@@ -329,7 +334,7 @@ export class ReticleRenderer {
     const yd = this.options.distanceUnit === 'yd';
     const dist = Math.round((this.options.targetDistanceM || 0) * (yd ? 1.0936133 : 1));
     const dial = holdText.dialPart ? `${holdText.dialPart}. ` : '';
-    const hold = holdText.none ? 'No hold needed.' : `Hold ${holdText.elPart} and ${holdText.windPart} ${holdText.unit}.`;
+    const hold = holdText.none ? 'No hold needed.' : `Hold ${holdText.holdValue}.`;
     this.canvas.setAttribute(
       'aria-label',
       `Reticle view: ${this.options.reticleType} at ${mag}x, ${plane}. Target at ${dist} ${yd ? 'yd' : 'm'}, ${this._targetSizeText()}. ${dial}${hold}`

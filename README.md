@@ -144,7 +144,8 @@ Settings are stored in your browser (`localStorage`); nothing leaves your device
 | Wind | Solver → Wind | Speed and the direction it comes from (drag the wind clock or type degrees; 90° = from the right) | 4 m/s from 3 o'clock |
 | Shot angle and cant | Solver → Shot angle and cant | Inclination (+ uphill) and rifle cant (+ right) | 0° and 0° |
 | Scope | Solver → Reticle tab, rifle dialog | Reticle, first or second focal plane, magnification, click value (0.1 / 0.05 MRAD, 1/4 / 1/8 MOA) | From the rifle |
-| Turret | Solver → Reticle and turret | Follow solution (the turret is set to the answer, the reticle shows the wind hold) or Manual (you dial; the reticle shows the remaining hold) | Follow solution |
+| Turret | Solver → Reticle and turret | Follow solution (the turret is set to the answer) or Manual (you dial; the reticle shows the remaining hold) | Follow solution |
+| Wind | Solver → Reticle and turret | Dial (the windage turret takes the wind correction; the target stays on the crosshair) or Hold (the target sits on the wind mark) | Dial |
 | Range table | Solver → Range table | Row spacing 10 / 25 / 50 / 100 m or yd (imperial rows land on round yards); visible columns; ranges ticked for DOPE cards (remembered) | 25, all columns, every 100 ticked |
 | DOPE card | DOPE cards | Format, distances (defaults or the ones ticked in the Solver), card size and colour | Full page |
 | Field mode | Field mode | Night (dim red), Screen on (wake lock); remembered | Night off, Screen on |

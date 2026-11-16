@@ -53,6 +53,9 @@ export class WorkspaceView {
     // 'auto': the turret follows the solution (target centred, only the wind hold shows);
     // 'manual': the turret stays where the user set it and the reticle shows the remaining hold
     this.turretMode = 'auto';
+    // 'dial': the windage turret is set to the wind correction too, so the target stays on the
+    // crosshair; 'hold': the wind is held with the reticle (the target sits on a wind mark)
+    this.windMode = 'dial';
 
     // Remembered across re-renders (unit or profile changes rebuild the view)
     this.openSections = new Set(['target', 'load', 'wind']);
@@ -256,7 +259,7 @@ export class WorkspaceView {
         elevationHoldMrad: targetPoint.elevationMrad,
         windageHoldMrad: targetPoint.windageMrad,
         elevationDialClicks: dialed,
-        windageDialClicks: profile.optic?.zeroWindageClicks || 0,
+        windageDialClicks: this.windMode === 'dial' ? targetPoint.windageClicks : profile.optic?.zeroWindageClicks || 0,
         clickValueRad: profile.optic?.clickValueRad || 0.0001,
         isMrad,
         distanceUnit: dispUnits.distance,
@@ -653,6 +656,7 @@ export class WorkspaceView {
       if (['reticle', 'chart', 'table'].includes(raw.panel)) this.activePanel = raw.panel;
       if (Array.isArray(raw.sections)) this.openSections = new Set(raw.sections.filter((x) => typeof x === 'string').slice(0, 10));
       if (['drop', 'velocity', 'wind', 'tof', 'energy'].includes(raw.metric)) this.chartMetric = raw.metric;
+      if (['dial', 'hold'].includes(raw.wind)) this.windMode = raw.wind;
       const ranges = raw.ranges?.[appState.state.systemUnits];
       if (Array.isArray(ranges)) {
         const toM = appState.state.systemUnits === 'imperial' ? 0.9144 : 1;
@@ -669,7 +673,7 @@ export class WorkspaceView {
       const toDisp = appState.state.systemUnits === 'imperial' ? 1 / 0.9144 : 1;
       const ranges = { ...(raw.ranges || {}) };
       if (this.selectedRanges) ranges[appState.state.systemUnits] = [...this.selectedRanges].map((d) => Math.round(d * toDisp * 100) / 100);
-      localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ panel: this.activePanel, sections: [...this.openSections], metric: this.chartMetric, ranges }));
+      localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ panel: this.activePanel, sections: [...this.openSections], metric: this.chartMetric, wind: this.windMode, ranges }));
     } catch {
       // Not saved; fine for this session
     }
@@ -923,6 +927,13 @@ export class WorkspaceView {
                 <div class="lg-tabs turret-mode" role="tablist" aria-label="Turret" id="turret-mode">
                   <button class="lg-tab" role="tab" type="button" data-turret-mode="auto" aria-selected="${this.turretMode === 'auto'}">Follow solution</button>
                   <button class="lg-tab" role="tab" type="button" data-turret-mode="manual" aria-selected="${this.turretMode === 'manual'}">Manual</button>
+                </div>
+                <div class="wind-mode-row">
+                  <span class="lg-label" id="wind-mode-label">Wind</span>
+                  <div class="lg-tabs wind-mode" role="radiogroup" aria-labelledby="wind-mode-label" id="wind-mode">
+                    <button class="lg-tab" role="radio" type="button" data-wind-mode="dial" aria-checked="${this.windMode === 'dial'}" title="Dial the wind on the windage turret: the target stays on the crosshair">Dial</button>
+                    <button class="lg-tab" role="radio" type="button" data-wind-mode="hold" aria-checked="${this.windMode === 'hold'}" title="Hold the wind with the reticle: the target sits on a wind mark">Hold</button>
+                  </div>
                 </div>
                 <div class="turret-header">
                   <p class="lg-label turret-title">Elevation turret</p>
@@ -1199,6 +1210,21 @@ export class WorkspaceView {
     this.container.querySelector('#turret-mode')?.addEventListener('click', (e) => {
       const tab = e.target.closest('[data-turret-mode]');
       if (tab) this._setTurretMode(tab.dataset.turretMode);
+    });
+    this.container.querySelector('#wind-mode')?.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-wind-mode]');
+      if (!b) return;
+      this.windMode = b.dataset.windMode;
+      this.container.querySelectorAll('#wind-mode [data-wind-mode]').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+      this._saveUiPrefs();
+      this.recompute();
+    });
+    this.container.querySelector('#wind-mode')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      const next = this.container.querySelector(`#wind-mode [data-wind-mode="${this.windMode === 'dial' ? 'hold' : 'dial'}"]`);
+      next?.focus();
+      next?.click();
     });
 
     // Chart Tabs
