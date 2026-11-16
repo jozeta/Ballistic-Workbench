@@ -42,10 +42,16 @@ const BASE = `http://127.0.0.1:${PORT}/index.html`;
 // ---- Chrome --------------------------------------------------------------------------------------
 const chromePath = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const profileDir = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR || '/tmp'), 'bw-chrome-'));
-const chrome = spawn(chromePath, [`--remote-debugging-port=${CHROME_PORT}`, '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profileDir}`, 'about:blank'], { stdio: 'ignore' });
+const chrome = spawn(chromePath, [`--remote-debugging-port=${CHROME_PORT}`, '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profileDir}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+// Keep the end of Chrome's error output, and notice if it quits, so a failed start says why
+let chromeErr = '';
+let chromeExit = null;
+chrome.stderr.on('data', (d) => { chromeErr = (chromeErr + d).slice(-2000); });
+chrome.on('exit', (code, signal) => { chromeExit = signal || code; });
 
+// A cold CI runner can take well over 10 s to start Chrome: wait up to 45 s
 let pageWs = null;
-for (let i = 0; i < 50 && !pageWs; i++) {
+for (let i = 0; i < 225 && !pageWs && chromeExit === null; i++) {
   await new Promise((r) => setTimeout(r, 200));
   try {
     const list = await (await fetch(`http://127.0.0.1:${CHROME_PORT}/json`)).json();
@@ -55,7 +61,8 @@ for (let i = 0; i < 50 && !pageWs; i++) {
   }
 }
 if (!pageWs) {
-  console.error('❌ Could not connect to Chrome');
+  console.error(`❌ Could not connect to Chrome${chromeExit !== null ? ` (it exited: ${chromeExit})` : ' within 45 s'}`);
+  if (chromeErr) console.error(chromeErr);
   chrome.kill();
   server.close();
   process.exit(1);
