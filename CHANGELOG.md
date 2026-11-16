@@ -5,12 +5,18 @@ All notable changes to Ballistic Workbench. Newest first; versions follow
 
 ## Unreleased
 
-### Added
+## 0.1.0 - 2026-11-16
+
+The first version: the existing app brought under version control, redesigned and audited
+(code bugs, security, ballistics math, UX and copy), with Field mode, Match, Logbook, Hunting
+and sharing added.
+
+### New features
 
 - **Field mode**: a full-screen, one-handed view for the firing line with the elevation and wind in
   large type, steppers for distance, wind speed and clock direction (hold to repeat), a dim red
   night mode, "keep the screen on" (screen wake lock) and full screen where the browser allows it.
-  Opened from the sidebar, the palette or the Solver's firing solution.
+  Opened from the menu, the palette or the Solver's firing solution.
 - **Match**: matches with stages and named targets (distance, shot angle, direction from the
   stage's main direction, type and size), each solved live for the active rifle and the Solver's
   conditions: elevation with clicks, wind hold and the target's size in the reticle unit. A target
@@ -27,28 +33,6 @@ All notable changes to Ballistic Workbench. Newest first; versions follow
   validates every value and never replaces your own data (a different version is added as a copy).
 - Guide topics and illustrations for Field mode, Match, Logbook, Hunting and sharing; help (i) for
   every new setting. Backups now include matches, the logbook and the hunting settings.
-
-### Changed
-
-- The menu is now a bar across the top (brand, menu, Search) instead of a sidebar. Units and Theme
-  moved into a **Settings** dialog behind the cogwheel at the right end of the bar, with the app
-  version. On narrower screens the menu shows icons only (names stay as tooltips and for screen
-  readers); on phones it gets its own row that scrolls sideways. The Solver's menu icon is now the
-  reticle, so it no longer looks the same as the app logo. The Guide is a help (?) button next to
-  the cogwheel.
-
-### Project
-
-- `qrcode-generator` 2.0.4 (MIT) vendored in `vendor/qrcode-generator/` for the QR codes; no
-  network requests.
-- `tests/features.mjs` (47 checks: point-blank range, energy limits, the logbook fit recovering a
-  known muzzle velocity and BC, share encoding with size and deflate-bomb limits, validation and
-  merging); the browser test covers the new views (113 checks).
-
-## 0.1.0 - 2026-11-15
-
-The first version: the existing app brought under version control, redesigned and audited
-(code bugs, security, ballistics math, UX and copy).
 
 ### Ballistics (corrected results)
 
@@ -83,11 +67,13 @@ The first version: the existing app brought under version control, redesigned an
 
 ### Interface
 
-- Låda Glass 2.2.0 app shell (sidebar navigation with Search, Units and Theme), Låda components
+- Låda Glass 2.2.0 app shell (a menu bar across the top with Search, a help (?) button for the
+  Guide, and a cogwheel that opens Settings with Units, Theme and the version; icons only on narrow
+  screens, its own scrolling row on phones), Låda components
   and Låda SVG charts throughout; dark and light themes following the system (System / Light / Dark);
   custom ballistics icon set and line-art graphics; no emoji.
-- New navigation: Solver, Compare models, DOPE cards, Tools, Library; command palette with keyboard
-  support (⌘K / Ctrl+K).
+- Navigation: Solver, Field mode, Match, DOPE cards, Logbook, Compare models, Tools, Library and
+  the Guide; command palette with keyboard support (⌘K / Ctrl+K).
 - Solver: setup column with collapsible sections and a firing-solution card (elevation and windage
   with direction and clicks); reticle and turret, trajectory chart and range table in tabs; on a
   phone the answer comes first.
@@ -136,6 +122,11 @@ The first version: the existing app brought under version control, redesigned an
 
 ### Project
 
+- `qrcode-generator` 2.0.4 (MIT) vendored in `vendor/qrcode-generator/` for the QR codes; no
+  network requests.
+- `tests/features.mjs` (47 checks: point-blank range, energy limits, the logbook fit recovering a
+  known muzzle velocity and BC, share encoding with size and deflate-bomb limits, validation and
+  merging); the browser test covers the new views (113 checks).
 - README, CHANGELOG, CLAUDE.md, SECURITY.md, MIT license, ESLint, GitHub Actions CI.
 - Tests: physics reference checks (2762), helpers, version, offline cache list, and an end-to-end
   browser test of every view in both themes and at phone width.

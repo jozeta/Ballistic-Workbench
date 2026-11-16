@@ -1516,7 +1516,7 @@ export class DopeStudioView {
           <div><dt>Conditions</dt><dd>${info.envName || '—'}</dd></div>
           <div><dt>Units</dt><dd>${u.dist}, ${u.elev}, wind in ${u.wind}</dd></div>
         </dl>
-        <p class="field-hint">Change the rifle and conditions in the <a href="#workspace">Solver</a>, and the units in the sidebar.</p>
+        <p class="field-hint">Change the rifle and conditions in the <a href="#workspace">Solver</a>, and the units in Settings (the cogwheel at the top right).</p>
       </div>`;
   }
 

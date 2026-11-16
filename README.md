@@ -25,7 +25,7 @@ The first version, with a complete redesign and a corrected ballistics engine:
   jump, spin drift, cant, Coriolis, stability and powder temperature; the zero no longer shifts with
   field conditions; 27 bullet BCs corrected to published values.
 - **New interface** in the Låda Glass design: a menu bar at the top, Låda components and charts, dark
-  and light themes (follows your system), custom icons and line art, plain-language text, and layouts
+  and light themes (follows your system), Units and Theme in **Settings** (the cogwheel), custom icons and line art, plain-language text, and layouts
   for phones, tablets and computers.
 - **Guide:** a step-by-step, illustrated walkthrough from planning a range day to a printed DOPE
   chart (measuring sight height, twist and click value, zeroing, chronograph, shooting known
@@ -38,17 +38,13 @@ The first version, with a complete redesign and a corrected ballistics engine:
   distance units. Inputs are validated as you type.
 - **DOPE cards** print at exact physical size; **Tools** each give a plain verdict; **Library**
   can edit, duplicate and delete rifles with undo.
-- **Security:** strict Content-Security-Policy, imported and saved data is validated, no inline
-  code, offline cache limited to the app's own files.
-
-Since then (unreleased):
-
 - **Field mode:** the answer in big type with large steppers, a red night mode and the screen kept on.
 - **Match:** stages with named targets at their own distance, angle and direction, solved live.
 - **Logbook:** record impacts at many distances and fit muzzle velocity and BC to all of them at once.
 - **Hunting:** maximum point-blank range and the range limit from minimum energy and velocity.
 - **Sharing:** pass a rifle or a match to another phone by QR code, link or file, without uploads.
-- **Menu bar at the top:** Units, Theme and the version are in **Settings** (the cogwheel on the right).
+- **Security:** strict Content-Security-Policy, imported and saved data is validated, no inline
+  code, offline cache limited to the app's own files.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full list.
 

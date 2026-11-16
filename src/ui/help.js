@@ -183,7 +183,7 @@ function attachToControl(root, key, control) {
     if (once(label, key)) label.append(makeButton(key, label.textContent));
     return;
   }
-  // A heading or group label just before it (sidebar switches, tab lists)
+  // A heading or group label just before it (settings switches, tab lists)
   const prev = control.previousElementSibling;
   if (prev && /^(P|H[2-6]|LEGEND|SPAN)$/.test(prev.tagName) && prev.textContent.trim()) {
     if (once(prev, key)) prev.append(makeButton(key, prev.textContent));
