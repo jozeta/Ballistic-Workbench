@@ -5,6 +5,9 @@ All notable changes to Ballistic Workbench. Newest first; versions follow
 
 ## Unreleased
 
+- Låda Glass updated to 2.2.1 (bug fixes in the design system: a dialog reopened while it is
+  closing stays open, charts with very many points no longer fail, number steppers accept tiny steps).
+
 - The app is hosted on GitHub Pages: <https://jozeta.github.io/Ballistic-Workbench/>. Share links and
   QR codes made there open on any device.
 

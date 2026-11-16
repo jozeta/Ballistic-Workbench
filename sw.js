@@ -57,7 +57,7 @@ const STATIC_ASSETS = [
   './styles/views/lab.css',
   './styles/views/library.css',
   './styles/views/tools.css',
-  './vendor/lada-glass/2.2.0/lada-glass.css',
+  './vendor/lada-glass/2.2.1/lada-glass.css',
   './styles/views/field.css',
   './src/ui/field.js',
   './src/ui/match.js',
@@ -65,7 +65,7 @@ const STATIC_ASSETS = [
   './src/ui/shareDialog.js',
   './styles/views/records.css',
   './src/core/solve.js',
-  './vendor/lada-glass/2.2.0/lada-glass.js',
+  './vendor/lada-glass/2.2.1/lada-glass.js',
   './vendor/qrcode-generator/2.0.4/qrcode.mjs',
 ];
 

@@ -53,7 +53,7 @@ npm run lint
 - Canvases (`src/canvas/`): chart, reticle, turret, wind clock; colours from `palette.js`
   (`getPalette()` reads the Låda tokens), so they follow the theme.
 - Vendored: `vendor/qrcode-generator/2.0.4/qrcode.mjs` (MIT, unchanged) for QR codes.
-- Styles: Låda Glass in `vendor/lada-glass/2.2.0/`; `styles/main.css` (tokens mapping, header,
+- Styles: Låda Glass in `vendor/lada-glass/2.2.1/`; `styles/main.css` (tokens mapping, header,
   shared components, Solver); `styles/views/*.css` per view; `styles/print.css` (DOPE cards only).
 - `sw.js`: network-first service worker; `STATIC_ASSETS` must list every app file
   (`tests/sw-assets.mjs` fails otherwise).

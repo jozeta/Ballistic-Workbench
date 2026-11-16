@@ -203,7 +203,7 @@ these on every push.
 
 ## Design
 
-The interface uses Låda Glass 2.2.0 (`vendor/lada-glass/2.2.0/`). QR codes are drawn with
+The interface uses Låda Glass 2.2.1 (`vendor/lada-glass/2.2.1/`). QR codes are drawn with
 [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 2.0.4 by Kazuhiko Arase (MIT,
 `vendor/qrcode-generator/2.0.4/`). The icons (`assets/icons.svg`) and
 line-art graphics (`assets/art.svg`) are drawn for this app in the same style.
