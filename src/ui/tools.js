@@ -25,6 +25,7 @@ import { getAtmosphericConditions } from '../physics/atmosphere.js';
 import { trueMuzzleVelocity, trueDropScaleFactor } from '../physics/truing.js';
 import { runWezSimulation } from '../physics/wez.js';
 import { solveTrajectory } from '../physics/solvers.js';
+import { maxPointBlankRange, rangeLimits } from '../physics/hunting.js';
 import { interpolateAt } from '../core/trajectory.js';
 import { getPalette } from '../canvas/palette.js';
 import { icon } from './icons.js';
@@ -37,6 +38,7 @@ const TOOLS = [
   { id: 'group', label: 'Group analysis', icon: 'group' },
   { id: 'chrono', label: 'Chronograph', icon: 'chrono' },
   { id: 'milling', label: 'Range estimation', icon: 'ranging' },
+  { id: 'hunting', label: 'Hunting', icon: 'hunt' },
   { id: 'recoil', label: 'Recoil', icon: 'recoil' },
 ];
 
@@ -98,6 +100,7 @@ const STALE_OUT = {
   group: '#group-metrics-summary',
   milling: '#milling-out',
   recoil: '#recoil-results',
+  hunting: '#hunting-results',
 };
 
 /** Range estimates beyond this are almost certainly a wrong size or reading. */
@@ -2150,13 +2153,124 @@ export class ToolsView {
       </div>`;    this._syncStale();
   }
 
-  // ---- 6. Recoil --------------------------------------------------------------------------------
+  // ---- 6. Hunting ------------------------------------------------------------------------------
+
+  renderHunting() {
+    const u = units();
+    const h = appState.state.hunting;
+    const profile = appState.getActiveProfile();
+    const env = appState.getActiveEnvironment();
+    return `
+      ${this._intro(TOOLS.find((t) => t.id === 'hunting'), 'Hunting', 'How far you can hold dead on, and how far the bullet still carries enough energy and speed for a clean kill.')}
+      ${this._context([`${icon('rifle')}<strong>${esc(profile.name)}</strong>`, `${icon('weather')}${esc(env.name)}`])}
+      <div class="tool-layout">
+        <section class="lg-card tool-card tool-inputs" aria-labelledby="hunt-in-title">
+          <h3 class="lg-label" id="hunt-in-title">Your limits</h3>
+          ${this._numField({ id: 'hunt-vital', label: 'Vital zone diameter', unit: u.size, si: h.vitalZoneM, min: 0.03, max: 0.6, out: 'hunting', live: true, set: (x) => this._setHunting({ vitalZoneM: x }), hint: 'The heart and lung area you must hit. Deer and wild boar about 20 cm (8 in), elk and moose 25–30 cm (10–12 in), fox 10 cm (4 in).' })}
+          ${this._numField({ id: 'hunt-energy', label: 'Minimum energy at impact', unit: u.energy, si: h.minEnergyJ, min: 0, max: 10000, dec: 0, out: 'hunting', live: true, set: (x) => this._setHunting({ minEnergyJ: x }), hint: 'Common rules of thumb: 1,356 J (1,000 ft·lb) for deer, 2,034 J (1,500 ft·lb) for elk. Some countries set legal minimums: check your local rules.' })}
+          ${this._numField({ id: 'hunt-velocity', label: 'Minimum impact velocity', unit: u.vel, si: h.minVelocityMs, min: 0, max: 1200, dec: 0, out: 'hunting', live: true, set: (x) => this._setHunting({ minVelocityMs: x }), hint: 'The slowest speed at which your bullet still expands, from the bullet maker. Often 490–610 m/s (1,600–2,000 fps). 0 turns the check off.' })}
+          <label class="check-inline hunt-show"><input type="checkbox" class="lg-check" id="hunt-show" ${h.showInSolver ? 'checked' : ''} /> Warn in the Solver and Field mode when a shot is past these limits</label>
+        </section>
+        <div class="tool-results">
+          <div id="hunting-results" class="lg-stack" aria-live="polite"></div>
+        </div>
+      </div>`;
+  }
+
+  _setHunting(updates) {
+    appState.updateHunting(updates);
+    this.calcHunting();
+  }
+
+  _initHunting() {
+    this.container.querySelector('#hunt-show')?.addEventListener('change', (e) => {
+      appState.updateHunting({ showInSolver: e.target.checked });
+      toast(e.target.checked ? 'Hunting limits shown in the Solver' : 'Hunting limits hidden in the Solver', 'ok');
+    });
+  }
+
+  calcHunting() {
+    const out = this.container.querySelector('#hunting-results');
+    if (!out) return;
+    const u = units();
+    const h = appState.state.hunting;
+    const profile = appState.getActiveProfile();
+    const env = appState.getActiveEnvironment();
+    const atm = atmosphere(env);
+    const base = { profile, environment: env, airDensity: atm.densityKgM3, speedOfSound: atm.speedOfSoundMs };
+    const alg = solverAlgorithm();
+    const mpbr = maxPointBlankRange({ ...base, vitalZoneM: h.vitalZoneM, algorithm: alg, maxRangeM: 900 });
+    const traj = solveTrajectory({ ...base, algorithm: alg, stepM: 10, maxRangeM: 2000 }).trajectory;
+    const lim = rangeLimits(traj, { minEnergyJ: h.minEnergyJ, minVelocityMs: h.minVelocityMs });
+    const d = (m) => `${grouped(toUnit(m, u.dist))}<span class="kpi-unit">${u.dist}</span>`;
+    const dText = (m) => `${grouped(toUnit(m, u.dist))} ${u.dist}`;
+    const size = (m) => `${fixed(toUnit(Math.abs(m), u.size), u.imp ? 1 : 0)} ${u.size}`;
+    const halfZone = size(h.vitalZoneM / 2);
+
+    let mpbrHtml;
+    if (!mpbr) {
+      mpbrHtml = alertBox('warn', 'alert', 'No point-blank range', 'Check the vital zone size.');
+    } else {
+      // Height at 100 m or 100 yd, read from the same path
+      const at100 = mpbr.heightAt100M;
+      const zeroNote = mpbr.farZeroM ? `Zero the rifle at <strong>${dText(mpbr.farZeroM)}</strong>${Number.isFinite(at100) ? `, which hits <strong>${size(at100)} ${at100 >= 0 ? 'high' : 'low'}</strong> at 100 m` : ''}.` : '';
+      const start = mpbr.nearM > 1 ? ` from ${dText(mpbr.nearM)}` : '';
+      mpbrHtml = hero({
+        label: 'Maximum point-blank range',
+        value: mpbr.mpbrBeyond ? `beyond ${d(mpbr.maxRangeM)}` : d(mpbr.mpbrM),
+        text: `${zeroNote} Then hold dead centre${start} out to ${mpbr.mpbrBeyond ? dText(mpbr.maxRangeM) : dText(mpbr.mpbrM)}: the bullet stays within ${halfZone} above or below your aim (highest at ${dText(mpbr.apexM)}).`,
+        note: `Level ground, no wind. ${mpbr.farZeroM && Math.abs(profile.zeroDistanceM - mpbr.farZeroM) <= 15 ? `Your rifle is already zeroed close to this (${dText(profile.zeroDistanceM)}).` : `Your rifle is zeroed at ${dText(profile.zeroDistanceM)}: dial or hold as the Solver says, or re-zero to use point-blank range.`}`,
+      });
+    }
+
+    const limitText = lim.beyond
+      ? 'The bullet keeps both minimums past 2,000 m: other limits (your skill, wind, the shot angle) decide the range.'
+      : lim.limitM === 0
+        ? 'The bullet does not meet your minimums even at the muzzle. Check the numbers, or choose a heavier or faster load.'
+        : `Past ${dText(lim.limitM)} the bullet has ${lim.limitedBy === 'energy' ? 'less energy than your minimum' : 'slowed below its expansion velocity'}.`;
+    const limitHtml = hero({
+      label: 'Range limit from energy and velocity',
+      tone: lim.beyond ? 'ok' : lim.limitM === 0 ? 'bad' : 'info',
+      chance: lim.beyond ? 'No limit found' : lim.limitM === 0 ? 'Not met' : `Set by ${lim.limitedBy}`,
+      value: lim.beyond ? `beyond ${d(2000)}` : d(lim.limitM),
+      text: limitText,
+      note: 'Energy and expansion velocity are only part of a clean kill: shoot only as far as you can place the shot every time, in the wind you have.',
+    });
+    const kpiItems = [
+      ['Energy limit', lim.energyLimitM === null ? (h.minEnergyJ > 0 ? 'beyond 2,000' : 'off') : d(lim.energyLimitM), h.minEnergyJ > 0 ? `${fmtU(h.minEnergyJ, u.energy, 0)} minimum` : 'no minimum set'],
+      ['Velocity limit', lim.velocityLimitM === null ? (h.minVelocityMs > 0 ? 'beyond 2,000' : 'off') : d(lim.velocityLimitM), h.minVelocityMs > 0 ? `${fmtU(h.minVelocityMs, u.vel, 0)} minimum` : 'no minimum set'],
+    ];
+
+    // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants and esc()'d strings only
+    out.innerHTML = `
+      ${mpbrHtml}
+      ${limitHtml}
+      ${kpis(kpiItems)}
+      <section class="lg-card tool-card" aria-labelledby="hunt-chart-title">
+        <h3 class="lg-label" id="hunt-chart-title">Energy at the target (${unitLabel(u.energy)})</h3>
+        <div class="tool-chart" id="hunt-chart"></div>
+      </section>`;
+
+    const rows = traj.filter((p) => p.distanceM > 0 && p.distanceM <= 1500);
+    const series = [{ name: 'Energy', points: rows.map((p) => [Math.round(toUnit(p.distanceM, u.dist)), Math.round(toUnit(p.energyJ, u.energy))]) }];
+    if (h.minEnergyJ > 0) series.push({ name: 'Your minimum', points: rows.map((p) => [Math.round(toUnit(p.distanceM, u.dist)), Math.round(toUnit(h.minEnergyJ, u.energy))]) });
+    this._chart('hunting', out.querySelector('#hunt-chart'), 'line', {
+      label: `Energy (${unitLabel(u.energy)}) against distance (${u.dist})`,
+      series,
+      area: true,
+      x: { type: 'linear', format: (v) => `${grouped(v)} ${u.dist}` },
+      y: { format: (v) => `${grouped(v)} ${unitLabel(u.energy)}` },
+    });
+    this._syncStale();
+  }
+
+  // ---- 7. Recoil --------------------------------------------------------------------------------
 
   renderRecoil() {
     const u = units();
     const v = this.values.recoil;
     return `
-      ${this._intro(TOOLS[5], 'Recoil', 'Free recoil energy and velocity: how hard the rifle pushes back if nothing holds it.')}
+      ${this._intro(TOOLS.find((t) => t.id === 'recoil'), 'Recoil', 'Free recoil energy and velocity: how hard the rifle pushes back if nothing holds it.')}
       ${this._context([`${icon('rifle')}Filled in from <strong>${esc(appState.getActiveProfile().name)}</strong>`])}
       <div class="tool-layout">
         <section class="lg-card tool-card tool-inputs" aria-labelledby="recoil-in-title">
@@ -2235,6 +2349,7 @@ export class ToolsView {
       chrono: () => this.renderChrono(),
       milling: () => this.renderMilling(),
       recoil: () => this.renderRecoil(),
+      hunting: () => this.renderHunting(),
     }[active.id]();
     const hadFocus = this.container.querySelector('.tool-tab:focus');
 
@@ -2244,7 +2359,7 @@ export class ToolsView {
         <header class="lg-header view-header">
           <div>
             <h1 class="lg-title">Tools</h1>
-            <p class="lg-muted">True your data, check loads and groups, and estimate distance and recoil.</p>
+            <p class="lg-muted">True your data, check loads and groups, estimate distance, plan hunting shots and work out recoil.</p>
           </div>
         </header>
         <div class="tools-tabs lg-tabs" role="tablist" aria-label="Tools">
@@ -2291,6 +2406,10 @@ export class ToolsView {
         break;
       case 'recoil':
         this.calcRecoil();
+        break;
+      case 'hunting':
+        this._initHunting();
+        this.calcHunting();
         break;
     }
   }
