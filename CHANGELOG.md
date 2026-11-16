@@ -5,6 +5,37 @@ All notable changes to Ballistic Workbench. Newest first; versions follow
 
 ## Unreleased
 
+### Added
+
+- **Field mode**: a full-screen, one-handed view for the firing line with the elevation and wind in
+  large type, steppers for distance, wind speed and clock direction (hold to repeat), a dim red
+  night mode, "keep the screen on" (screen wake lock) and full screen where the browser allows it.
+  Opened from the sidebar, the palette or the Solver's firing solution.
+- **Match**: matches with stages and named targets (distance, shot angle, direction from the
+  stage's main direction, type and size), each solved live for the active rifle and the Solver's
+  conditions: elevation with clicks, wind hold and the target's size in the reticle unit. A target
+  off to the side gets the wind from its own angle. Includes an example match and undo for deletes.
+- **Logbook** with multi-point truing: record the elevation dialled and where the group landed at
+  each distance, with that day's conditions; compare every entry with the model; fit the muzzle
+  velocity (and the BC when the entries reach 500 m and spread 1.5×) to all entries at once by least
+  squares, see the average miss before and after, and apply the result to the rifle.
+- **Tools → Hunting**: maximum point-blank range for a vital zone (with the zero to set and the
+  height at 100 m), the range where the energy or impact velocity falls below your minimums, an
+  energy chart, and an option to warn in the Solver and Field mode.
+- **Sharing**: share a rifle (Library) or a match as a QR code, a link or a `.bwshare.json` file.
+  The data is inside the link; nothing is uploaded. Opening a link or importing a file asks first,
+  validates every value and never replaces your own data (a different version is added as a copy).
+- Guide topics and illustrations for Field mode, Match, Logbook, Hunting and sharing; help (i) for
+  every new setting. Backups now include matches, the logbook and the hunting settings.
+
+### Project
+
+- `qrcode-generator` 2.0.4 (MIT) vendored in `vendor/qrcode-generator/` for the QR codes; no
+  network requests.
+- `tests/features.mjs` (47 checks: point-blank range, energy limits, the logbook fit recovering a
+  known muzzle velocity and BC, share encoding with size and deflate-bomb limits, validation and
+  merging); the browser test covers the new views (113 checks).
+
 ## 0.1.0 - 2026-11-15
 
 The first version: the existing app brought under version control, redesigned and audited

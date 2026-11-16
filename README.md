@@ -41,6 +41,14 @@ The first version, with a complete redesign and a corrected ballistics engine:
 - **Security:** strict Content-Security-Policy, imported and saved data is validated, no inline
   code, offline cache limited to the app's own files.
 
+Since then (unreleased):
+
+- **Field mode:** the answer in big type with large steppers, a red night mode and the screen kept on.
+- **Match:** stages with named targets at their own distance, angle and direction, solved live.
+- **Logbook:** record impacts at many distances and fit muzzle velocity and BC to all of them at once.
+- **Hunting:** maximum point-blank range and the range limit from minimum energy and velocity.
+- **Sharing:** pass a rifle or a match to another phone by QR code, link or file, without uploads.
+
 See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 ## Screenshots
@@ -63,6 +71,18 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list.
     <td><img src="docs/screenshots/help.png" alt="Help box" width="420"><br>An i next to every setting explains it and links to the guide</td>
   </tr>
   <tr>
+    <td><img src="docs/screenshots/field.png" alt="Field mode" width="200"> <img src="docs/screenshots/field-night.png" alt="Field mode at night" width="200"><br>Field mode: big readout and steppers; night mode in dim red</td>
+    <td><img src="docs/screenshots/match.png" alt="Match" width="420"><br>Match: stages with named targets, each solved for the day's conditions</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/logbook.png" alt="Logbook" width="420"><br>Logbook: impacts at many distances, fitted all at once</td>
+    <td><img src="docs/screenshots/hunting.png" alt="Hunting" width="420"><br>Tools → Hunting: point-blank range and the energy and velocity limits</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/share.png" alt="Share dialog" width="420"><br>Share a rifle or match by QR code, link or file</td>
+    <td></td>
+  </tr>
+  <tr>
     <td><img src="docs/screenshots/mobile.png" alt="Phone layout" width="200"><br>Phone layout (390 px)</td>
     <td><img src="docs/screenshots/dope-light.png" alt="DOPE cards, light theme" width="420"><br>Full-page data sheet in the light theme</td>
   </tr>
@@ -73,11 +93,14 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list.
 | View | What it does |
 | --- | --- |
 | **Guide** | Step by step from planning a range day to a printed DOPE chart: plan, equipment, measure rifle and scope (sight height, twist, click value, cant), bullet data, zero, chronograph, enter in the app, shoot known distances, true the model, build the chart, verify and maintain. Each step has an illustration, what you need, numbered instructions, tips and buttons into the app. Part 2 explains every view and tool; a glossary explains the terms. |
+| **Field mode** | For the firing line: the elevation and wind (with clicks and direction) fill the screen; big − / + steppers for distance (5 and 25), wind speed and the clock direction it comes from, held to repeat. Night turns everything dim red; Screen on keeps the phone awake; Full screen where the browser allows it. Changes are shared with the Solver. |
 | **Solver** | The firing solution for the active rifle at the exact target distance: elevation and windage (MRAD or MOA, direction and clicks), velocity with Mach, time of flight, energy and how far the bullet stays supersonic. Tabs: a reticle view showing where to hold, with an elevation turret you can dial (mouse, touch or keyboard); a trajectory chart (drop, velocity, wind drift, time of flight, energy); a range table with CSV export, where you tick the distances for your DOPE card. |
+| **Match** | Matches with stages (name, note) and targets in shooting order: distance, shot angle (+ uphill), direction in degrees right or left of the stage's main direction, type and size. Every target shows the elevation with clicks, the wind hold and its size in your reticle unit, for the active rifle and the Solver's conditions. Share a match as a QR code, link or file. |
+| **Logbook** | Entries per rifle: date, distance, elevation dialled, where the group centre landed (+ high, − low), a note, and the conditions of that day. The table shows the elevation that would have hit and how far the model is off. **Fit** finds the muzzle velocity, and the BC when the entries reach 500 m (550 yd) and spread 1.5×, that match all entries at once, with the average miss before and after; **Apply** saves it to the rifle. |
 | **Compare models** | How the point-mass G1 and G7 solutions and modified point mass (MPM: adds spin drift, aerodynamic jump and Coriolis) differ for your rifle, as difference charts and a table, with a plain explanation of why. "Use in Solver" switches the model. |
 | **DOPE cards** | Printable range cards at exact physical size: scope cap insert, 3 × 5 in wrist card, stock tape, turret tape, match stage card (with a stage builder and wind holds for lull, base and gust) and a full-page data sheet. Copy as text, save as image, or print. |
-| **Tools** | **True your data** (muzzle velocity from a 500–800 m impact, then drag from a 1,000 m+ impact, applied to the rifle), **Hit probability** (simulates 500–2,000 shots from your error sources and shows what causes misses), **Group analysis** (from a photo or clicks: extreme spread, mean radius, dispersion ellipse and the correction to centre the group), **Chronograph** (SD, ES, mean; use the mean as muzzle velocity), **Range estimation** (from target size and reticle reading), **Recoil** (free recoil energy and velocity). |
-| **Library** | Your rifles (use, edit, duplicate, delete with undo), 177 factory bullets with search and caliber filter (published BCs marked with their source, derived ones marked "estimated"), your own bullets with a live Miller stability check, and backup to / restore from a file. |
+| **Tools** | **True your data** (muzzle velocity from a 500–800 m impact, then drag from a 1,000 m+ impact, applied to the rifle), **Hit probability** (simulates 500–2,000 shots from your error sources and shows what causes misses), **Group analysis** (from a photo or clicks: extreme spread, mean radius, dispersion ellipse and the correction to centre the group), **Chronograph** (SD, ES, mean; use the mean as muzzle velocity), **Range estimation** (from target size and reticle reading), **Hunting** (maximum point-blank range for a vital zone, the zero to set for it, and the range limit from your minimum energy and impact velocity, with an energy chart), **Recoil** (free recoil energy and velocity). |
+| **Library** | Your rifles (use, edit, duplicate, delete with undo), 177 factory bullets with search and caliber filter (published BCs marked with their source, derived ones marked "estimated"), your own bullets with a live Miller stability check, and backup to / restore from a file. Share a rifle as a QR code, link or file. |
 
 The command palette (**⌘K** on Mac, **Ctrl+K** elsewhere, or **Search** in the sidebar) reaches every view, tool and setting. Every setting has an **i** with an explanation.
 
@@ -120,6 +143,10 @@ Settings are stored in your browser (`localStorage`); nothing leaves your device
 | Turret | Solver → Reticle and turret | Follow solution (the turret is set to the answer, the reticle shows the wind hold) or Manual (you dial; the reticle shows the remaining hold) | Follow solution |
 | Range table | Solver → Range table | Row spacing 10 / 25 / 50 / 100 m or yd (imperial rows land on round yards); visible columns; ranges ticked for DOPE cards (remembered) | 25, all columns, every 100 ticked |
 | DOPE card | DOPE cards | Format, distances (defaults or the ones ticked in the Solver), card size and colour | Full page |
+| Field mode | Field mode | Night (dim red), Screen on (wake lock); remembered | Night off, Screen on |
+| Matches | Match | Name, date; stages with name and note; targets with distance, angle (−60 to +60°), direction (−90 to +90°), type, width and height | None (an example on request) |
+| Logbook | Logbook | Entries per rifle (up to 500 in all): date, distance, elevation dialled, group centre vs aim, note; the conditions are copied from the Solver when you add an entry | None |
+| Hunting | Tools → Hunting | Vital zone diameter, minimum energy, minimum impact velocity (0 turns it off), warn in the Solver and Field mode | 20 cm, 1,356 J (1,000 ft·lb), 549 m/s (1,800 fps), off |
 | Guide progress | Guide | Steps marked as done | None |
 
 ## How to
@@ -140,6 +167,21 @@ Settings are stored in your browser (`localStorage`); nothing leaves your device
   **Print card**. Check the 50 mm scale bar with a ruler: printers sometimes scale pages.
 - **Plan a match stage:** **DOPE cards → Stage card**, choose a preset or add targets, set the lull,
   base and gust wind; the card shows the elevation and wind hold for every target.
+- **Use it on the firing line:** press **Field mode** on the Solver's firing solution (or in the
+  sidebar). Step the distance and wind with the big buttons; tap **Night** after dark. On a phone,
+  add the app to the home screen for a true full-screen view.
+- **Plan a match:** **Match → New** (or **Start from an example**), add stages and targets with their
+  distance, angle and direction. On the day, set the atmosphere and wind in the Solver or Field mode
+  and every target updates.
+- **True the model with many distances:** set the day's atmosphere in the Solver, then in **Logbook**
+  add each distance with the elevation you dialled and where the group landed. Press **Fit**, check
+  the average miss, and **Apply**.
+- **Check a hunting load:** **Tools → Hunting**, enter the vital zone and your minimum energy and
+  velocity. It tells you the point-blank range, the zero to set for it, and how far the load is
+  good for.
+- **Share a rifle or match:** the share button on a rifle in the Library, or **Share** in Match. Let
+  the other phone scan the QR code, or send the link or the file. The receiver is asked before
+  anything is added.
 - **Back up or move your data:** **Library → Export…** saves a file; **Import…** restores it on any
   device (files are checked before anything is replaced).
 
@@ -147,7 +189,7 @@ Settings are stored in your browser (`localStorage`); nothing leaves your device
 
 ```sh
 npm install          # dev tools only (ESLint); the app itself needs nothing
-npm test             # physics and reference checks, helpers, version, offline cache list
+npm test             # physics and reference checks, features (hunting, logbook fit, sharing), helpers, version, offline cache list
 npm run test:browser # headless Chrome: every view in both themes and at phone width
 npm run lint
 ```
@@ -157,7 +199,9 @@ these on every push.
 
 ## Design
 
-The interface uses Låda Glass 2.2.0 (`vendor/lada-glass/2.2.0/`). The icons (`assets/icons.svg`) and
+The interface uses Låda Glass 2.2.0 (`vendor/lada-glass/2.2.0/`). QR codes are drawn with
+[qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 2.0.4 by Kazuhiko Arase (MIT,
+`vendor/qrcode-generator/2.0.4/`). The icons (`assets/icons.svg`) and
 line-art graphics (`assets/art.svg`) are drawn for this app in the same style.
 
 ## License

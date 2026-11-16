@@ -15,7 +15,7 @@ framework, no build step, no runtime dependencies. Public repo (MIT).
 ```sh
 npm start                      # node scripts/serve.mjs: serve at http://localhost:8080 (not python http.server: it resets parallel module loads)
 npm install                    # dev tooling only (ESLint)
-npm test                       # verify.mjs (physics + reference checks), helpers, version, sw-assets
+npm test                       # verify.mjs (physics + reference checks), features.mjs, helpers, version, sw-assets
 npm run test:browser           # headless Chrome E2E: every view, both themes, 390 px (CHROME_PATH to override)
 npm run lint
 ```
@@ -26,9 +26,11 @@ npm run lint
   version; strict CSP). `src/ui/app.js`
   bootstraps, hash-routes between views, owns theme (System/Light/Dark → always sets
   `<html data-theme>`), units button and the Låda command palette.
-- Views (`src/ui/`): `guide.js` (Guide), `workspace.js` (Solver), `solverLab.js` (Compare models),
-  `dopeStudio.js` (DOPE cards), `tools.js`, `libraryManager.js`, plus `rifleBuilderModal.js` (rifle
-  dialog). In-app links: dispatch `navigate-view` with `{ view, tool?, panel?, format?, tab?, anchor? }`.
+- Views (`src/ui/`): `guide.js` (Guide), `workspace.js` (Solver), `field.js` (Field mode: a fixed
+  full-screen layer, `body.is-field-mode` hides the sidebar), `match.js` (Match), `logbook.js`
+  (Logbook), `solverLab.js` (Compare models), `dopeStudio.js` (DOPE cards), `tools.js` (incl.
+  Hunting), `libraryManager.js`, plus `rifleBuilderModal.js` (rifle dialog) and `shareDialog.js`
+  (share dialog with QR code; confirmation before a shared item is added). In-app links: dispatch `navigate-view` with `{ view, tool?, panel?, format?, tab?, anchor? }`.
 - Help: `help.js` adds an i button next to every control whose id (or radio-group name) has an entry
   in `helpContent.js`; boxes link to guide sections (`GuideView.showSection(id)`). New inputs need a
   help entry.
@@ -40,12 +42,17 @@ npm run lint
   scope via `_syncAngleUnits`; `solverAlgorithm()` gives the solver algorithm: MPM or the bullet's
   drag table), `targets.js` (target catalogue), `sanitize.js` (validates every
   stored/imported object against templates), `escape.js` (`esc`, `num`), `units.js`,
-  `trajectory.js` (`interpolateAt`).
-- Physics (`src/physics/`): `solvers.js`, `atmosphere.js`, `truing.js`, `wez.js`. Pure, SI units,
+  `trajectory.js` (`interpolateAt`), `solve.js` (`solveExact`: one solution at an exact distance),
+  `share.js` (share envelope and `#share=` link codec, with size caps). State also holds `matches`,
+  `logbook` and `hunting`, each validated in `sanitize.js`; `importShared` merges a shared rifle or
+  match without overwriting.
+- Physics (`src/physics/`): `solvers.js`, `atmosphere.js`, `truing.js`, `wez.js`, `hunting.js`
+  (point-blank range, energy/velocity limits), `fit.js` (logbook least-squares fit of MV and drag). Pure, SI units,
   tested in Node. Drag tables in `src/data/dragTables.js` are the standard JBM G1/G7 tables; don't
   edit values without a reference test.
 - Canvases (`src/canvas/`): chart, reticle, turret, wind clock; colours from `palette.js`
   (`getPalette()` reads the Låda tokens), so they follow the theme.
+- Vendored: `vendor/qrcode-generator/2.0.4/qrcode.mjs` (MIT, unchanged) for QR codes.
 - Styles: Låda Glass in `vendor/lada-glass/2.2.0/`; `styles/main.css` (tokens mapping, header,
   shared components, Solver); `styles/views/*.css` per view; `styles/print.css` (DOPE cards only).
 - `sw.js`: network-first service worker; `STATIC_ASSETS` must list every app file
