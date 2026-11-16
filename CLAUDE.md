@@ -22,7 +22,7 @@ npm run lint
 
 ## Layout
 
-- `index.html`: Låda app shell (lg-app: a sticky top bar with the brand, the menu, Search and a cogwheel
+- `index.html`: Låda app shell (lg-app: a sticky top bar with the brand, the menu, Search, a help (?) link to the Guide and a cogwheel
   that opens the Settings dialog with the Units/Theme radio switches and the version; strict CSP). `src/ui/app.js`
   bootstraps, hash-routes between views, owns theme (System/Light/Dark → always sets
   `<html data-theme>`), units button and the Låda command palette.

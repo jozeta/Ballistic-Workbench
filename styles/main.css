@@ -145,7 +145,9 @@ h1, h2, h3, h4 {
 .app-topbar-actions { flex: none; display: flex; align-items: center; gap: var(--lg-space-xs); margin-left: auto; }
 .topbar-search { color: var(--lg-muted); font-weight: 500; }
 .topbar-search .lg-kbd { margin-left: var(--lg-space-xs); }
-.topbar-settings .lg-icon { width: 18px; height: 18px; }
+.topbar-settings .lg-icon, .topbar-help .lg-icon { width: 18px; height: 18px; }
+.topbar-help { color: var(--lg-text); text-decoration: none; }
+.topbar-help[aria-current="page"] { color: var(--lg-accent); border-color: color-mix(in srgb, var(--lg-accent) 40%, transparent); background: color-mix(in srgb, var(--lg-accent) 14%, transparent); }
 
 /* Settings dialog (cogwheel) */
 .settings-dialog { width: min(420px, calc(100vw - 32px)); }

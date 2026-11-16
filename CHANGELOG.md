@@ -34,7 +34,8 @@ All notable changes to Ballistic Workbench. Newest first; versions follow
   moved into a **Settings** dialog behind the cogwheel at the right end of the bar, with the app
   version. On narrower screens the menu shows icons only (names stay as tooltips and for screen
   readers); on phones it gets its own row that scrolls sideways. The Solver's menu icon is now the
-  reticle, so it no longer looks the same as the app logo.
+  reticle, so it no longer looks the same as the app logo. The Guide is a help (?) button next to
+  the cogwheel.
 
 ### Project
 

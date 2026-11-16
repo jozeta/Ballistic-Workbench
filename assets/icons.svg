@@ -87,4 +87,5 @@
 <symbol id="share" viewBox="0 0 24 24"><circle cx="6.5" cy="12" r="2.5"/><circle cx="17.5" cy="6" r="2.5"/><circle cx="17.5" cy="18" r="2.5"/><path d="M8.7 10.8l6.6-3.6M8.7 13.2l6.6 3.6"/></symbol>
 <symbol id="qr" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h2.5v2.5H14zM18 18h2.5v2.5H18zM14 20.5h1.5M20.5 14v1.5M6.75 6.75h.01M17.25 6.75h.01M6.75 17.25h.01"/></symbol>
 <symbol id="hunt" viewBox="0 0 24 24"><path d="M12 21c-3-2.5-4.5-5.5-4.5-8.5 0-1.5.7-2.8 1.8-3.5L8 4.5l2.5 2.5L12 3.5 13.5 7 16 4.5 14.7 9c1.1.7 1.8 2 1.8 3.5 0 3-1.5 6-4.5 8.5z"/><circle cx="12" cy="13" r="1.8"/></symbol>
+<symbol id="help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.9M12 16.9v.01"/></symbol>
 </svg>

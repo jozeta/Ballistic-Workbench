@@ -152,7 +152,7 @@ Settings are stored in your browser (`localStorage`); nothing leaves your device
 
 ## How to
 
-- **New here?** Open the **Guide** in the menu at the top: it walks you from planning a range day to a
+- **New here?** Open the **Guide** (the ? next to the cogwheel, top right): it walks you from planning a range day to a
   printed DOPE chart, and every setting has an **i** that explains it.
 - **Get a firing solution:** choose your rifle at the top of the Solver, set the distance under
   **Target**, then check **Atmosphere** and **Wind**. The firing solution card shows what to dial.
