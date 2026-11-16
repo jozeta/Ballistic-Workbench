@@ -10,9 +10,10 @@ import { DopeStudioView } from './dopeStudio.js';
 import { ToolsView } from './tools.js';
 import { LibraryManagerView } from './libraryManager.js';
 import { GuideView } from './guide.js';
+import { FieldView } from './field.js';
 import { initHelp } from './help.js';
 
-const VIEWS = ['workspace', 'solverLab', 'dopeStudio', 'tools', 'libraryManager', 'guide'];
+const VIEWS = ['workspace', 'field', 'solverLab', 'dopeStudio', 'tools', 'libraryManager', 'guide'];
 const THEME_KEY = 'ballistic_theme_pref';
 const THEME_PREFS = ['system', 'light', 'dark'];
 
@@ -212,6 +213,9 @@ class BallisticWorkbenchApp {
       case 'guide':
         this.currentViewInstance = new GuideView(viewContainer);
         break;
+      case 'field':
+        this.currentViewInstance = new FieldView(viewContainer);
+        break;
       case 'workspace':
       default:
         this.currentViewInstance = new WorkspaceView(viewContainer);
@@ -268,6 +272,7 @@ class BallisticWorkbenchApp {
     };
     return [
       { title: 'Go to Solver', category: 'Go to', keywords: ['workspace', 'command center', 'dope table', 'reticle'], action: () => this.switchView('workspace') },
+      { title: 'Field mode: big readout for the firing line', category: 'Go to', keywords: ['field', 'night', 'red', 'one hand', 'full screen', 'range day'], action: () => this.switchView('field') },
       { title: 'Go to Compare models', category: 'Go to', keywords: ['algorithm', 'lab', 'g1', 'g7', 'mpm'], action: () => this.switchView('solverLab') },
       { title: 'Go to DOPE cards', category: 'Go to', keywords: ['print', 'range card', 'wrist coach', 'scope cap'], action: () => this.switchView('dopeStudio') },
       { title: 'Go to Tools', category: 'Go to', keywords: ['chrono', 'truing', 'wez'], action: () => this.switchView('tools') },

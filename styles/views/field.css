@@ -1,0 +1,141 @@
+/* Ballistic Workbench - Field mode (src/ui/field.js)
+   A full-screen layer over the app shell: big readout at the top, steppers at the bottom within
+   thumb reach. Night mode forces the dark tokens and draws everything in dim red. */
+
+body.is-field-mode { overflow: hidden; }
+body.is-field-mode .app-sidebar, body.is-field-mode .skip-link { display: none; }
+
+.field-view {
+  --field-ink: var(--lg-text);
+  --field-sub: var(--lg-muted);
+  --field-key: var(--lg-accent);
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--lg-space-s);
+  padding: max(var(--lg-space-s), env(safe-area-inset-top)) max(var(--lg-space-m), env(safe-area-inset-right)) max(var(--lg-space-m), env(safe-area-inset-bottom)) max(var(--lg-space-m), env(safe-area-inset-left));
+  background: var(--lg-bg);
+  color: var(--field-ink);
+  overflow-y: auto;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Night: dark tokens on the layer (data-theme="dark"), every colour from the red family, dimmed */
+.field-view.is-night {
+  --field-ink: var(--lg-bad-d);
+  --field-sub: var(--lg-bad-text-d);
+  --field-key: var(--lg-bad-d);
+  --lg-text: var(--lg-bad-d);
+  --lg-muted: var(--lg-bad-text-d);
+  --lg-accent: var(--lg-bad-d);
+  --lg-line: color-mix(in srgb, var(--lg-bad-d) 25%, transparent);
+  --lg-line-2: color-mix(in srgb, var(--lg-bad-d) 40%, transparent);
+  background: var(--lg-bg-d);
+  filter: brightness(.75);
+}
+.field-view.is-night .lg-btn,
+.field-view.is-night .lg-input,
+.field-view.is-night .lg-select { color: var(--field-ink); border-color: var(--lg-line-2); background: transparent; }
+.field-view.is-night .field-toggle[aria-pressed="true"] { background: color-mix(in srgb, var(--lg-bad-d) 18%, transparent); }
+
+.field-bar { display: flex; align-items: center; gap: var(--lg-space-s); flex-wrap: wrap; min-width: 0; }
+.field-exit { flex: none; }
+.field-rifle { flex: 1 1 160px; min-width: 0; max-width: 360px; text-overflow: ellipsis; }
+.field-toggles { display: flex; gap: var(--lg-space-xs); flex-wrap: wrap; margin-left: auto; }
+.field-toggle[aria-pressed="true"] { border-color: var(--field-key); color: var(--field-key); background: color-mix(in srgb, var(--field-key) 12%, transparent); }
+.field-bar .lg-btn, .field-bar .lg-select { min-height: 44px; }
+.field-bar .lg-btn .lg-icon { width: 16px; height: 16px; }
+
+.field-readout {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--lg-space-m);
+  min-height: 0;
+  text-align: center;
+}
+.field-big { display: grid; justify-items: center; gap: 2px; }
+.field-big-label { margin: 0; color: var(--field-sub); }
+.field-big-value {
+  font-family: var(--lg-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  font-size: clamp(56px, 18vw, 132px);
+  line-height: 1;
+  letter-spacing: -.02em;
+  color: var(--field-ink);
+}
+#field-wind .field-big-value { font-size: clamp(44px, 13vw, 96px); }
+.field-dir { color: var(--field-key); margin-right: .12em; }
+.field-big-sub { font-size: 15px; color: var(--field-sub); }
+.field-meta { margin: 0; font-size: 14px; color: var(--field-sub); font-variant-numeric: tabular-nums; }
+.field-warn { margin: 0; font-size: 14px; font-weight: 600; color: var(--lg-warn-text); }
+.field-view.is-night .field-warn { color: var(--field-ink); }
+
+.field-controls { display: grid; gap: var(--lg-space-s); }
+.field-controls-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--lg-space-s); }
+.field-stepper { display: grid; gap: var(--lg-space-xxs); min-width: 0; }
+.field-stepper-label { margin: 0; color: var(--field-sub); }
+.field-stepper-row { display: flex; align-items: stretch; gap: var(--lg-space-xs); min-width: 0; }
+.field-step {
+  flex: 0 0 auto;
+  min-width: 60px;
+  min-height: 60px;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 600;
+  touch-action: manipulation;
+}
+.field-step .lg-icon { width: 22px; height: 22px; }
+.field-step-small { min-width: 56px; }
+.field-stepper-value { flex: 1 1 auto; display: grid; min-width: 0; }
+.field-dist-input {
+  height: 60px;
+  text-align: center;
+  font-size: 28px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  width: 100%;
+}
+.field-out {
+  display: grid;
+  place-items: center;
+  min-height: 60px;
+  border: 1px solid var(--lg-line);
+  border-radius: var(--lg-radius-control);
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 4px;
+}
+.field-env { margin: 0; text-align: center; color: var(--field-sub); overflow-wrap: anywhere; }
+
+/* Narrow phones: wind and direction each get a full row */
+@media (max-width: 420px) {
+  .field-controls-row { grid-template-columns: minmax(0, 1fr); }
+  .field-step { min-width: 52px; }
+  .field-step-small { min-width: 48px; font-size: 15px; }
+  /* Icon only, but the text stays for screen readers */
+  .field-toggle span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+
+/* Landscape phones and wide screens: readout and controls side by side */
+@media (min-width: 900px), (orientation: landscape) and (max-height: 500px) {
+  .field-view { grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .field-bar { grid-column: 1 / -1; }
+  .field-controls { align-content: center; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .field-big-value { font-size: clamp(40px, 11vh, 80px); }
+  #field-wind .field-big-value { font-size: clamp(32px, 9vh, 64px); }
+  .field-readout { gap: var(--lg-space-xs); }
+  .field-step { min-width: 50px; }
+  .field-out { font-size: 16px; }
+}

@@ -58,6 +58,9 @@ const STATIC_ASSETS = [
   './styles/views/library.css',
   './styles/views/tools.css',
   './vendor/lada-glass/2.2.0/lada-glass.css',
+  './styles/views/field.css',
+  './src/ui/field.js',
+  './src/core/solve.js',
   './vendor/lada-glass/2.2.0/lada-glass.js',
   './vendor/qrcode-generator/2.0.4/qrcode.mjs',
 ];

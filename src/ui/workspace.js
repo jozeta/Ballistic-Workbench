@@ -322,11 +322,21 @@ export class WorkspaceView {
     const regimeClass = { supersonic: 'ok', transonic: 'warn', subsonic: 'bad' }[regime];
     const clickName = esc(appState.getActiveProfile().optic?.clickName || (isMrad ? '0.1 MRAD' : '1/4 MOA'));
 
+    // Hunting minimums (Tools → Hunting, when shown in the Solver)
+    const hunt = appState.state.hunting;
+    const huntLow = hunt?.showInSolver
+      ? (hunt.minEnergyJ > 0 && targetPoint.energyJ < hunt.minEnergyJ ? 'energy' : hunt.minVelocityMs > 0 && targetPoint.velocityMs < hunt.minVelocityMs ? 'velocity' : null)
+      : null;
+    const huntNote = hunt?.showInSolver
+      ? ` <span class="lg-badge lg-badge-${huntLow ? 'bad' : 'ok'}" title="Your hunting minimums from Tools → Hunting">${huntLow === 'energy' ? 'Below hunting energy' : huntLow === 'velocity' ? 'Below expansion velocity' : 'Hunting minimums met'}</span>`
+      : '';
+
     // eslint-disable-next-line no-unsanitized/property -- reviewed: numbers, constants and esc()'d strings only
     hud.innerHTML = `
       <div class="solution-head">
         <h2 id="solution-heading" class="solution-title">${icon('crosshair')} Firing solution</h2>
         <span class="solution-range"><span class="solution-range-value">${dist(targetPoint.distanceM)}</span> ${esc(dispUnits.distance)}</span>
+        <button type="button" class="lg-btn solution-field" id="btn-field-mode" title="Big readout with steppers, night mode and the screen kept on">${icon('field')}<span>Field mode</span></button>
       </div>
       <div class="solution-holds">
         <div class="hold hold-elev">
@@ -343,10 +353,14 @@ export class WorkspaceView {
       <dl class="solution-stats">
         <div><dt>${icon('speed')} Velocity</dt><dd>${Math.round(velVal)} ${isMetric ? 'm/s' : 'fps'} <span class="lg-badge lg-badge-${regimeClass}">Mach ${targetPoint.mach.toFixed(2)}</span></dd></div>
         <div><dt>${icon('clock')} Time of flight</dt><dd>${targetPoint.tofS.toFixed(2)} s</dd></div>
-        <div><dt>${icon('energy')} Energy</dt><dd>${Math.round(energyVal)} ${isMetric ? 'J' : 'ft·lb'}</dd></div>
+        <div><dt>${icon('energy')} Energy</dt><dd>${Math.round(energyVal)} ${isMetric ? 'J' : 'ft·lb'}${huntNote}</dd></div>
         <div><dt>${icon('trajectory')} Supersonic to</dt><dd>${solution.telemetry.transonicRangeM <= 0 ? 'Subsonic from the muzzle' : `${solution.telemetry.transonicRangeM >= solution.trajectory[solution.trajectory.length - 1].distanceM ? 'beyond ' : ''}${dist(solution.telemetry.transonicRangeM)} ${esc(dispUnits.distance)}`}</dd></div>
       </dl>
     `;
+
+    hud.querySelector('#btn-field-mode')?.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('navigate-view', { detail: { view: 'field' } }));
+    });
 
     const derived = this.container.querySelector('#atmos-derived');
     if (derived) {

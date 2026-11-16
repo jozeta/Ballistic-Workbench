@@ -289,7 +289,11 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .solution-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .solution-title { display: flex; align-items: center; gap: 8px; font-size: var(--lg-fs-label); font-weight: 600; color: var(--lg-muted); text-transform: uppercase; letter-spacing: .08em; margin: 0; }
 .solution-title .lg-icon { color: var(--lg-accent); }
-.solution-range { color: var(--lg-muted); font-size: 15px; }
+.solution-head { align-items: center; flex-wrap: wrap; justify-content: flex-start; }
+.solution-range { color: var(--lg-muted); font-size: 15px; margin-left: auto; }
+.solution-field { gap: 6px; }
+.solution-field .lg-icon { width: 15px; height: 15px; }
+@media (pointer: coarse) { .solution-field { min-height: 44px; } }
 .solution-range-value { color: var(--lg-text); font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .solution-holds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .hold {
