@@ -87,4 +87,4 @@ npm run lint
 - The README stays detailed (features, installation, every setting with its default, how-tos,
   screenshots in a grid with captions). Screenshots live in `docs/screenshots/`.
 - `PRODUCT_RESEARCH_AND_FEATURE_ROADMAP.md` (feature research) is gitignored; don't commit it.
-- There is no GitHub remote yet. Don't push or create repos unless asked.
+- Public repo: https://github.com/jozeta/Ballistic-Workbench (default branch `main`, protected by the "Protect main" ruleset: no deletion, no force push). Push only when asked.
