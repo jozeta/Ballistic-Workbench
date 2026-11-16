@@ -378,5 +378,11 @@ try {
   chrome.kill();
   server.close();
   await new Promise((r) => (chrome.exitCode !== null ? r() : chrome.once('exit', r)));
-  fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  // Chrome can still be flushing its profile for a moment after exit; a leftover temp folder must
+  // not fail the run (the checks above decide the result)
+  try {
+    fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  } catch (e) {
+    console.warn(`Could not remove the temporary Chrome profile (${e.code}); ignored.`);
+  }
 }
