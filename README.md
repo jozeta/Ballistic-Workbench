@@ -9,7 +9,7 @@ It's for long-range and PRS/NRL shooters, hunters and reloaders who want to plan
 solutions on a laptop or phone, with or without a network on the range. Everything runs in the
 browser; nothing is sent anywhere.
 
-**Version:** 0.1.0
+**Version:** 0.1.1
 
 **Use it online:** <https://jozeta.github.io/Ballistic-Workbench/>. Nothing to install; after the
 first visit it also works offline, and you can add it to your home screen.
@@ -18,6 +18,16 @@ first visit it also works offline, and you can add it to your home screen.
 > fire on a safe range before relying on them.
 
 ## What's new
+
+### 0.1.1
+
+- **Steady sight picture:** in the Solver's reticle view the target no longer slides sideways as
+  you change the distance. A new **Wind: Dial / Hold** switch next to the turret: Dial (default)
+  puts the wind on the windage turret so the target stays on the crosshair; Hold shows it on the
+  wind mark.
+- **Hosted online** at <https://jozeta.github.io/Ballistic-Workbench/>, so share links and QR codes
+  open on any device.
+- Låda Glass 2.2.1 (design system bug fixes).
 
 ### 0.1.0
 

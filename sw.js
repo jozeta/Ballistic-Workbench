@@ -7,7 +7,7 @@
 
 // Keep in step with "version" in manifest.json (tests/version.mjs checks it). A new version
 // gets a new cache, so old cached files are dropped on activate.
-const CACHE_NAME = 'ballistic-workbench-v0.1.0';
+const CACHE_NAME = 'ballistic-workbench-v0.1.1';
 const STATIC_ASSETS = [
   './',
   './index.html',
