@@ -17,7 +17,7 @@
 .guide-jump { display: grid; gap: var(--lg-space-xs); padding: var(--lg-space-m); }
 @media (min-width: 1180px) {
   .guide-layout { grid-template-columns: 212px minmax(0, 1fr); }
-  .guide-toc { display: block; position: sticky; top: var(--lg-space-m); max-height: calc(100vh - 2 * var(--lg-space-m)); overflow-y: auto;
+  .guide-toc { display: block; position: sticky; top: calc(var(--app-bar-h) + var(--lg-space-m)); max-height: calc(100vh - var(--app-bar-h) - 2 * var(--lg-space-m)); overflow-y: auto;
                padding: var(--lg-space-s); scrollbar-width: thin; }
   .guide-jump { display: none; }
 }

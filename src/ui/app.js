@@ -34,7 +34,7 @@ class BallisticWorkbenchApp {
     this.initCommandPalette();
     this.initVersion();
     this.initPrintButtons();
-    initHelp(document.body); // the views, the sidebar and dialogs
+    initHelp(document.body); // the views, the top bar and dialogs
 
     // A share link (#share=…) opens the Solver and asks about the shared item
     const sharePayload = payloadFromHash(window.location.hash);
@@ -65,6 +65,11 @@ class BallisticWorkbenchApp {
       });
     });
 
+    // Settings (cogwheel): units and theme in a Låda modal
+    const settings = document.getElementById('settings-dialog');
+    document.getElementById('btn-settings')?.addEventListener('click', (e) => this.openSettings(e.currentTarget));
+    this.settingsDialog = settings;
+
     document.getElementById('units-switch')?.addEventListener('click', (e) => {
       const tab = e.target.closest('[data-units]');
       if (tab) appState.setSystemUnits(tab.dataset.units);
@@ -72,7 +77,16 @@ class BallisticWorkbenchApp {
     this.updateUnitsToggleLabel();
   }
 
-  /** Marks the active units in the sidebar switch. */
+  /** Opens the settings dialog (units, theme, version). */
+  openSettings(trigger = document.getElementById('btn-settings')) {
+    const d = this.settingsDialog;
+    if (!d || d.open) return;
+    if (typeof LadaGlass !== 'undefined' && LadaGlass.overlay?.open) LadaGlass.overlay.open(d, { trigger, modal: true });
+    else d.showModal();
+    d.querySelector('#units-switch [aria-checked="true"]')?.focus();
+  }
+
+  /** Marks the active units in the settings switch. */
   updateUnitsToggleLabel() {
     document.querySelectorAll('#units-switch [data-units]').forEach((tab) => {
       const on = tab.dataset.units === appState.state.systemUnits;
@@ -103,7 +117,7 @@ class BallisticWorkbenchApp {
       const tab = e.target.closest('[data-theme-set]');
       if (tab) this.applyTheme(tab.dataset.themeSet, true);
     });
-    // Arrow keys move between the options of both sidebar switches
+    // Arrow keys move between the options of both settings switches
     for (const id of ['units-switch', 'theme-switch']) {
       document.getElementById(id)?.addEventListener('keydown', (e) => {
         if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
@@ -323,6 +337,7 @@ class BallisticWorkbenchApp {
       { title: 'Estimate range with the reticle', category: 'Tools', keywords: ['milling', 'ranging'], action: openTool('milling') },
       { title: 'Free recoil energy', category: 'Tools', keywords: ['recoil'], action: openTool('recoil') },
 
+      { title: 'Settings: units and theme', category: 'Settings', keywords: ['preferences', 'options', 'cog', 'gear', 'version'], action: () => this.openSettings() },
       { title: 'Units: metric (m, m/s, MRAD, cm)', category: 'Settings', keywords: ['si', 'meters'], action: () => appState.setSystemUnits('metric') },
       { title: 'Units: imperial (yd, fps, MOA, in)', category: 'Settings', keywords: ['yards', 'feet'], action: () => appState.setSystemUnits('imperial') },
       { title: 'Theme: follow system', category: 'Settings', keywords: ['auto', 'appearance'], action: () => this.applyTheme('system', true) },

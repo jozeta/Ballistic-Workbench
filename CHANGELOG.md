@@ -28,6 +28,14 @@ All notable changes to Ballistic Workbench. Newest first; versions follow
 - Guide topics and illustrations for Field mode, Match, Logbook, Hunting and sharing; help (i) for
   every new setting. Backups now include matches, the logbook and the hunting settings.
 
+### Changed
+
+- The menu is now a bar across the top (brand, menu, Search) instead of a sidebar. Units and Theme
+  moved into a **Settings** dialog behind the cogwheel at the right end of the bar, with the app
+  version. On narrower screens the menu shows icons only (names stay as tooltips and for screen
+  readers); on phones it gets its own row that scrolls sideways. The Solver's menu icon is now the
+  reticle, so it no longer looks the same as the app logo.
+
 ### Project
 
 - `qrcode-generator` 2.0.4 (MIT) vendored in `vendor/qrcode-generator/` for the QR codes; no

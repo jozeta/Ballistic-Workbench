@@ -3,7 +3,7 @@
    thumb reach. Night mode forces the dark tokens and draws everything in dim red. */
 
 body.is-field-mode { overflow: hidden; }
-body.is-field-mode .app-sidebar, body.is-field-mode .skip-link { display: none; }
+body.is-field-mode .app-topbar, body.is-field-mode .skip-link { display: none; }
 
 .field-view {
   --field-ink: var(--lg-text);

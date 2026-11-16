@@ -36,7 +36,7 @@
   --radius-md: var(--lg-radius-control);
   --radius-lg: var(--lg-radius-card);
 
-  --header-height: 0px; /* the sidebar shell has no fixed top bar */
+  --header-height: 0px; /* the top bar is sticky in the page flow, not fixed */
 }
 :root { --lg-accent-d: #5A93C4; --lg-accent-l: #2B5B84; }
 
@@ -118,29 +118,47 @@ h1, h2, h3, h4 {
    .panel-toolbar .badge .check-inline
    ===================================================================================== */
 
-/* ---- app shell (Låda lg-app: sidebar + main) ----------------------------------------------- */
-@media (min-width: 761px) {
-  .lg-app { grid-template-columns: 224px minmax(0, 1fr); }
-}
+/* ---- app shell: top bar (brand, menu, search, settings) over the main column ------------------ */
+:root { --app-bar-h: 64px; }
+.lg-app { grid-template-columns: minmax(0, 1fr); padding-top: max(var(--lg-space-s), env(safe-area-inset-top)); }
 /* iPhone safe areas (viewport-fit=cover) */
 .lg-app { padding-left: max(var(--lg-space-m), env(safe-area-inset-left)); padding-right: max(var(--lg-space-m), env(safe-area-inset-right)); padding-bottom: max(var(--lg-space-m), env(safe-area-inset-bottom)); }
-.app-sidebar {
+.app-topbar {
+  position: sticky;
+  top: var(--lg-space-xs);
+  z-index: 20;
   display: flex;
-  flex-direction: column;
-  gap: var(--lg-space-m);
-  max-height: calc(100vh - 2 * var(--lg-space-m));
-  overflow-y: auto;
+  align-items: center;
+  gap: var(--lg-space-s);
+  min-width: 0;
+  min-height: 52px;
+  padding: var(--lg-space-xs) var(--lg-space-s);
+  border-radius: var(--lg-radius-card);
+  background-color: var(--lg-glass-strong);
 }
-.app-sidebar .lg-brand { color: var(--lg-text); text-decoration: none; padding-bottom: var(--lg-space-xs); }
-.app-sidebar .lg-mark .lg-icon { color: var(--lg-accent); }
-.sidebar-search { justify-content: flex-start; width: 100%; color: var(--lg-muted); font-weight: 500; }
-.sidebar-search .lg-kbd { margin-left: auto; }
-.nav-group { margin: var(--lg-space-s) 0 var(--lg-space-xxs); padding: 0 var(--lg-space-s); }
-.app-nav .nav-group:first-child { margin-top: 0; }
-.sidebar-settings { margin-top: auto; display: grid; gap: var(--lg-space-xs); padding-top: var(--lg-space-s); border-top: 1px solid var(--lg-line); }
-.sidebar-switch { display: flex; width: 100%; }
-.sidebar-switch .lg-tab { flex: 1; justify-content: center; padding-left: 6px; padding-right: 6px; }
-.sidebar-version { padding: var(--lg-space-xs) var(--lg-space-s) 0; }
+.app-brand { flex: none; color: var(--lg-text); text-decoration: none; padding: var(--lg-space-xxs) var(--lg-space-xs); white-space: nowrap; }
+.app-brand .lg-mark .lg-icon { color: var(--lg-accent); }
+.app-nav { display: flex; flex: 1 1 auto; min-width: 0; gap: 2px; overflow-x: auto; scrollbar-width: none; justify-content: center; }
+.app-nav::-webkit-scrollbar { display: none; }
+.app-nav .nav-link { flex: none; gap: 6px; padding: 6px 10px; }
+.app-nav .nav-link .lg-icon { width: 16px; height: 16px; flex: none; }
+.app-topbar-actions { flex: none; display: flex; align-items: center; gap: var(--lg-space-xs); margin-left: auto; }
+.topbar-search { color: var(--lg-muted); font-weight: 500; }
+.topbar-search .lg-kbd { margin-left: var(--lg-space-xs); }
+.topbar-settings .lg-icon { width: 18px; height: 18px; }
+
+/* Settings dialog (cogwheel) */
+.settings-dialog { width: min(420px, calc(100vw - 32px)); }
+.settings-head { display: flex; align-items: center; justify-content: space-between; gap: var(--lg-space-s); }
+.settings-head .lg-modal-title { display: flex; align-items: center; gap: var(--lg-space-xs); margin: 0; }
+.settings-head .lg-modal-title .lg-icon { width: 18px; height: 18px; color: var(--lg-accent); }
+.settings-body { display: grid; gap: var(--lg-space-m); }
+.settings-row { display: grid; gap: var(--lg-space-xs); }
+.settings-label { margin: 0; display: flex; align-items: center; gap: var(--lg-space-xs); }
+.settings-switch { display: flex; width: 100%; }
+.settings-switch .lg-tab { flex: 1; justify-content: center; }
+.settings-hint { margin: 0; }
+.settings-version { margin: 0; padding-top: var(--lg-space-s); border-top: 1px solid var(--lg-line); }
 
 #app-main-content:focus { outline: none; }
 .app-art { position: fixed; right: -60px; bottom: -60px; width: 460px; height: 460px; color: var(--lg-art); pointer-events: none; z-index: 0; }
@@ -386,20 +404,28 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
 .column-picker-menu label { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; cursor: pointer; }
 
 /* ---- responsive ---------------------------------------------------------------------------- */
-/* Phones and narrow tablets: Låda turns the sidebar into a top bar whose menu scrolls sideways. */
-@media (max-width: 760px) {
-  .app-sidebar { flex-direction: row; flex-wrap: wrap; align-items: center; max-height: none; overflow: visible; gap: var(--lg-space-s); }
-  .sidebar-search-text, .sidebar-search .lg-kbd, .nav-group, .sidebar-version { display: none; }
-  .sidebar-search { width: auto; margin-left: auto; order: 2; }
-  .app-nav { order: 4; width: 100%; justify-content: space-between; }
-  .app-nav .nav-link { flex: 1 0 auto; justify-content: center; }
-  .sidebar-settings { order: 3; width: 100%; margin: 0; padding: 0; border: 0; display: grid; grid-template-columns: 2fr 3fr; gap: var(--lg-space-xs); }
-  .sidebar-settings .nav-group { display: none; }
-  .sidebar-switch { width: 100%; }
+/* Narrower screens: the brand shrinks to its mark, then the menu shows icons only (names stay as
+   accessible names and tooltips), then on phones the menu gets its own row that scrolls sideways */
+@media (max-width: 1380px) {
+  .app-brand .brand-text { display: none; }
 }
-@media (max-width: 460px) {
+@media (max-width: 1180px) {
+  .topbar-search-text, .topbar-search .lg-kbd { display: none; }
+}
+@media (max-width: 1080px) {
   .app-nav .nav-link span { display: none; }
-  .sidebar-switch .lg-tab { padding-left: 4px; padding-right: 4px; }
+  .app-nav .nav-link { padding: 8px 12px; }
+  .app-nav { justify-content: space-evenly; }
+}
+@media (max-width: 760px) {
+  :root { --app-bar-h: 0px; }
+  .app-topbar { position: static; flex-wrap: wrap; }
+  .app-brand .brand-text { display: inline; }
+  .app-nav { order: 3; flex-basis: 100%; justify-content: space-between; }
+  .app-nav .nav-link { flex: 1 0 auto; justify-content: center; padding: 8px 6px; }
+}
+@media (max-width: 380px) {
+  .app-brand .brand-text { display: none; }
 }
 /* Mid widths (tablets, small laptops): two columns with a narrower setup, reticle and turret stacked */
 @media (max-width: 1400px) {
@@ -504,8 +530,8 @@ input[type="checkbox"] { accent-color: var(--lg-accent); width: 16px; height: 16
   .chart-metric .lg-tab { flex: 1 1 auto; justify-content: center; }
 }
 
-/* Sidebar switches are radio groups styled like Låda tabs */
-.sidebar-switch .lg-tab[aria-checked="true"] {
+/* Settings switches are radio groups styled like Låda tabs */
+.settings-switch .lg-tab[aria-checked="true"] {
   color: var(--lg-text);
   background: linear-gradient(180deg, var(--lg-glass-fill-top), var(--lg-glass-fill-bottom)), var(--lg-glass-strong);
   box-shadow: 0 1px 2px rgba(0, 0, 0, .18), inset 0 0 0 1px var(--lg-glass-edge);

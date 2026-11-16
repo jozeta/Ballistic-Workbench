@@ -24,7 +24,7 @@ The first version, with a complete redesign and a corrected ballistics engine:
   solver within 0.01 MRAD and against Hornady's published 6.5 Creedmoor table. Corrected aerodynamic
   jump, spin drift, cant, Coriolis, stability and powder temperature; the zero no longer shifts with
   field conditions; 27 bullet BCs corrected to published values.
-- **New interface** in the Låda Glass design: sidebar navigation, Låda components and charts, dark
+- **New interface** in the Låda Glass design: a menu bar at the top, Låda components and charts, dark
   and light themes (follows your system), custom icons and line art, plain-language text, and layouts
   for phones, tablets and computers.
 - **Guide:** a step-by-step, illustrated walkthrough from planning a range day to a printed DOPE
@@ -48,6 +48,7 @@ Since then (unreleased):
 - **Logbook:** record impacts at many distances and fit muzzle velocity and BC to all of them at once.
 - **Hunting:** maximum point-blank range and the range limit from minimum energy and velocity.
 - **Sharing:** pass a rifle or a match to another phone by QR code, link or file, without uploads.
+- **Menu bar at the top:** Units, Theme and the version are in **Settings** (the cogwheel on the right).
 
 See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
@@ -102,7 +103,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list.
 | **Tools** | **True your data** (muzzle velocity from a 500–800 m impact, then drag from a 1,000 m+ impact, applied to the rifle), **Hit probability** (simulates 500–2,000 shots from your error sources and shows what causes misses), **Group analysis** (from a photo or clicks: extreme spread, mean radius, dispersion ellipse and the correction to centre the group), **Chronograph** (SD, ES, mean; use the mean as muzzle velocity), **Range estimation** (from target size and reticle reading), **Hunting** (maximum point-blank range for a vital zone, the zero to set for it, and the range limit from your minimum energy and impact velocity, with an energy chart), **Recoil** (free recoil energy and velocity). |
 | **Library** | Your rifles (use, edit, duplicate, delete with undo), 177 factory bullets with search and caliber filter (published BCs marked with their source, derived ones marked "estimated"), your own bullets with a live Miller stability check, and backup to / restore from a file. Share a rifle as a QR code, link or file. |
 
-The command palette (**⌘K** on Mac, **Ctrl+K** elsewhere, or **Search** in the sidebar) reaches every view, tool and setting. Every setting has an **i** with an explanation.
+The command palette (**⌘K** on Mac, **Ctrl+K** elsewhere, or **Search** in the menu bar) reaches every view, tool and setting. Every setting has an **i** with an explanation.
 
 ## Installation
 
@@ -130,8 +131,8 @@ Settings are stored in your browser (`localStorage`); nothing leaves your device
 
 | Setting | Where | Options | Default |
 | --- | --- | --- | --- |
-| Units | Sidebar, palette | Metric (m, m/s, cm) or imperial (yd, fps, in). Angles (MRAD or MOA) and clicks follow the active rifle's scope, so a mil scope shows MRAD with yards too | Metric |
-| Theme | Sidebar, palette | System, dark, light | System |
+| Units | Settings (cogwheel), palette | Metric (m, m/s, cm) or imperial (yd, fps, in). Angles (MRAD or MOA) and clicks follow the active rifle's scope, so a mil scope shows MRAD with yards too | Metric |
+| Theme | Settings (cogwheel), palette | System, dark, light | System |
 | Rifle | Solver, Library, palette | Four example rifles (6.5 Creedmoor, .300 PRC, .308 Win, .223 Rem) or your own | 6.5 Creedmoor |
 | Distance and target | Solver → Target | Distance; target IPSC torso (45 × 75 cm), NATO E-type (50 × 100 cm), round plate (30 cm) or square plate (30 × 30 cm); width and height editable | 600 m, IPSC torso |
 | Load and rifle | Solver → Load and rifle | Muzzle velocity, bullet weight, drag model (G1/G7, sets the drag table), BC, solver model, sight height, zero distance, twist | From the rifle |
@@ -151,7 +152,7 @@ Settings are stored in your browser (`localStorage`); nothing leaves your device
 
 ## How to
 
-- **New here?** Open the **Guide** in the sidebar: it walks you from planning a range day to a
+- **New here?** Open the **Guide** in the menu at the top: it walks you from planning a range day to a
   printed DOPE chart, and every setting has an **i** that explains it.
 - **Get a firing solution:** choose your rifle at the top of the Solver, set the distance under
   **Target**, then check **Atmosphere** and **Wind**. The firing solution card shows what to dial.
@@ -168,7 +169,7 @@ Settings are stored in your browser (`localStorage`); nothing leaves your device
 - **Plan a match stage:** **DOPE cards → Stage card**, choose a preset or add targets, set the lull,
   base and gust wind; the card shows the elevation and wind hold for every target.
 - **Use it on the firing line:** press **Field mode** on the Solver's firing solution (or in the
-  sidebar). Step the distance and wind with the big buttons; tap **Night** after dark. On a phone,
+  menu). Step the distance and wind with the big buttons; tap **Night** after dark. On a phone,
   add the app to the home screen for a true full-screen view.
 - **Plan a match:** **Match → New** (or **Start from an example**), add stages and targets with their
   distance, angle and direction. On the day, set the atmosphere and wind in the Solver or Field mode

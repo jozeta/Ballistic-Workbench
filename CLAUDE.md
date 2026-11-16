@@ -22,12 +22,12 @@ npm run lint
 
 ## Layout
 
-- `index.html`: Låda app shell (lg-app: sidebar with Search, grouped nav, Units/Theme radio switches and
-  version; strict CSP). `src/ui/app.js`
+- `index.html`: Låda app shell (lg-app: a sticky top bar with the brand, the menu, Search and a cogwheel
+  that opens the Settings dialog with the Units/Theme radio switches and the version; strict CSP). `src/ui/app.js`
   bootstraps, hash-routes between views, owns theme (System/Light/Dark → always sets
   `<html data-theme>`), units button and the Låda command palette.
 - Views (`src/ui/`): `guide.js` (Guide), `workspace.js` (Solver), `field.js` (Field mode: a fixed
-  full-screen layer, `body.is-field-mode` hides the sidebar), `match.js` (Match), `logbook.js`
+  full-screen layer, `body.is-field-mode` hides the top bar), `match.js` (Match), `logbook.js`
   (Logbook), `solverLab.js` (Compare models), `dopeStudio.js` (DOPE cards), `tools.js` (incl.
   Hunting), `libraryManager.js`, plus `rifleBuilderModal.js` (rifle dialog) and `shareDialog.js`
   (share dialog with QR code; confirmation before a shared item is added). In-app links: dispatch `navigate-view` with `{ view, tool?, panel?, format?, tab?, anchor? }`.

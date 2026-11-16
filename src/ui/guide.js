@@ -269,7 +269,7 @@ const STEPS = [
       'In the Solver, open <strong>Atmosphere</strong> and enter the temperature, station pressure and humidity of the day, or pick a preset.',
       'Under <strong>Load and rifle</strong>, choose the <strong>Solver model</strong>: point mass with G7 drag suits most rifles; modified point mass adds spin drift, aerodynamic jump and Coriolis.',
     ],
-    tips: ['Switch between metric and imperial in the sidebar at any time. Your data is stored in one unit system, so switching changes nothing.'],
+    tips: ['Switch between metric and imperial in Settings (the cogwheel at the top right) at any time. Your data is stored in one unit system, so switching changes nothing.'],
     mistakes: ['Leaving the default sight height or zero. They are only examples.'],
     record: ['Export a backup once the rifle is set up: Library → Export'],
     actions: [
@@ -408,7 +408,7 @@ const TOPICS = [
     lead: 'For the firing line: one hand, a quick glance, in sun or at night.',
     art: ['field', 'A phone showing a large elevation number with plus and minus buttons, and a moon for night mode', ''],
     body: `<ul class="guide-list">
-        <li>Open <strong>Field mode</strong> from the sidebar or the button on the Solver's firing solution.</li>
+        <li>Open <strong>Field mode</strong> from the menu at the top or the button on the Solver's firing solution.</li>
         <li>The elevation and wind fill the screen, with clicks and direction: <strong>U</strong> up, <strong>D</strong> down, <strong>L</strong> left, <strong>R</strong> right.</li>
         <li>Change the <strong>Distance</strong> with − and + (5) or −25 and +25, or tap the number and type. Set the <strong>Wind</strong> speed and the clock direction it comes <strong>From</strong>. Hold a button to repeat.</li>
         <li><strong>Night</strong> turns everything dim red to keep your night vision. <strong>Screen on</strong> keeps the phone from going to sleep while Field mode is open. <strong>Full screen</strong> hides the browser bars where the browser allows it.</li>
@@ -492,7 +492,7 @@ const TOPICS = [
         <div><dt>${icon('stage')} Stage card</dt><dd>A plan for one match stage (see below).</dd></div>
         <div><dt>${icon('file')} Full page</dt><dd>The full table on A4 or Letter with drop, elevation, wind, speed and energy, reticle holds and space for notes.</dd></div>
       </dl>
-      <p>The <strong>Distances</strong> block shows where the distances came from; <strong>Use the default distances</strong> resets them. <strong>Data from</strong> shows the rifle, conditions and units. Change them in the Solver and the sidebar. <strong>Copy as text</strong> copies the table; <strong>Save SVG</strong> or <strong>Save PNG</strong> saves an image.</p>`,
+      <p>The <strong>Distances</strong> block shows where the distances came from; <strong>Use the default distances</strong> resets them. <strong>Data from</strong> shows the rifle, conditions and units. Change them in the Solver and in Settings (the cogwheel). <strong>Copy as text</strong> copies the table; <strong>Save SVG</strong> or <strong>Save PNG</strong> saves an image.</p>`,
     actions: [
       { label: 'Scope cap', icon: 'scope-cap', view: 'dopeStudio', format: 'scope-cap' },
       { label: 'Wrist card', icon: 'watch', view: 'dopeStudio', format: 'wrist-coach' },
@@ -736,12 +736,12 @@ const TOPICS = [
     group: 'App',
     icon: 'settings',
     title: 'Units and theme',
-    lead: 'Two switches at the bottom of the sidebar.',
+    lead: 'In Settings: the cogwheel at the right end of the menu bar.',
     art: ['settings', 'A units switch showing metric and imperial, and a theme switch', ''],
     body: `<ul class="guide-list">
         <li><strong>Units</strong>: Metric uses m, m/s, MRAD and cm; Imperial uses yd, fps, MOA and in. The click size always comes from your scope.</li>
         <li><strong>Theme</strong>: System follows your device; Dark and Light fix it. Use Light in bright sun.</li>
-        <li>Both are remembered in this browser.</li>
+        <li>Both are remembered in this browser. The version of the app is shown at the bottom of Settings.</li>
       </ul>`,
     actions: [],
   },
@@ -750,7 +750,7 @@ const TOPICS = [
     group: 'App',
     icon: 'keyboard',
     title: 'Command palette',
-    lead: `Press ${KEY}, or the Search button in the sidebar, to do almost anything by typing.`,
+    lead: `Press ${KEY}, or Search in the menu bar, to do almost anything by typing.`,
     art: ['palette', 'A search box with a list of commands below it', ''],
     body: `<ul class="guide-list">
         <li>Type a few letters: go to a view, open a tool, switch units or theme, change the drag model, or switch rifle.</li>

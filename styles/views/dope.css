@@ -439,7 +439,7 @@
 /* Wide: settings beside the preview; each target on two lines */
 @container dope (min-width: 860px) {
   .dope-layout { grid-template-columns: minmax(280px, 330px) minmax(0, 1fr); }
-  .dope-settings.is-sticky { position: sticky; top: var(--lg-space-m); }
+  .dope-settings.is-sticky { position: sticky; top: calc(var(--app-bar-h) + var(--lg-space-m)); }
 }
 @container dope (min-width: 1000px) {
   .target-row {

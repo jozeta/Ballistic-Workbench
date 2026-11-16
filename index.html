@@ -27,49 +27,62 @@
   <svg class="app-art" aria-hidden="true" focusable="false"><use href="./assets/art.svg#backdrop"/></svg>
 
   <div class="lg-app">
-    <nav class="lg-sidebar app-sidebar" aria-label="Main">
-      <a class="lg-brand" href="#workspace"><span class="lg-mark"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#crosshair"/></svg></span><span class="brand-text">Ballistic Workbench</span></a>
+    <header class="app-topbar lg-glass">
+      <a class="lg-brand app-brand" href="#workspace" aria-label="Ballistic Workbench, go to the Solver"><span class="lg-mark"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#crosshair"/></svg></span><span class="brand-text">Ballistic Workbench</span></a>
 
-      <button id="btn-cmd-palette-trigger" class="lg-btn sidebar-search" type="button" aria-label="Search commands">
-        <svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#search"/></svg><span class="sidebar-search-text">Search</span><span class="lg-kbd" id="palette-kbd">⌘K</span>
-      </button>
-
-      <div class="lg-nav app-nav">
-        <p class="lg-label nav-group">Start</p>
+      <nav class="lg-nav app-nav" aria-label="Main">
         <a href="#guide" class="nav-link" title="Guide" data-view="guide"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#guide"/></svg><span>Guide</span></a>
-        <p class="lg-label nav-group">Shoot</p>
-        <a href="#workspace" class="nav-link" title="Solver" data-view="workspace" aria-current="page"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#crosshair"/></svg><span>Solver</span></a>
+        <a href="#workspace" class="nav-link" title="Solver" data-view="workspace" aria-current="page"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#reticle"/></svg><span>Solver</span></a>
         <a href="#field" class="nav-link" title="Field mode" data-view="field"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#field"/></svg><span>Field mode</span></a>
         <a href="#match" class="nav-link" title="Match" data-view="match"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#match"/></svg><span>Match</span></a>
         <a href="#dopeStudio" class="nav-link" title="DOPE cards" data-view="dopeStudio"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#card"/></svg><span>DOPE cards</span></a>
-        <p class="lg-label nav-group">Analyse</p>
         <a href="#logbook" class="nav-link" title="Logbook" data-view="logbook"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#notebook"/></svg><span>Logbook</span></a>
         <a href="#solverLab" class="nav-link" title="Compare models" data-view="solverLab"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#compare"/></svg><span>Compare models</span></a>
         <a href="#tools" class="nav-link" title="Tools" data-view="tools"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#ruler"/></svg><span>Tools</span></a>
-        <p class="lg-label nav-group">Data</p>
         <a href="#libraryManager" class="nav-link" title="Library" data-view="libraryManager"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#box"/></svg><span>Library</span></a>
-      </div>
+      </nav>
 
-      <div class="sidebar-settings">
-        <p class="lg-label nav-group">Units</p>
-        <div class="lg-tabs sidebar-switch" role="radiogroup" aria-label="Units" id="units-switch">
-          <button class="lg-tab" role="radio" type="button" data-units="metric" aria-checked="true">Metric</button>
-          <button class="lg-tab" role="radio" type="button" data-units="imperial" aria-checked="false">Imperial</button>
-        </div>
-        <p class="lg-label nav-group">Theme</p>
-        <div class="lg-tabs sidebar-switch" role="radiogroup" aria-label="Theme" id="theme-switch">
-          <button class="lg-tab" role="radio" type="button" data-theme-set="system" aria-checked="true">System</button>
-          <button class="lg-tab" role="radio" type="button" data-theme-set="dark" aria-checked="false">Dark</button>
-          <button class="lg-tab" role="radio" type="button" data-theme-set="light" aria-checked="false">Light</button>
-        </div>
-        <p class="sidebar-version lg-small lg-muted">Version <span id="app-version" class="lg-mono"></span></p>
+      <div class="app-topbar-actions">
+        <button id="btn-cmd-palette-trigger" class="lg-btn topbar-search" type="button" aria-label="Search commands">
+          <svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#search"/></svg><span class="topbar-search-text">Search</span><span class="lg-kbd" id="palette-kbd">⌘K</span>
+        </button>
+        <button id="btn-settings" class="lg-btn lg-btn-icon topbar-settings" type="button" aria-label="Settings" aria-haspopup="dialog" title="Settings: units and theme">
+          <svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#settings"/></svg>
+        </button>
       </div>
-    </nav>
+    </header>
 
     <main class="lg-main" id="app-main-content" tabindex="-1">
       <!-- Populated by the router in src/ui/app.js -->
     </main>
   </div>
+
+  <dialog class="lg-modal settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+    <div class="settings-head">
+      <h2 class="lg-modal-title" id="settings-title"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#settings"/></svg> Settings</h2>
+      <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon" data-lg-close aria-label="Close"><svg class="lg-icon" aria-hidden="true"><use href="./assets/icons.svg#x"/></svg></button>
+    </div>
+    <div class="lg-modal-body settings-body">
+      <div class="settings-row">
+        <p class="lg-label settings-label" id="units-switch-label">Units</p>
+        <div class="lg-tabs settings-switch" role="radiogroup" aria-labelledby="units-switch-label" id="units-switch">
+          <button class="lg-tab" role="radio" type="button" data-units="metric" aria-checked="true">Metric</button>
+          <button class="lg-tab" role="radio" type="button" data-units="imperial" aria-checked="false">Imperial</button>
+        </div>
+        <p class="lg-small lg-muted settings-hint">Distances, speeds and sizes. Angles (MRAD or MOA) and clicks follow your scope.</p>
+      </div>
+      <div class="settings-row">
+        <p class="lg-label settings-label" id="theme-switch-label">Theme</p>
+        <div class="lg-tabs settings-switch" role="radiogroup" aria-labelledby="theme-switch-label" id="theme-switch">
+          <button class="lg-tab" role="radio" type="button" data-theme-set="system" aria-checked="true">System</button>
+          <button class="lg-tab" role="radio" type="button" data-theme-set="dark" aria-checked="false">Dark</button>
+          <button class="lg-tab" role="radio" type="button" data-theme-set="light" aria-checked="false">Light</button>
+        </div>
+        <p class="lg-small lg-muted settings-hint">System follows your device's light or dark setting.</p>
+      </div>
+      <p class="settings-version lg-small lg-muted">Ballistic Workbench, version <span id="app-version" class="lg-mono"></span></p>
+    </div>
+  </dialog>
 
   <!-- MAIN APPLICATION MODULE SCRIPT -->
   <script src="./vendor/lada-glass/2.2.0/lada-glass.js" defer></script>
