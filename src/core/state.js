@@ -13,6 +13,10 @@ import {
   sanitizeBullets,
   sanitizeSolverConfig,
   sanitizeTarget,
+  sanitizeMatches,
+  sanitizeLogbook,
+  sanitizeHunting,
+  HUNTING_DEFAULTS,
   MAX_IMPORT_BYTES,
 } from './sanitize.js';
 
@@ -53,6 +57,10 @@ export class StateStore {
       target: { ...DEFAULT_TARGET },
       solverConfig: { ...DEFAULT_SOLVER_CONFIG },
       displayUnits: UnitConverter.getSystemDefaults('metric'),
+      matches: [],
+      activeMatchId: null,
+      logbook: [],
+      hunting: { ...HUNTING_DEFAULTS },
     };
   }
 
@@ -87,6 +95,22 @@ export class StateStore {
     }
     if (!base.environments.some((e) => e.id === base.activeEnvironmentId)) base.activeEnvironmentId = base.environments[0].id;
     this._syncAngleUnits(base);
+    if (Array.isArray(parsed.matches)) {
+      // Matches from the data replace those with the same id; the rest are kept
+      const incoming = sanitizeMatches(parsed.matches);
+      const ids = new Set(incoming.map((m) => m.id));
+      base.matches = [...(base.matches || []).filter((m) => !ids.has(m.id)), ...incoming].slice(0, 100);
+    }
+    if (typeof parsed.activeMatchId === 'string' && base.matches.some((m) => m.id === parsed.activeMatchId)) {
+      base.activeMatchId = parsed.activeMatchId;
+    }
+    if (!base.matches.some((m) => m.id === base.activeMatchId)) base.activeMatchId = base.matches[0]?.id || null;
+    if (Array.isArray(parsed.logbook)) {
+      const incoming = sanitizeLogbook(parsed.logbook);
+      const ids = new Set(incoming.map((e) => e.id));
+      base.logbook = [...(base.logbook || []).filter((e) => !ids.has(e.id)), ...incoming].slice(-500);
+    }
+    if (parsed.hunting) base.hunting = sanitizeHunting(parsed.hunting);
     if (Array.isArray(parsed.customDopeRanges)) {
       base.customDopeRanges = parsed.customDopeRanges.filter((d) => Number.isFinite(d) && d > 0 && d <= 5000).slice(0, 200);
     }
@@ -255,6 +279,124 @@ export class StateStore {
     this.notify('profiles');
   }
 
+  // ---- hunting, matches, logbook ----------------------------------------------------------------
+
+  updateHunting(updates) {
+    this.state.hunting = sanitizeHunting({ ...this.state.hunting, ...updates });
+    this.notify('hunting');
+  }
+
+  getActiveMatch() {
+    return this.state.matches.find((m) => m.id === this.state.activeMatchId) || this.state.matches[0] || null;
+  }
+
+  setActiveMatch(id) {
+    if (!this.state.matches.some((m) => m.id === id)) return;
+    this.state.activeMatchId = id;
+    this.notify('matches');
+  }
+
+  /** Adds or replaces a match (validated). Returns the stored match. */
+  saveMatch(match, { activate = true } = {}) {
+    const [clean] = sanitizeMatches([match]);
+    if (!clean) return null;
+    const i = this.state.matches.findIndex((m) => m.id === clean.id);
+    if (i >= 0) this.state.matches[i] = clean;
+    else this.state.matches.push(clean);
+    if (activate) this.state.activeMatchId = clean.id;
+    this.notify('matches');
+    return clean;
+  }
+
+  deleteMatch(id) {
+    const i = this.state.matches.findIndex((m) => m.id === id);
+    if (i < 0) return null;
+    const [removed] = this.state.matches.splice(i, 1);
+    if (this.state.activeMatchId === id) this.state.activeMatchId = this.state.matches[0]?.id || null;
+    this.notify('matches');
+    return { match: removed, index: i };
+  }
+
+  restoreMatch({ match, index }) {
+    this.state.matches.splice(Math.min(index, this.state.matches.length), 0, match);
+    this.state.activeMatchId = match.id;
+    this.notify('matches');
+  }
+
+  /** Logbook entries of one rifle (default: the active rifle), oldest first by date. */
+  logbookFor(profileId = this.state.activeProfileId) {
+    return this.state.logbook.filter((e) => e.profileId === profileId);
+  }
+
+  addLogEntry(entry) {
+    const [clean] = sanitizeLogbook([entry]);
+    if (!clean) return null;
+    this.state.logbook.push(clean);
+    if (this.state.logbook.length > 500) this.state.logbook.shift();
+    this.notify('logbook');
+    return clean;
+  }
+
+  deleteLogEntry(id) {
+    const i = this.state.logbook.findIndex((e) => e.id === id);
+    if (i < 0) return null;
+    const [removed] = this.state.logbook.splice(i, 1);
+    this.notify('logbook');
+    return { entry: removed, index: i };
+  }
+
+  restoreLogEntry({ entry, index }) {
+    this.state.logbook.splice(Math.min(index, this.state.logbook.length), 0, entry);
+    this.notify('logbook');
+  }
+
+  /**
+   * Adds a shared rifle or match (already decoded). Data is validated first. An identical item
+   * already here is left alone; one with the same id but different content is added as a copy, so
+   * nothing the user has is overwritten.
+   * @returns {{ status: 'added'|'copy'|'same', name: string, id: string } | null}
+   */
+  importShared(kind, data) {
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const copyId = (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+    if (kind === 'rifle') {
+      const clean = sanitizeProfiles([data], DEFAULT_PROFILES)?.[0];
+      if (!clean) return null;
+      clean.zeroAngleRad = null;
+      const existing = this.state.profiles.find((p) => p.id === clean.id);
+      if (existing && same({ ...existing, zeroAngleRad: null }, clean)) {
+        this.setActiveProfile(existing.id);
+        return { status: 'same', name: existing.name, id: existing.id };
+      }
+      let status = 'added';
+      if (existing) {
+        clean.id = copyId('profile');
+        clean.name = `${clean.name} (shared)`.slice(0, 200);
+        status = 'copy';
+      }
+      this.addProfile(clean);
+      return { status, name: clean.name, id: clean.id };
+    }
+    if (kind === 'match') {
+      const [clean] = sanitizeMatches([data]);
+      if (!clean) return null;
+      const existing = this.state.matches.find((m) => m.id === clean.id);
+      if (existing && same(existing, clean)) {
+        this.setActiveMatch(existing.id);
+        return { status: 'same', name: existing.name, id: existing.id };
+      }
+      let status = 'added';
+      if (existing) {
+        clean.id = copyId('match');
+        clean.name = `${clean.name} (shared)`.slice(0, 200);
+        status = 'copy';
+      }
+      this.saveMatch(clean);
+      return { status, name: clean.name, id: clean.id };
+    }
+    return null;
+  }
+
   exportJSON() {
     return JSON.stringify(this.state, null, 2);
   }
@@ -265,7 +407,7 @@ export class StateStore {
     try {
       const parsed = JSON.parse(jsonString);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
-      const usable = ['profiles', 'environments', 'projectilesLibrary', 'target', 'solverConfig', 'systemUnits'].some((k) => k in parsed);
+      const usable = ['profiles', 'environments', 'projectilesLibrary', 'target', 'solverConfig', 'systemUnits', 'matches', 'logbook'].some((k) => k in parsed);
       if (!usable) return false;
       this.state = this._mergeValidated(this.state, parsed);
       this.notify('import');

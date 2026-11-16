@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node scripts/serve.mjs",
-    "test": "node tests/verify.mjs && node tests/helpers.mjs && node tests/version.mjs && node tests/sw-assets.mjs",
+    "test": "node tests/verify.mjs && node tests/features.mjs && node tests/helpers.mjs && node tests/version.mjs && node tests/sw-assets.mjs",
     "test:browser": "node tests/browser_check.mjs",
     "lint": "eslint ."
   },

@@ -14,6 +14,8 @@ const browser = {
   structuredClone: 'readonly', fetch: 'readonly', HTMLElement: 'readonly', Node: 'readonly', XMLSerializer: 'readonly',
   createImageBitmap: 'readonly', ImageData: 'readonly', devicePixelRatio: 'readonly', matchMedia: 'readonly',
   LadaGlass: 'readonly', CSS: 'readonly', MutationObserver: 'readonly', history: 'readonly', location: 'readonly', performance: 'readonly', crypto: 'readonly', DOMParser: 'readonly', getSelection: 'readonly',
+  CompressionStream: 'readonly', DecompressionStream: 'readonly', Response: 'readonly', TextEncoder: 'readonly', TextDecoder: 'readonly',
+  btoa: 'readonly', atob: 'readonly', globalThis: 'readonly', File: 'readonly',
 };
 
 export default [

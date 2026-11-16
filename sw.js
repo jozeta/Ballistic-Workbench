@@ -34,6 +34,9 @@ const STATIC_ASSETS = [
   './src/physics/solvers.js',
   './src/physics/truing.js',
   './src/physics/wez.js',
+  './src/physics/fit.js',
+  './src/physics/hunting.js',
+  './src/core/share.js',
   './src/ui/app.js',
   './src/ui/dopeStudio.js',
   './src/ui/fields.js',
@@ -56,6 +59,7 @@ const STATIC_ASSETS = [
   './styles/views/tools.css',
   './vendor/lada-glass/2.2.0/lada-glass.css',
   './vendor/lada-glass/2.2.0/lada-glass.js',
+  './vendor/qrcode-generator/2.0.4/qrcode.mjs',
 ];
 
 self.addEventListener('install', (event) => {

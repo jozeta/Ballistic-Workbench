@@ -56,6 +56,16 @@ const RANGES = {
   targetSpeedKmh: [0, 100],
   targetDirectionDeg: [0, 360],
   maxRangeM: [100, 3000],
+  // Match targets, logbook and hunting
+  offsetDeg: [-180, 180],
+  widthCm: [1, 500],
+  heightCm: [1, 500],
+  dialRad: [-0.05, 0.2],
+  impactOffsetM: [-5, 5],
+  observedElevationRad: [-0.05, 0.2],
+  vitalZoneM: [0.02, 1],
+  minEnergyJ: [0, 20000],
+  minVelocityMs: [0, 1500],
 };
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -190,6 +200,73 @@ export function sanitizeTarget(value, defaults) {
     clean.targetSizeHeightCm = std.h;
   }
   return clean;
+}
+
+// ---- matches, logbook, hunting -------------------------------------------------------------------
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const cleanDate = (v) => (typeof v === 'string' && DATE_RE.test(v) ? v : '');
+const newId = (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+
+/** A match target: distance, shot angle, direction relative to the stage's main direction, size. */
+export const MATCH_TARGET_TEMPLATE = { id: 't', name: '', distanceM: 400, inclinationDeg: 0, offsetDeg: 0, targetShape: 'square', widthCm: 30, heightCm: 30 };
+export const STAGE_TEMPLATE = { id: 's', name: '', note: '', targets: [MATCH_TARGET_TEMPLATE] };
+export const MATCH_TEMPLATE = { id: 'm', name: '', date: '', stages: [STAGE_TEMPLATE] };
+const MAX_STAGES = 30;
+const MAX_TARGETS = 30;
+
+/** Matches (stages with named targets). Bad entries are dropped; ids are made unique per level. */
+export function sanitizeMatches(list) {
+  if (!Array.isArray(list)) return [];
+  return uniqueIds(list.slice(0, 100).filter(isPlainObject).map((m) => {
+    const clean = shapeLike(m, MATCH_TEMPLATE);
+    if (!(typeof m.id === 'string' && ID_RE.test(m.id))) clean.id = newId('match');
+    clean.name = clean.name.trim() || 'Match';
+    clean.date = cleanDate(m.date);
+    clean.stages = uniqueIds(clean.stages.slice(0, MAX_STAGES).map((st, i) => {
+      const src = Array.isArray(m.stages) ? m.stages[i] : null;
+      if (!(typeof src?.id === 'string' && ID_RE.test(src.id))) st.id = newId('stage');
+      st.name = st.name.trim() || `Stage ${i + 1}`;
+      st.targets = uniqueIds(st.targets.slice(0, MAX_TARGETS).map((t, j) => {
+        const tsrc = Array.isArray(src?.targets) ? src.targets[j] : null;
+        if (!(typeof tsrc?.id === 'string' && ID_RE.test(tsrc.id))) t.id = newId('tgt');
+        if (!SHAPES.includes(t.targetShape)) t.targetShape = 'square';
+        t.name = t.name.trim() || `T${j + 1}`;
+        return t;
+      }));
+      return st;
+    }));
+    return clean;
+  }));
+}
+
+/** The conditions saved with a logbook entry (what the solver needs to repeat that day's shot). */
+export const CONDITIONS_TEMPLATE = {
+  temperatureC: 15, pressureHpa: 1013.25, humidityPercent: 50, altitudeM: 0, inclinationDeg: 0,
+  windSpeedMs: 0, windDirectionDeg: 90, latitudeDeg: 45, shootingAzimuthDeg: 0,
+};
+export const LOG_TEMPLATE = {
+  id: 'l', profileId: 'p', date: '', distanceM: 500, dialRad: 0, impactOffsetM: 0,
+  observedElevationRad: 0, note: '', conditions: CONDITIONS_TEMPLATE,
+};
+
+/** Logbook entries. The observed elevation is recomputed from the dial and the impact offset. */
+export function sanitizeLogbook(list) {
+  if (!Array.isArray(list)) return [];
+  return uniqueIds(list.slice(0, MAX_ITEMS).filter(isPlainObject).map((e) => {
+    const clean = shapeLike(e, LOG_TEMPLATE);
+    if (!(typeof e.id === 'string' && ID_RE.test(e.id))) clean.id = newId('log');
+    if (!(typeof e.profileId === 'string' && ID_RE.test(e.profileId))) clean.profileId = '';
+    clean.date = cleanDate(e.date);
+    clean.observedElevationRad = clean.dialRad - clean.impactOffsetM / clean.distanceM;
+    return clean;
+  }).filter((e) => e.profileId));
+}
+
+export const HUNTING_DEFAULTS = { vitalZoneM: 0.2, minEnergyJ: 1356, minVelocityMs: 549, showInSolver: false };
+
+export function sanitizeHunting(value) {
+  return shapeLike(value, HUNTING_DEFAULTS);
 }
 
 /** Imported or stored JSON over this size is refused before parsing. */
