@@ -219,6 +219,8 @@ const REPEATED = [
   { prefix: 'shot-field-x', selector: () => '[id^="shot-x-"]', column: true },
   { prefix: 'shot-field-y', selector: () => '[id^="shot-y-"]', column: true },
   { prefix: 'range-row-select', selector: () => '.chk-range-select', column: true },
+  // Match targets: one button per column header
+  { prefix: 'match-col-', selector: (f) => `.match-cell[data-key="${f}"]`, column: true },
 ];
 
 /** Adds "i" buttons to every control under root that has help and doesn't have a button yet. */

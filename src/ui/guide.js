@@ -401,6 +401,23 @@ const TOPICS = [
     actions: [{ label: 'Open the Solver', icon: 'crosshair', view: 'workspace' }],
   },
   {
+    id: 'guide-field',
+    group: 'Solver',
+    icon: 'field',
+    title: 'Field mode: the answer in big type',
+    lead: 'For the firing line: one hand, a quick glance, in sun or at night.',
+    art: ['field', 'A phone showing a large elevation number with plus and minus buttons, and a moon for night mode', ''],
+    body: `<ul class="guide-list">
+        <li>Open <strong>Field mode</strong> from the sidebar or the button on the Solver's firing solution.</li>
+        <li>The elevation and wind fill the screen, with clicks and direction: <strong>U</strong> up, <strong>D</strong> down, <strong>L</strong> left, <strong>R</strong> right.</li>
+        <li>Change the <strong>Distance</strong> with − and + (5) or −25 and +25, or tap the number and type. Set the <strong>Wind</strong> speed and the clock direction it comes <strong>From</strong>. Hold a button to repeat.</li>
+        <li><strong>Night</strong> turns everything dim red to keep your night vision. <strong>Screen on</strong> keeps the phone from going to sleep while Field mode is open. <strong>Full screen</strong> hides the browser bars where the browser allows it.</li>
+        <li>Changes are the same as in the Solver: go back with <strong>Exit</strong> (or Esc) and the Solver shows the same distance and wind.</li>
+      </ul>`,
+    tip: 'Add the app to your home screen (Share → Add to Home Screen on iPhone) for a real full-screen view.',
+    actions: [{ label: 'Open Field mode', icon: 'field', view: 'field' }],
+  },
+  {
     id: 'guide-solver-reticle',
     group: 'Solver',
     icon: 'reticle',
@@ -589,6 +606,22 @@ const TOPICS = [
     actions: [{ label: 'Open Range estimation', icon: 'ranging', view: 'tools', tool: 'milling' }],
   },
   {
+    id: 'guide-tool-hunting',
+    group: 'Tools',
+    icon: 'hunt',
+    title: 'Hunting: point-blank range and limits',
+    lead: 'How far you can hold dead on, and how far the bullet still kills cleanly.',
+    art: ['hunting', 'A bullet path that stays inside a band around the line of sight up to a vital zone circle', ''],
+    body: `<ul class="guide-list">
+        <li>Enter the <strong>Vital zone diameter</strong> of the game (about 20 cm or 8 in for deer).</li>
+        <li><strong>Maximum point-blank range</strong> is how far you can aim at the centre without dialling or holding: the bullet never rises or falls more than half the zone. The tool tells you the zero distance to set for it, and how high that zero hits at 100 m.</li>
+        <li>Enter your <strong>Minimum energy at impact</strong> and the bullet's <strong>Minimum impact velocity</strong> (its expansion velocity, from the bullet maker). The <strong>Range limit</strong> is where the bullet falls below either.</li>
+        <li>Tick <strong>Warn in the Solver and Field mode</strong> to get a warning on any shot past these limits.</li>
+      </ul>`,
+    tip: 'These are physical limits only. Your own limit is the distance at which you can place every shot in the vital zone, in the wind of the day: check it on paper first.',
+    actions: [{ label: 'Open Hunting', icon: 'hunt', view: 'tools', tool: 'hunting' }],
+  },
+  {
     id: 'guide-tool-recoil',
     group: 'Tools',
     icon: 'recoil',
@@ -601,6 +634,39 @@ const TOPICS = [
         <li>Muzzle brakes and suppressors are not included.</li>
       </ul>`,
     actions: [{ label: 'Open Recoil', icon: 'recoil', view: 'tools', tool: 'recoil' }],
+  },
+  {
+    id: 'guide-logbook',
+    group: 'Analyse',
+    icon: 'notebook',
+    title: 'Logbook: true the model with many distances',
+    lead: 'Keep every distance you shoot, then fit the model to all of them at once.',
+    art: ['logbook', 'A notebook of entries beside a chart where the model line passes through measured points', ''],
+    body: `<ol class="guide-list">
+        <li>Before you add an entry, set the day's <strong>Atmosphere</strong> and wind in the Solver: each entry keeps them.</li>
+        <li>In <strong>Add an entry</strong>, enter the date, the <strong>Distance</strong>, the <strong>Elevation dialled</strong> and where the <strong>Group centre</strong> landed compared with your aim (+ high, − low). The app works out the elevation that would have centred the group.</li>
+        <li>The table shows each entry next to the model's elevation for that day, and how far the model is off.</li>
+        <li>Press <strong>Fit to … entries</strong>. With entries close together it fits the muzzle velocity; with entries that reach 500 m (550 yd) or more and spread out (the furthest at least 1.5 × the nearest) it fits the drag (BC) too.</li>
+        <li>Check the <strong>Average miss</strong> before and after, then <strong>Apply</strong> to your rifle.</li>
+      </ol>`,
+    tip: 'One far-off entry pulls the fit. Look at Off after fit: an entry that stays far off usually has a wrong distance, a mis-read dial or was a different load.',
+    actions: [{ label: 'Open the Logbook', icon: 'notebook', view: 'logbook' }],
+  },
+  {
+    id: 'guide-match',
+    group: 'Analyse',
+    icon: 'match',
+    title: 'Match: stages and targets',
+    lead: 'Plan a match before you go, and check it on the day with the real wind.',
+    art: ['match', 'A stage seen from above: the shooting position and targets at different directions', ''],
+    body: `<ul class="guide-list">
+        <li><strong>New</strong> starts a match; <strong>Start from an example</strong> shows a filled-in one.</li>
+        <li>Each stage has a name, a note (round count, time) and targets in shooting order. For each target enter the <strong>Distance</strong>, the <strong>Angle</strong> (+ uphill), the <strong>Direction</strong> in degrees right (+) or left (−) of the stage's main direction, and its type and size.</li>
+        <li>Every target shows the <strong>Elevation</strong> (with clicks), the <strong>Wind</strong> hold and the target's <strong>Size</strong> in your reticle unit, for the rifle and the conditions set in the Solver. A target off to the side sees the wind from a different angle, and the app accounts for it.</li>
+        <li><strong>Share</strong> sends the match to a squad mate as a link, a QR code or a file.</li>
+      </ul>`,
+    tip: 'On match day set the atmosphere and wind in the Solver (or Field mode): every target updates.',
+    actions: [{ label: 'Open Match', icon: 'match', view: 'match' }],
   },
   {
     id: 'guide-library',
@@ -647,6 +713,21 @@ const TOPICS = [
         <li><strong>Export</strong> saves your rifles, bullets and settings to a file.</li>
         <li><strong>Import…</strong> loads a backup file: it replaces your rifles and settings and adds its bullets. You can undo an import straight after.</li>
         <li>Imported files are checked before anything is used.</li>
+      </ul>`,
+    actions: [{ label: 'Open Library', icon: 'box', view: 'libraryManager', tab: 'rifles' }],
+  },
+  {
+    id: 'guide-sharing',
+    group: 'Library',
+    icon: 'share',
+    title: 'Sharing a rifle or a match',
+    lead: 'Pass your data to another phone without accounts or uploads.',
+    art: ['share', 'Two phones: one shows a QR code, an arrow points to the other', ''],
+    body: `<ul class="guide-list">
+        <li>Press the share button on a rifle in the <strong>Library</strong>, or <strong>Share</strong> in <strong>Match</strong>.</li>
+        <li>The other phone scans the <strong>QR code</strong> with its camera, or you send the link with <strong>Copy link</strong> or <strong>Share…</strong>. The data is inside the link itself; nothing is uploaded.</li>
+        <li>The link opens this copy of the app, so the other device must be able to reach its address. If it can't, use <strong>Save file</strong> and open the file there with <strong>Library → Import</strong>.</li>
+        <li>The app always asks before adding a shared item, checks every value, and never replaces your own: a different version with the same name is added as a copy.</li>
       </ul>`,
     actions: [{ label: 'Open Library', icon: 'box', view: 'libraryManager', tab: 'rifles' }],
   },

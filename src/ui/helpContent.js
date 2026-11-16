@@ -811,4 +811,104 @@ export const HELP = {
     text: 'The scope\'s highest power, the second number in its name (25 in 5–25×56). SFP scopes are usually calibrated at this power.',
     guide: 'guide-equipment',
   },
+
+  // ---- Hunting (Tools) ----
+  'hunt-vital': {
+    title: 'Vital zone diameter',
+    text: 'The size of the heart and lung area you must hit. Point-blank range keeps the bullet within half this above or below your aim.',
+    typical: 'Typical: deer and wild boar 20 cm (8 in); elk and moose 25–30 cm (10–12 in); fox and coyote 10 cm (4 in).',
+    tip: 'Smaller is safer: it gives a shorter point-blank range but a cleaner hit.',
+    guide: 'guide-tool-hunting',
+  },
+  'hunt-energy': {
+    title: 'Minimum energy at impact',
+    text: 'The least energy you want the bullet to deliver on the animal. A rule of thumb rather than a guarantee: shot placement and bullet construction matter more.',
+    typical: 'Rules of thumb: 1,356 J (1,000 ft·lb) for deer, 2,034 J (1,500 ft·lb) for elk and moose. Some countries set legal minimums by game class.',
+    guide: 'guide-tool-hunting',
+  },
+  'hunt-velocity': {
+    title: 'Minimum impact velocity',
+    text: 'The slowest speed at which your bullet still expands reliably. Below it, a hunting bullet may pass through like a solid.',
+    how: ['Look it up on the bullet maker\'s website or box (often "minimum expansion velocity" or "minimum impact velocity").'],
+    typical: 'Typical: 490–610 m/s (1,600–2,000 fps). Enter 0 to turn the check off.',
+    guide: 'guide-tool-hunting',
+  },
+  'hunt-show': {
+    title: 'Warn in the Solver and Field mode',
+    text: 'Shows whether a shot meets your minimum energy and velocity in the Solver\'s firing solution, and a warning in Field mode when it does not.',
+    guide: 'guide-tool-hunting',
+  },
+
+  // ---- Logbook ----
+  'log-date': {
+    title: 'Date',
+    text: 'The day you shot. Entries are listed by date.',
+    guide: 'guide-logbook',
+  },
+  'log-dist': {
+    title: 'Distance',
+    text: 'The exact distance to the target, from a laser rangefinder or a surveyed range. A wrong distance is the most common cause of a bad fit.',
+    guide: 'guide-logbook',
+  },
+  'log-dial': {
+    title: 'Elevation dialled',
+    text: 'What your turret was set to (or the hold you used) for the group. It starts at the model\'s answer for this distance: change it to what you really used.',
+    guide: 'guide-logbook',
+  },
+  'log-impact': {
+    title: 'Group centre vs aim',
+    text: 'How far the centre of the group was above (+) or below (−) your aim point. The app turns it into the elevation that would have centred the group.',
+    how: ['Shoot 3–5 shots with the same dial.', 'Measure from the aim point to the middle of the group, straight up or down.'],
+    tip: 'If you corrected until the group was centred, enter the final dial and 0.',
+    guide: 'guide-logbook',
+  },
+  'log-note': {
+    title: 'Note',
+    text: 'Anything that helps you judge the entry later: number of shots, position, wind, ammunition lot.',
+    guide: 'guide-logbook',
+  },
+
+  // ---- Match ----
+  'match-select': {
+    title: 'Match',
+    text: 'Choose which match to show. Each match has its own stages and targets.',
+    guide: 'guide-match',
+  },
+  'match-name': {
+    title: 'Match name',
+    text: 'A name for the match, shown in the list and when you share it.',
+    guide: 'guide-match',
+  },
+  'match-date': {
+    title: 'Match date',
+    text: 'The day of the match, for your own reference.',
+    guide: 'guide-match',
+  },
+  'match-col-distanceM': {
+    title: 'Target distance',
+    text: 'The distance to this target from the shooting position. Every target is solved exactly at its distance.',
+    guide: 'guide-match',
+  },
+  'match-col-inclinationDeg': {
+    title: 'Shot angle',
+    text: 'How steeply you shoot up (+) or down (−) to this target, in degrees. Steep angles need less elevation than the straight-line distance suggests.',
+    typical: 'Typical: within ±10°; mountain stages up to ±30°.',
+    guide: 'guide-match',
+  },
+  'match-col-offsetDeg': {
+    title: 'Direction',
+    text: 'How far this target is to the right (+) or left (−) of the stage\'s main direction, in degrees. The wind is set relative to the main direction, so a target off to the side gets more or less crosswind.',
+    typical: 'Example: wind from 3 o\'clock, target 30° right: the wind comes from 2 o\'clock for that target.',
+    guide: 'guide-match',
+  },
+  'match-col-targetShape': {
+    title: 'Target type',
+    text: 'Choosing a type fills in its standard width and height. Change the size if your target differs.',
+    guide: 'guide-match',
+  },
+  'match-col-widthCm': {
+    title: 'Target width',
+    text: 'The target\'s width. The Size column shows how wide it looks in your reticle: the wind error you can afford.',
+    guide: 'guide-match',
+  },
 };

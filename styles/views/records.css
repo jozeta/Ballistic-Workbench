@@ -1,0 +1,67 @@
+/* Ballistic Workbench - Match (src/ui/match.js), Logbook (src/ui/logbook.js) and the share dialog
+   (src/ui/shareDialog.js). */
+
+.records-view { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--lg-space-m); min-width: 0; }
+.records-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--lg-space-m); align-items: start; min-width: 0; }
+.records-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--lg-space-s); min-width: 0; align-content: start; }
+.records-card > .lg-label, .records-card .card-head .lg-label { display: flex; align-items: center; gap: var(--lg-space-xs); margin: 0; }
+.records-card .lg-label .lg-icon { width: 15px; height: 15px; color: var(--lg-accent); }
+.records-card .field-row { margin-bottom: 0; }
+.records-card .field-grid-2 { gap: var(--lg-space-s) var(--lg-space-m); }
+.records-card > p { margin: 0; }
+.records-card .lg-table-wrap { min-width: 0; position: relative; }
+.records-view .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Logbook */
+.log-table td, .log-table th { vertical-align: middle; }
+.log-table .is-off { color: var(--lg-warn-text); }
+.log-cond { color: var(--lg-muted); font-size: var(--lg-fs-small); max-width: 22ch; overflow-wrap: anywhere; }
+.log-cond-note { display: flex; gap: var(--lg-space-xs); align-items: flex-start; }
+.log-cond-note .lg-icon { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.log-fit-list { display: grid; gap: var(--lg-space-xs); margin: 0; }
+.log-fit-list > div { display: flex; justify-content: space-between; gap: var(--lg-space-m); flex-wrap: wrap; border-bottom: 1px solid var(--lg-line); padding-bottom: var(--lg-space-xs); }
+.log-fit-list dt { color: var(--lg-muted); }
+.log-fit-list dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* Match */
+.match-bar { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--lg-space-m); flex-wrap: wrap; }
+.match-pick { flex: 1 1 220px; min-width: 0; max-width: 420px; }
+.match-actions { margin-top: 0; }
+.match-empty { display: grid; justify-items: center; gap: var(--lg-space-xs); text-align: center; }
+.match-empty p { margin: 0; max-width: 56ch; color: var(--lg-muted); }
+.match-table { min-width: 1080px; }
+.match-table td, .match-table th { vertical-align: middle; padding-top: 6px; padding-bottom: 6px; }
+.match-table .lg-input, .match-table .lg-select { min-width: 0; width: 100%; }
+.match-table td:has(> .match-cell[data-key="distanceM"]) { width: 90px; }
+.match-table td:has(> .match-cell[data-key="inclinationDeg"]),
+.match-table td:has(> .match-cell[data-key="offsetDeg"]),
+.match-table td:has(> .match-cell[data-key="widthCm"]),
+.match-table td:has(> .match-cell[data-key="heightCm"]) { width: 72px; }
+.match-table .match-name { min-width: 110px; }
+.match-table .match-type { min-width: 150px; }
+.match-table td:has(> .match-type) { width: 170px; }
+.match-table .sol { font-size: 15px; }
+.match-table .sol strong { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.match-table .cell-sub { font-size: var(--lg-fs-small); font-weight: 500; color: var(--lg-muted); }
+.match-table .lg-badge { margin-left: 6px; }
+
+/* Share dialog */
+.share-dialog { max-width: min(460px, calc(100vw - 32px)); }
+.share-dialog .lg-modal-title { display: flex; align-items: center; gap: var(--lg-space-xs); }
+.share-dialog .lg-modal-title .lg-icon { width: 18px; height: 18px; color: var(--lg-accent); }
+.share-body { display: grid; gap: var(--lg-space-s); }
+.share-qr-wrap { display: grid; place-items: center; }
+.share-qr { border-radius: var(--lg-radius-small); max-width: 100%; }
+.share-howto { margin: 0; }
+.share-actions { flex-wrap: wrap; }
+
+@media (max-width: 900px) {
+  .records-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .records-card .field-grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .share-actions .lg-btn { flex: 1 1 auto; justify-content: center; }
+}
+@media (pointer: coarse) {
+  .match-table .lg-input, .match-table .lg-select { min-height: 44px; }
+}

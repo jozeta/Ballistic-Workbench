@@ -18,6 +18,8 @@ import { UnitConverter } from '../core/units.js';
 import { MAX_IMPORT_BYTES, sanitizeBullets } from '../core/sanitize.js';
 import { calculateStability, PROJECTILES } from '../data/projectiles.js';
 import { RifleBuilderModal } from './rifleBuilderModal.js';
+import { openShareDialog, confirmSharedImport } from './shareDialog.js';
+import { readEnvelope } from '../core/share.js';
 import { icon } from './icons.js';
 import { toast } from './notify.js';
 import { bindNumber, parseNumber, rangeError, setFieldError } from './fields.js';
@@ -244,6 +246,7 @@ export class LibraryManagerView {
             <span class="toolbar-spacer"></span>
             <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon" data-action="edit-rifle" data-id="${id}" aria-label="Edit ${name}" data-lg-tooltip="Edit">${icon('edit')}</button>
             <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon" data-action="duplicate-rifle" data-id="${id}" aria-label="Duplicate ${name}" data-lg-tooltip="Duplicate">${icon('copy')}</button>
+            <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon" data-action="share-rifle" data-id="${id}" aria-label="Share ${name}" data-lg-tooltip="Share as a link, QR code or file">${icon('share')}</button>
             <button type="button" class="lg-btn lg-btn-ghost lg-btn-icon lib-danger" data-action="delete-rifle" data-id="${id}"
               aria-label="Delete ${name}" data-lg-tooltip="${only ? 'You need at least one rifle' : 'Delete'}" ${only ? 'aria-disabled="true"' : ''}>${icon('trash')}</button>
           </div>
@@ -880,6 +883,11 @@ export class LibraryManagerView {
       case 'duplicate-rifle':
         this._duplicateRifle(id);
         break;
+      case 'share-rifle': {
+        const p = this._findProfile(id);
+        if (p) openShareDialog({ kind: 'rifle', data: { ...p, zeroAngleRad: null }, name: p.name, trigger: btn });
+        break;
+      }
       case 'delete-rifle':
         this._deleteRifle(id);
         break;
@@ -966,6 +974,17 @@ export class LibraryManagerView {
         }
         if (!isObj(parsed)) {
           toast("Couldn't import", 'bad', "The file isn't a Ballistic Workbench backup.");
+          return;
+        }
+        // A shared rifle or match (.bwshare.json): ask, then add it next to the user's own
+        const shared = readEnvelope(parsed);
+        if (shared) {
+          confirmSharedImport(shared).then((res) => {
+            if (!res) return;
+            const what = shared.kind === 'rifle' ? 'Rifle' : 'Match';
+            toast(res.status === 'same' ? `${what} already here` : `${what} added`, 'ok', res.status === 'copy' ? `${res.name}: you already had a different version, so this was added as a copy.` : res.name);
+            if (shared.kind === 'match') window.dispatchEvent(new CustomEvent('navigate-view', { detail: { view: 'match' } }));
+          });
           return;
         }
         const found = describeImport(parsed);

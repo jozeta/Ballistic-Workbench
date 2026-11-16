@@ -11,9 +11,14 @@ import { ToolsView } from './tools.js';
 import { LibraryManagerView } from './libraryManager.js';
 import { GuideView } from './guide.js';
 import { FieldView } from './field.js';
+import { MatchView } from './match.js';
+import { LogbookView } from './logbook.js';
+import { confirmSharedImport } from './shareDialog.js';
+import { decodeShare, payloadFromHash } from '../core/share.js';
+import { toast } from './notify.js';
 import { initHelp } from './help.js';
 
-const VIEWS = ['workspace', 'field', 'solverLab', 'dopeStudio', 'tools', 'libraryManager', 'guide'];
+const VIEWS = ['workspace', 'field', 'match', 'logbook', 'solverLab', 'dopeStudio', 'tools', 'libraryManager', 'guide'];
 const THEME_KEY = 'ballistic_theme_pref';
 const THEME_PREFS = ['system', 'light', 'dark'];
 
@@ -31,9 +36,12 @@ class BallisticWorkbenchApp {
     this.initPrintButtons();
     initHelp(document.body); // the views, the sidebar and dialogs
 
+    // A share link (#share=…) opens the Solver and asks about the shared item
+    const sharePayload = payloadFromHash(window.location.hash);
+    if (sharePayload) history.replaceState(null, '', `${window.location.pathname}${window.location.search}#workspace`);
     const initialHash = (typeof window !== 'undefined' ? window.location.hash.replace('#', '') : '') || 'workspace';
-    const validViews = VIEWS;
-    this.switchView(validViews.includes(initialHash) ? initialHash : 'workspace');
+    this.switchView(VIEWS.includes(initialHash) ? initialHash : 'workspace');
+    if (sharePayload) this.receiveShare(sharePayload);
 
     // Subscribe to unit changes to refresh header toggle label
     appState.subscribe((state, changeKey) => {
@@ -216,6 +224,12 @@ class BallisticWorkbenchApp {
       case 'field':
         this.currentViewInstance = new FieldView(viewContainer);
         break;
+      case 'match':
+        this.currentViewInstance = new MatchView(viewContainer);
+        break;
+      case 'logbook':
+        this.currentViewInstance = new LogbookView(viewContainer);
+        break;
       case 'workspace':
       default:
         this.currentViewInstance = new WorkspaceView(viewContainer);
@@ -223,9 +237,29 @@ class BallisticWorkbenchApp {
     }
   }
 
+  /** Decodes a share link payload, asks the user, and adds the rifle or match. */
+  async receiveShare(payload) {
+    const shared = await decodeShare(payload);
+    if (!shared) {
+      toast("Couldn't open the shared link", 'bad', 'It is damaged or incomplete. Ask for the file instead.');
+      return;
+    }
+    const res = await confirmSharedImport(shared);
+    if (!res) return;
+    const what = shared.kind === 'rifle' ? 'Rifle' : 'Match';
+    toast(res.status === 'same' ? `${what} already here` : `${what} added`, 'ok', res.status === 'copy' ? `${res.name}: you already had a different version, so this was added as a copy.` : res.name);
+    if (shared.kind === 'match') this.switchView('match');
+  }
+
   initRouter() {
     // Hash routing support #workspace, #solverLab, etc.
     window.addEventListener('hashchange', () => {
+      const payload = payloadFromHash(window.location.hash);
+      if (payload) {
+        history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${this.activeView}`);
+        this.receiveShare(payload);
+        return;
+      }
       const hash = window.location.hash.replace('#', '');
       if (VIEWS.includes(hash)) {
         if (this.activeView !== hash) {
@@ -273,6 +307,9 @@ class BallisticWorkbenchApp {
     return [
       { title: 'Go to Solver', category: 'Go to', keywords: ['workspace', 'command center', 'dope table', 'reticle'], action: () => this.switchView('workspace') },
       { title: 'Field mode: big readout for the firing line', category: 'Go to', keywords: ['field', 'night', 'red', 'one hand', 'full screen', 'range day'], action: () => this.switchView('field') },
+      { title: 'Go to Match: stages and targets', category: 'Go to', keywords: ['match', 'stage', 'prs', 'nrl', 'targets', 'competition'], action: () => this.switchView('match') },
+      { title: 'Go to Logbook: record impacts and fit the model', category: 'Go to', keywords: ['logbook', 'impacts', 'truing', 'fit', 'dope', 'record', 'history'], action: () => this.switchView('logbook') },
+      { title: 'Hunting: point-blank range and energy limits', category: 'Tools', keywords: ['hunting', 'mpbr', 'point blank', 'vital zone', 'energy', 'ethical'], action: openTool('hunting') },
       { title: 'Go to Compare models', category: 'Go to', keywords: ['algorithm', 'lab', 'g1', 'g7', 'mpm'], action: () => this.switchView('solverLab') },
       { title: 'Go to DOPE cards', category: 'Go to', keywords: ['print', 'range card', 'wrist coach', 'scope cap'], action: () => this.switchView('dopeStudio') },
       { title: 'Go to Tools', category: 'Go to', keywords: ['chrono', 'truing', 'wez'], action: () => this.switchView('tools') },

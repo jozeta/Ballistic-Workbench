@@ -124,7 +124,7 @@ async function setValue(selector, value) {
     el.value = ${JSON.stringify(String(value))}; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
 }
 
-const VIEWS = ['workspace', 'solverLab', 'dopeStudio', 'tools', 'libraryManager'];
+const VIEWS = ['workspace', 'field', 'match', 'logbook', 'solverLab', 'dopeStudio', 'tools', 'libraryManager'];
 
 try {
   // ---- 1. Shell -----------------------------------------------------------------------------------
@@ -287,6 +287,60 @@ try {
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   await sleep(600);
   check(!(await ev(`!!document.querySelector('dialog[open]')`)), 'Esc closes the rifle dialog');
+
+  // ---- 7b. Field mode, Match, Logbook, Hunting, sharing ---------------------------------------------
+  await fresh();
+  await goto('#field', 800);
+  const elev0 = await ev(`document.getElementById('field-elev-val').textContent`);
+  const dist0 = Number(await ev(`document.getElementById('field-dist-input').value`));
+  const want = String(Math.floor(dist0 / 25) * 25 + 25);
+  await ev(`document.querySelector('.field-step[data-step="field-dist"][data-by="25"]').click()`);
+  await sleep(300);
+  const stepped = await ev(`document.getElementById('field-dist-input').value`);
+  check(stepped === want, `field mode: +25 steps the distance (${dist0} → ${stepped})`);
+  check((await ev(`document.getElementById('field-elev-val').textContent`)) !== elev0, 'field mode: the elevation follows the distance');
+  await ev(`document.getElementById('field-night').click()`);
+  await sleep(200);
+  check(await ev(`document.querySelector('.field-view').classList.contains('is-night')`), 'field mode: night mode turns on');
+  await ev(`document.getElementById('field-exit').click()`);
+  await sleep(500);
+  check((await ev(`location.hash`)) === '#workspace' && (await ev(`document.querySelector('.solution-range').textContent`)).includes(want), 'field mode: exit returns to the Solver with the same distance');
+
+  await goto('#match', 800);
+  await ev(`document.getElementById('match-example').click()`);
+  await sleep(500);
+  const matchInfo = await ev(`({ stages: document.querySelectorAll('.stage-card').length, sol: [...document.querySelectorAll('.match-table .sol strong')].map((e) => e.textContent).join(' ') })`);
+  check(matchInfo.stages === 2 && !/NaN|–/.test(matchInfo.sol), `match: example with 2 stages, every target solved`);
+  await setValue('#mt-0-0-distanceM', '500');
+  await sleep(400);
+  check((await ev(`document.querySelector('#mt-0-0-distanceM')?.value`)) === '500', 'match: a target distance edit is kept');
+
+  await goto('#logbook', 800);
+  for (const [d, dial] of [[300, '1.30'], [600, '4.20'], [900, '8.10']]) {
+    await setValue('#log-dist', d);
+    await setValue('#log-dial', dial);
+    await ev(`document.getElementById('log-add').click()`);
+    await sleep(250);
+  }
+  check((await ev(`document.querySelectorAll('.log-table tbody tr').length`)) === 3, 'logbook: three entries added');
+  await ev(`document.getElementById('log-fit').click()`);
+  await sleep(1000);
+  const fitText = await ev(`document.getElementById('log-fit-result').innerText`);
+  check(/→/.test(fitText) && /Apply/.test(fitText), 'logbook: the fit gives new values to apply');
+
+  await goto('#tools', 800);
+  await ev(`document.getElementById('tool-tab-hunting').click()`);
+  await sleep(800);
+  const huntText = await ev(`document.getElementById('hunting-results')?.innerText || document.getElementById('tool-panel')?.innerText.slice(0, 200)`);
+  check(/point-blank range/i.test(huntText), `hunting: point-blank range shown (${huntText.slice(0, 80)})`);
+
+  const sharePayload = await ev(`import('./src/core/share.js').then((m) => m.encodeShare('rifle', { name: 'Shared test rifle', id: 'profile-shared-test', bullet: { name: 'X', weightGr: 140, diameterIn: 0.264, lengthIn: 1.35, bcG1: 0.6, bcG7: 0.3, dragModel: 'G7' }, muzzleVelocityMs: 820 }))`, true);
+  await send('Page.navigate', { url: `${BASE}#share=${sharePayload}` });
+  await sleep(1500);
+  check(await ev(`!!document.querySelector('dialog[open] #import-yes')`), 'a share link asks before adding the rifle');
+  await ev(`document.getElementById('import-yes').click()`);
+  await sleep(700);
+  check(/Shared test rifle/.test(await ev(`JSON.parse(localStorage.getItem('ballistic_workbench_state_v1')).profiles.map((p) => p.name).join('|')`)), 'the shared rifle is added');
 
   // ---- 8. Compare models -----------------------------------------------------------------------------
   await goto('#solverLab', 1200);
